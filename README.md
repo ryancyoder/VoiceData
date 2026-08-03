@@ -1,0 +1,49 @@
+# VoiceData
+
+Talk to an AI to build out a database on the fly. Speak (or type) what you
+want to track — "create a contacts table with name, phone, and email", "add
+Dune by Frank Herbert to my reading list" — and the assistant creates tables,
+adds columns, and inserts/updates/deletes rows in a local SQLite database as
+you go.
+
+## How it works
+
+- **Voice input**: the browser records audio (`MediaRecorder`) and sends it
+  to `/api/transcribe`, which calls the OpenAI Whisper API for speech-to-text.
+- **Agent**: `/api/chat` sends the conversation to Claude (Anthropic) with a
+  set of tools (`create_table`, `add_column`, `insert_row`, `query_rows`,
+  etc.). Claude decides which tools to call based on what you said.
+- **Database**: tool calls run against a local SQLite database
+  (`data/voicedata.sqlite3`, created automatically) via `better-sqlite3`.
+  Table/column names are validated before being used in DDL to avoid SQL
+  injection.
+- **Voice output**: the assistant's reply is spoken back using the browser's
+  built-in `speechSynthesis` API — no extra API calls needed.
+
+## Setup
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+Fill in `.env.local`:
+
+- `ANTHROPIC_API_KEY` — powers the conversational agent
+- `OPENAI_API_KEY` — powers Whisper transcription
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Click the mic button,
+speak, and watch the "Database" panel update as tables and data are created.
+A text box is also available as a fallback if you'd rather type.
+
+## Project layout
+
+- `src/lib/db.ts` — dynamic SQLite layer (create/alter tables, CRUD on rows)
+- `src/lib/agent.ts` — Claude tool definitions and the tool-use loop
+- `src/app/api/chat/route.ts` — conversation endpoint
+- `src/app/api/transcribe/route.ts` — Whisper transcription endpoint
+- `src/app/page.tsx` — voice UI (mic button, transcript, live schema panel)
