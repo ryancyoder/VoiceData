@@ -6,10 +6,11 @@ description: Turn a photo of a Ricci's Landscape Management (RLM) proposal cover
 # Sales Board proposal import
 
 Ricci's Landscape Management proposals always open with the same cover
-page layout. This skill reads that cover page and turns it into a small
-block of text the user pastes into the Sales Board to pre-fill a new
-deal — it does not write to the database directly (see "Why a paste box,
-not a direct write" below).
+page layout. This skill reads that cover page and turns it into a new
+row in the Supabase "Sales Board" table — directly, when the session's
+Supabase MCP tools allow it, falling back to a paste block for the user
+otherwise (see "Direct write vs. paste box" below — read this before
+step 3, it decides which path you take).
 
 ## 1. Read the cover page
 
@@ -56,23 +57,41 @@ proposal number is worse than a blank one.
 Sales Board — skip it silently, don't ask about it or propose adding a
 field for it.
 
-## 3. Build the paste block
+## 3. Show the user what you found, then write it
 
-The live Sales Board artifact is here:
+Always show the parsed fields as a short table first, whichever path you
+end up taking below — this is the point where a misread digit or
+swapped name gets caught, and it should happen before anything is
+written, not after.
 
-```
-https://claude.ai/code/artifact/dd6cc8c0-0c78-4c11-bab8-12d85023683e
-```
+**Try the direct write first.** Call `execute_sql` on project
+`ktgpjizfntdfpghalukx` with an `insert into "Sales Board" (...)`
+statement covering whichever fields you have, `stage` always `'Lead'`,
+and `returning id, deal_name, stage` so you can confirm what landed.
+This tool takes raw SQL with no parameter binding, so escape every text
+value yourself: double any single quote (`O'Brien` → `O''Brien`) and
+wrap the whole thing in single quotes; omit a field entirely (don't send
+empty-string) rather than guessing a value. If it succeeds, tell the
+user the deal was created and show the returned row — done, no further
+steps.
 
-It has a small "Paste deal data from Claude here…" box next to the
-"+ New deal" button, top of the board. Give it a single-line JSON object
-with only the fields you actually have (omit blank ones rather than
-sending empty strings). Field names must match exactly: `deal_name`,
-`company`, `contact_first_name`, `contact_last_name`, `contact_email`,
-`contact_phone`, `proposal_number`, `proposal_date`,
-`proposal_description`, `jobsite_address`, `value`.
+**If that call is rejected** (an MCP-level error about the tool call
+needing approval, not a SQL error) **fall back to the paste block**,
+since this has flipped between working and blocked across sessions
+before and isn't something you can fix from inside the conversation:
 
-Example, for a proposal from Bill Maar (proposal #20407, dated
+1. Build a single-line JSON object with only the fields you have (omit
+   blanks). Field names must match exactly: `deal_name`, `company`,
+   `contact_first_name`, `contact_last_name`, `contact_email`,
+   `contact_phone`, `proposal_number`, `proposal_date`,
+   `proposal_description`, `jobsite_address`, `value`.
+2. Give it to the user along with the board's link
+   (`https://claude.ai/code/artifact/dd6cc8c0-0c78-4c11-bab8-12d85023683e`)
+   and tell them: "Open the board, paste this into the box next to
+   '+ New deal', click 'Fill form', check it looks right, and click
+   Create deal."
+
+Example JSON, for a proposal from Bill Maar (proposal #20407, dated
 2026-07-30, "Hardscape Repair", jobsite at 29 S 400 E, Valparaiso, IN
 46383):
 
@@ -81,35 +100,21 @@ Example, for a proposal from Bill Maar (proposal #20407, dated
 ```
 
 The board also accepts these same fields as URL query params on that
-link (e.g. `?deal_name=Maar&...`) as a bonus shortcut — but whether
-claude.ai's artifact viewer forwards the address-bar query string
-through to the page isn't something this skill can rely on, so always
-give the user the paste block as the primary method. Only mention the
-URL-param form if the user specifically wants a clickable link and
-you've confirmed with them that it worked before relying on it again.
+link (e.g. `?deal_name=Maar&...`) — but whether claude.ai's artifact
+viewer forwards the address-bar query string through to the page isn't
+reliable, so lead with the paste block, not the link.
 
-## 4. Hand it to the user
+## Direct write vs. paste box
 
-Show the parsed fields as a short table so they can sanity-check the OCR
-at a glance (this is the point where a misread digit or swapped name
-gets caught), then give them the JSON block with something like: "Open
-the board, paste this into the box next to '+ New deal', click 'Fill
-form', check it looks right, and click Create deal."
-
-Don't try execute_sql/apply_migration first and fall back to the paste
-block — go straight to it. It's the working path, not a fallback (see
-below).
-
-## Why a paste box, not a direct write
-
-Direct Supabase tool calls from a Claude Code session
-(`execute_sql`/`apply_migration`) currently return `MCP error -32003:
-MCP tool call requires approval` with no way to grant that approval from
-inside the session — confirmed by repeated testing, not a one-off
-fluke. The live artifact writes successfully because it calls Supabase
-through `window.claude.mcp` using the *viewer's own browser-authenticated
-connector session*, a completely different path that isn't affected by
-this. The paste-and-confirm flow exists specifically to route around
-that gap while still keeping a human glance on OCR'd data before it
-lands in a real CRM — don't try to "fix" this by attempting a direct
-write first.
+Whether `execute_sql`/`apply_migration` work directly from a Claude Code
+session depends on that session's MCP tool permissions, which are
+configured outside this conversation and can change between sessions —
+it's been seen both blocked (`MCP error -32003: MCP tool call requires
+approval`, with no way to grant that approval from inside the session)
+and working fine. Don't assume either state from what a past session
+found; just try the direct write and see. When it's blocked, the live
+artifact can still write successfully because it calls Supabase through
+`window.claude.mcp` using the *viewer's own browser-authenticated
+connector session* — a different path, unaffected by this session's
+tool permissions — which is what the paste-and-confirm fallback relies
+on.
