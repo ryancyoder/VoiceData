@@ -15,7 +15,13 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const updates: Record<string, unknown> = {};
   if (body.deal_name !== undefined) updates.deal_name = body.deal_name.trim();
   if (body.company !== undefined) updates.company = body.company;
-  if (body.contact_name !== undefined) updates.contact_name = body.contact_name;
+  if (body.contact_first_name !== undefined) updates.contact_first_name = body.contact_first_name;
+  if (body.contact_last_name !== undefined) updates.contact_last_name = body.contact_last_name;
+  if (body.contact_email !== undefined) updates.contact_email = body.contact_email;
+  if (body.contact_phone !== undefined) updates.contact_phone = body.contact_phone;
+  if (body.proposal_number !== undefined) updates.proposal_number = body.proposal_number;
+  if (body.proposal_date !== undefined) updates.proposal_date = body.proposal_date;
+  if (body.proposal_description !== undefined) updates.proposal_description = body.proposal_description;
   if (body.value !== undefined) updates.value = body.value;
   if (body.stage !== undefined) updates.stage = body.stage;
 

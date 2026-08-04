@@ -7,14 +7,16 @@ import { STAGES, type Deal, type Stage } from "@/lib/salesBoard";
 interface NewDealForm {
   deal_name: string;
   company: string;
-  contact_name: string;
+  contact_first_name: string;
+  contact_last_name: string;
   value: string;
 }
 
 const EMPTY_FORM: NewDealForm = {
   deal_name: "",
   company: "",
-  contact_name: "",
+  contact_first_name: "",
+  contact_last_name: "",
   value: "",
 };
 
@@ -36,7 +38,8 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
         body: JSON.stringify({
           deal_name: form.deal_name.trim(),
           company: form.company.trim() || null,
-          contact_name: form.contact_name.trim() || null,
+          contact_first_name: form.contact_first_name.trim() || null,
+          contact_last_name: form.contact_last_name.trim() || null,
           value: form.value ? Number(form.value) : null,
         }),
       });
@@ -123,10 +126,18 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500 dark:text-zinc-400">Contact</label>
+            <label className="text-xs text-zinc-500 dark:text-zinc-400">Contact first name</label>
             <input
-              value={form.contact_name}
-              onChange={(e) => setForm((f) => ({ ...f, contact_name: e.target.value }))}
+              value={form.contact_first_name}
+              onChange={(e) => setForm((f) => ({ ...f, contact_first_name: e.target.value }))}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-zinc-500 dark:text-zinc-400">Contact last name</label>
+            <input
+              value={form.contact_last_name}
+              onChange={(e) => setForm((f) => ({ ...f, contact_last_name: e.target.value }))}
               className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900"
             />
           </div>
@@ -178,9 +189,25 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
                         <div className="font-medium text-zinc-900 dark:text-zinc-50">
                           {deal.deal_name}
                         </div>
-                        {(deal.company || deal.contact_name) && (
+                        {(() => {
+                          const contactName = [deal.contact_first_name, deal.contact_last_name]
+                            .filter(Boolean)
+                            .join(" ");
+                          const metaParts = [deal.company, contactName].filter(Boolean);
+                          return metaParts.length > 0 ? (
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                              {metaParts.join(" · ")}
+                            </div>
+                          ) : null;
+                        })()}
+                        {(deal.proposal_number || deal.proposal_date) && (
                           <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                            {[deal.company, deal.contact_name].filter(Boolean).join(" · ")}
+                            {[
+                              deal.proposal_number ? `#${deal.proposal_number}` : null,
+                              deal.proposal_date,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
                           </div>
                         )}
                         {deal.value != null && (

@@ -29,7 +29,13 @@ export async function POST(req: NextRequest) {
     .insert({
       deal_name: body.deal_name.trim(),
       company: body.company ?? null,
-      contact_name: body.contact_name ?? null,
+      contact_first_name: body.contact_first_name ?? null,
+      contact_last_name: body.contact_last_name ?? null,
+      contact_email: body.contact_email ?? null,
+      contact_phone: body.contact_phone ?? null,
+      proposal_number: body.proposal_number ?? null,
+      proposal_date: body.proposal_date ?? null,
+      proposal_description: body.proposal_description ?? null,
       value: body.value ?? null,
       stage: body.stage ?? "Lead",
     })

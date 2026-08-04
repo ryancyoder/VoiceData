@@ -17,7 +17,13 @@ export interface Deal {
   updated_at: string;
   deal_name: string;
   company: string | null;
-  contact_name: string | null;
+  contact_first_name: string | null;
+  contact_last_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  proposal_number: string | null;
+  proposal_date: string | null;
+  proposal_description: string | null;
   value: number | null;
   stage: Stage;
   status: "Open" | "Closed";
@@ -26,7 +32,13 @@ export interface Deal {
 export interface DealInput {
   deal_name: string;
   company?: string | null;
-  contact_name?: string | null;
+  contact_first_name?: string | null;
+  contact_last_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  proposal_number?: string | null;
+  proposal_date?: string | null;
+  proposal_description?: string | null;
   value?: number | null;
   stage?: Stage;
 }
