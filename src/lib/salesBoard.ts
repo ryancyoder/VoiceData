@@ -2,6 +2,7 @@ export const STAGES = [
   "Lead",
   "Propose",
   "Sent",
+  "Sold",
   "Scheduled",
   "Project Management",
   "Job Costing",
