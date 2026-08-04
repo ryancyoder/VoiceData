@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       proposal_date: body.proposal_date ?? null,
       proposal_description: body.proposal_description ?? null,
       next_action: body.next_action ?? null,
+      appointment_date: body.appointment_date ?? null,
       jobsite_address: body.jobsite_address ?? null,
       value: body.value ?? null,
       stage: body.stage ?? "Lead",
