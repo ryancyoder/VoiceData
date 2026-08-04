@@ -19,6 +19,10 @@ you go.
   injection.
 - **Voice output**: the assistant's reply is spoken back using the browser's
   built-in `speechSynthesis` API — no extra API calls needed.
+- **Sales Board** (`/sales-board`): a Kanban-style deal pipeline backed by a
+  Supabase Postgres table, separate from the voice-driven SQLite database.
+  Deals move through `Lead → Propose → Send → Schedule → Project Management →
+  Job Costing → Invoiced → Paid in Full`.
 
 ## Setup
 
@@ -31,6 +35,8 @@ Fill in `.env.local`:
 
 - `ANTHROPIC_API_KEY` — powers the conversational agent
 - `OPENAI_API_KEY` — powers Whisper transcription
+- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase
+  project used by the Sales Board
 
 ```bash
 npm run dev
@@ -47,3 +53,7 @@ A text box is also available as a fallback if you'd rather type.
 - `src/app/api/chat/route.ts` — conversation endpoint
 - `src/app/api/transcribe/route.ts` — Whisper transcription endpoint
 - `src/app/page.tsx` — voice UI (mic button, transcript, live schema panel)
+- `src/lib/supabaseClient.ts` — Supabase client (Sales Board)
+- `src/lib/salesBoard.ts` — Sales Board stage list and types
+- `src/app/api/sales-board/` — REST endpoints for the Sales Board table
+- `src/app/sales-board/page.tsx` — Sales Board Kanban UI
