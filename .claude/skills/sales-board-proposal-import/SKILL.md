@@ -17,8 +17,9 @@ Use the Read tool on the attached photo. The layout is consistent:
 
 - **Top**: proposal title/type in large bold text next to the "RLM" logo
   (e.g. "Hardscape Repair") — this is `proposal_description`.
-- **"Prepared By:"** — the RLM salesperson's name. There's no column for
-  this yet (see "Fields with nowhere to go" below).
+- **"Prepared By:"** — the RLM salesperson's name. Not tracked on the
+  Sales Board (decided deliberately) — read past it, no need to mention
+  it to the user.
 - **"Prepared For:"** block — customer's full name (bold), then their
   mailing address, then email and phone on one line together.
 - **"Jobsite Location:"** block — often a *different* address than the
@@ -51,11 +52,9 @@ proposal number is worse than a blank one.
 | — | `company` | **Leave blank** unless "Prepared For" is clearly a business name, not a person — RLM's proposals are almost always residential. |
 | — | `value` | **Always leave blank.** The dollar total is never on this cover page (it's later in the multi-page proposal). Only set it if the user gives you a number directly — never estimate or infer it. |
 
-**Fields with nowhere to go yet**: "Prepared By" (the RLM salesperson) has
-no column in the Sales Board today. Don't silently drop it — mention it
-in your summary to the user (e.g. "Prepared by Ryan Yoder, per the
-proposal — let me know if you want that tracked too"), but don't block
-on it or invent a field for it yourself.
+"Prepared By" (the RLM salesperson) is deliberately not tracked on the
+Sales Board — skip it silently, don't ask about it or propose adding a
+field for it.
 
 ## 3. Build the link
 
