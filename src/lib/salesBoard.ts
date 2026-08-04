@@ -29,6 +29,7 @@ export interface Deal {
   value: number | null;
   stage: Stage;
   status: "Open" | "Closed";
+  lost_at: string | null;
 }
 
 export interface DealInput {
@@ -44,4 +45,5 @@ export interface DealInput {
   jobsite_address?: string | null;
   value?: number | null;
   stage?: Stage;
+  lost_at?: string | null;
 }

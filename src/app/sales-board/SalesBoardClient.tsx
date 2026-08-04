@@ -168,7 +168,7 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
 
         <div className="flex flex-1 gap-4 overflow-x-auto pb-4">
           {STAGES.map((stage) => {
-              const stageDeals = deals.filter((d) => d.stage === stage);
+              const stageDeals = deals.filter((d) => d.stage === stage && !d.lost_at);
               return (
                 <div
                   key={stage}

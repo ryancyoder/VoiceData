@@ -25,6 +25,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.jobsite_address !== undefined) updates.jobsite_address = body.jobsite_address;
   if (body.value !== undefined) updates.value = body.value;
   if (body.stage !== undefined) updates.stage = body.stage;
+  if (body.lost_at !== undefined) updates.lost_at = body.lost_at;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields provided to update" }, { status: 400 });
