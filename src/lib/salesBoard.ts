@@ -25,6 +25,7 @@ export interface Deal {
   proposal_number: string | null;
   proposal_date: string | null;
   proposal_description: string | null;
+  next_action: string | null;
   jobsite_address: string | null;
   value: number | null;
   stage: Stage;
@@ -42,6 +43,7 @@ export interface DealInput {
   proposal_number?: string | null;
   proposal_date?: string | null;
   proposal_description?: string | null;
+  next_action?: string | null;
   jobsite_address?: string | null;
   value?: number | null;
   stage?: Stage;
