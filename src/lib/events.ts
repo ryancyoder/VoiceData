@@ -24,6 +24,29 @@ interface EventPhotoPoint {
   longitude: number;
 }
 
+const HALF_HOUR_MS = 30 * 60 * 1000;
+
+function roundDownToHalfHour(ms: number): number {
+  return Math.floor(ms / HALF_HOUR_MS) * HALF_HOUR_MS;
+}
+
+function roundUpToHalfHour(ms: number): number {
+  return Math.ceil(ms / HALF_HOUR_MS) * HALF_HOUR_MS;
+}
+
+/**
+ * Rounds a photo-derived time range outward to half-hour boundaries, so the
+ * calendar shows a clean block (e.g. 2:00–2:30) instead of a sliver precise
+ * to the second (2:07:12–2:22:48). A single instant (or a range that still
+ * lands on one boundary after rounding) gets a minimum 30-minute block
+ * rather than collapsing to zero length.
+ */
+function roundEventRange(startMs: number, endMs: number): { startMs: number; endMs: number } {
+  const roundedStart = roundDownToHalfHour(startMs);
+  const roundedEnd = roundUpToHalfHour(endMs);
+  return { startMs: roundedStart, endMs: roundedEnd <= roundedStart ? roundedStart + HALF_HOUR_MS : roundedEnd };
+}
+
 async function photoCentroid(eventId: number, extra: EventPhotoPoint[]): Promise<EventPhotoPoint | null> {
   const { data, error } = await supabase
     .from("deal_photos")
@@ -76,8 +99,9 @@ export async function findOrCreateEvent(input: {
 
   if (best) {
     const { event } = best;
-    const startMs = Math.min(new Date(event.start_time).getTime(), takenAtMs);
-    const endMs = Math.max(new Date(event.end_time).getTime(), takenAtMs);
+    const rawStartMs = Math.min(new Date(event.start_time).getTime(), takenAtMs);
+    const rawEndMs = Math.max(new Date(event.end_time).getTime(), takenAtMs);
+    const { startMs, endMs } = roundEventRange(rawStartMs, rawEndMs);
     const centroid = await photoCentroid(event.id, [{ latitude, longitude }]);
 
     const { data: updated, error: updateError } = await supabase
@@ -97,11 +121,12 @@ export async function findOrCreateEvent(input: {
     return updated as Event;
   }
 
+  const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(takenAtMs, takenAtMs);
   const { data: created, error: insertError } = await supabase
     .from("events")
     .insert({
-      start_time: takenAt,
-      end_time: takenAt,
+      start_time: new Date(newStartMs).toISOString(),
+      end_time: new Date(newEndMs).toISOString(),
       latitude,
       longitude,
       property_id: propertyId,
@@ -130,8 +155,10 @@ async function findOrCreateEventForDeal(dealId: number, takenAt: string, propert
     const gapMs = takenAtMs < startMs ? startMs - takenAtMs : takenAtMs > endMs ? takenAtMs - endMs : 0;
     if (gapMs > DEFAULT_MAX_GAP_MS) continue;
 
-    const newStartMs = Math.min(startMs, takenAtMs);
-    const newEndMs = Math.max(endMs, takenAtMs);
+    const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(
+      Math.min(startMs, takenAtMs),
+      Math.max(endMs, takenAtMs)
+    );
     const { data: updated, error: updateError } = await supabase
       .from("events")
       .update({ start_time: new Date(newStartMs).toISOString(), end_time: new Date(newEndMs).toISOString() })
@@ -142,9 +169,15 @@ async function findOrCreateEventForDeal(dealId: number, takenAt: string, propert
     return updated as Event;
   }
 
+  const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(takenAtMs, takenAtMs);
   const { data: created, error: insertError } = await supabase
     .from("events")
-    .insert({ start_time: takenAt, end_time: takenAt, deal_id: dealId, property_id: propertyId })
+    .insert({
+      start_time: new Date(newStartMs).toISOString(),
+      end_time: new Date(newEndMs).toISOString(),
+      deal_id: dealId,
+      property_id: propertyId,
+    })
     .select()
     .single();
   if (insertError) throw new Error(insertError.message);
