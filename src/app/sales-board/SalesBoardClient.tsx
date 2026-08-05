@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import styles from "./sales-board.module.css";
 import { STAGES, type Deal, type DealInput, type Stage } from "@/lib/salesBoard";
 import DealCard, { type UiDeal } from "./DealCard";
@@ -71,6 +72,7 @@ interface DragState {
 }
 
 export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[] }) {
+  const router = useRouter();
   const [deals, setDeals] = useState<UiDeal[]>(initialDeals);
   const [activeDealId, setActiveDealId] = useState<number | null>(null);
   const [lostModalOpen, setLostModalOpen] = useState(false);
@@ -661,6 +663,7 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
                         showNextAction={showNextAction}
                         onDragStart={handleDragStart}
                         onOpen={(d) => setActiveDealId(d.id)}
+                        onLongPress={(d) => router.push(`/photos?deal=${d.id}`)}
                       />
                     ))
                   )}

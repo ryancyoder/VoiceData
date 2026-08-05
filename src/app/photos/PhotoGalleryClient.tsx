@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
 import { dealPhotoUrl, type Deal } from "@/lib/salesBoard";
 
@@ -9,8 +10,14 @@ type GalleryDeal = Pick<Deal, "id" | "deal_name" | "company" | "stage" | "lost_a
 type GalleryPhoto = GalleryDeal["photos"][number];
 
 export default function PhotoGalleryClient({ deals: initialDeals }: { deals: GalleryDeal[] }) {
+  const searchParams = useSearchParams();
   const [deals, setDeals] = useState<GalleryDeal[]>(initialDeals);
-  const [activeDealId, setActiveDealId] = useState<number | null>(null);
+  const [activeDealId, setActiveDealId] = useState<number | null>(() => {
+    const raw = searchParams.get("deal");
+    const id = raw ? Number(raw) : NaN;
+    if (!Number.isFinite(id)) return null;
+    return initialDeals.some((d) => d.id === id && d.photos.length > 0) ? id : null;
+  });
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 

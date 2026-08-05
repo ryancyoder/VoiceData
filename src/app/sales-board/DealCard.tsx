@@ -1,11 +1,15 @@
 "use client";
 
+import { useRef, useState } from "react";
 import styles from "./sales-board.module.css";
 import type { Deal } from "@/lib/salesBoard";
 
 export type UiDeal = Deal & { _pending?: boolean; _error?: string };
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+const LONG_PRESS_MS = 550;
+const LONG_PRESS_MOVE_TOLERANCE = 10;
 
 export default function DealCard({
   deal,
@@ -14,6 +18,7 @@ export default function DealCard({
   showNextAction,
   onDragStart,
   onOpen,
+  onLongPress,
 }: {
   deal: UiDeal;
   color: string;
@@ -21,13 +26,49 @@ export default function DealCard({
   showNextAction: boolean;
   onDragStart: (e: React.PointerEvent<HTMLSpanElement>, deal: UiDeal) => void;
   onOpen: (deal: UiDeal) => void;
+  onLongPress: (deal: UiDeal) => void;
 }) {
+  const [pressing, setPressing] = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  function clearLongPress() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    pressStartRef.current = null;
+    setPressing(false);
+  }
+
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (deal._pending) return;
+    longPressFiredRef.current = false;
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
+    setPressing(true);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      setPressing(false);
+      onLongPress(deal);
+    }, LONG_PRESS_MS);
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const start = pressStartRef.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) clearLongPress();
+  }
+
   return (
     <div
       className={[
         styles.card,
         deal._pending ? styles["is-pending"] : "",
         deal._error ? styles["is-error"] : "",
+        pressing ? styles["is-pressing"] : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -37,13 +78,24 @@ export default function DealCard({
       tabIndex={0}
       role="button"
       aria-label={`View details for ${deal.deal_name}`}
-      onClick={() => onOpen(deal)}
+      onClick={() => {
+        if (longPressFiredRef.current) {
+          longPressFiredRef.current = false;
+          return;
+        }
+        onOpen(deal);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onOpen(deal);
         }
       }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onPointerLeave={clearLongPress}
     >
       <div className={styles["card-top"]}>
         <span
@@ -53,6 +105,7 @@ export default function DealCard({
           onPointerDown={(e) => {
             if (deal._pending) return;
             e.stopPropagation();
+            clearLongPress();
             onDragStart(e, deal);
           }}
         >

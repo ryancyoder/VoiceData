@@ -322,12 +322,15 @@
   padding: 10px 10px 8px;
   box-shadow: var(--shadow);
   cursor: pointer;
+  transition: transform 0.15s ease;
+  touch-action: pan-y;
 }
 .card:hover { border-color: var(--text-faint); }
 .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card.is-dragging { opacity: 0.4; }
 .card.is-pending { opacity: 0.55; cursor: default; }
 .card.is-error { border-left-color: var(--danger); }
+.card.is-pressing { transform: scale(0.97); }
 
 .card-top { display: flex; align-items: center; gap: 6px; }
 .card-handle {
