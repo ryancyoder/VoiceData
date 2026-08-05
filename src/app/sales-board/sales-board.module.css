@@ -379,6 +379,11 @@
 .card-edit-field input:focus, .card-edit-field textarea:focus { border-color: var(--accent); }
 .card-edit-error { grid-column: 1 / -1; font-size: 0.7rem; color: var(--danger); }
 
+.geocode-status { margin-top: 3px; font-size: 0.7rem; color: var(--accent); }
+.geocode-status.is-warn { color: var(--warn); }
+.geocode-status.is-muted { color: var(--text-faint); }
+.geocode-link { color: inherit; text-decoration: underline; }
+
 .modal-overlay {
   position: fixed;
   inset: 0;

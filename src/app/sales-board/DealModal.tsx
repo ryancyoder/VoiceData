@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import styles from "./sales-board.module.css";
 import { dealPhotoUrl, type Deal, type DealInput } from "@/lib/salesBoard";
 
@@ -18,6 +19,39 @@ function formatDateTime(isoStr: string) {
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return isoStr;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function GeocodeStatus({ deal }: { deal: Deal }) {
+  if (!deal.jobsite_address) return null;
+
+  if (deal.latitude != null && deal.longitude != null) {
+    const mapUrl = `https://www.google.com/maps?q=${deal.latitude},${deal.longitude}`;
+    return (
+      <div className={styles["geocode-status"]}>
+        📍 Geocoded ({deal.latitude.toFixed(4)}, {deal.longitude.toFixed(4)}){" "}
+        <a href={mapUrl} target="_blank" rel="noreferrer" className={styles["geocode-link"]}>
+          View on map ↗
+        </a>
+      </div>
+    );
+  }
+
+  if (deal.geocoded_at) {
+    return (
+      <div className={`${styles["geocode-status"]} ${styles["is-warn"]}`}>
+        ⚠ Couldn&apos;t find this address — check it&apos;s spelled correctly, then save again
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${styles["geocode-status"]} ${styles["is-muted"]}`}>
+      Not geocoded yet — save this deal, or run the{" "}
+      <Link href="/admin/geocode-backfill" className={styles["geocode-link"]}>
+        geocode backfill
+      </Link>
+    </div>
+  );
 }
 
 export default function DealModal({
@@ -171,6 +205,7 @@ export default function DealModal({
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-jobsite">Jobsite address</label>
             <input id="dm-jobsite" autoComplete="off" value={form.jobsite_address} onChange={(e) => set("jobsite_address", e.target.value)} />
+            <GeocodeStatus deal={deal} />
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-next-action">Next action</label>
