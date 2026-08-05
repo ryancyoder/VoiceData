@@ -152,9 +152,20 @@
   font-size: 0.68rem;
   line-height: 1.25;
   overflow: hidden;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 .event-block:hover { filter: brightness(0.97); }
+.event-block.is-dragging { filter: brightness(0.94); z-index: 5; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+
+.event-resize-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+}
 .event-title { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .event-meta { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

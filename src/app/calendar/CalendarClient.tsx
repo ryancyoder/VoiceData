@@ -47,6 +47,13 @@ export interface PropertyOption {
 
 const HOUR_HEIGHT = 48;
 const MIN_EVENT_MS = 20 * 60 * 1000;
+const SNAP_MS = 15 * 60 * 1000;
+const MIN_DRAG_DURATION_MS = SNAP_MS;
+const MS_PER_PX = (60 * 60 * 1000) / HOUR_HEIGHT;
+
+function snapToQuarterHour(ms: number) {
+  return Math.round(ms / SNAP_MS) * SNAP_MS;
+}
 
 function startOfWeek(d: Date) {
   const date = new Date(d);
@@ -188,6 +195,101 @@ export default function CalendarClient({
   const [mergeTargetId, setMergeTargetId] = useState<number | "">("");
   const [merging, setMerging] = useState(false);
 
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPreview, setDragPreview] = useState<{ eventId: number; startMs: number; endMs: number } | null>(null);
+  const dragRef = useRef<{
+    eventId: number;
+    mode: "move" | "resize-start" | "resize-end";
+    startClientY: number;
+    originStartMs: number;
+    originEndMs: number;
+    currentStartMs: number;
+    currentEndMs: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  function beginDrag(event: CalendarEvent, mode: "move" | "resize-start" | "resize-end", clientY: number) {
+    const originStartMs = new Date(event.start).getTime();
+    const originEndMs = new Date(event.end).getTime();
+    dragRef.current = {
+      eventId: event.id,
+      mode,
+      startClientY: clientY,
+      originStartMs,
+      originEndMs,
+      currentStartMs: originStartMs,
+      currentEndMs: originEndMs,
+      moved: false,
+    };
+    setDragPreview({ eventId: event.id, startMs: originStartMs, endMs: originEndMs });
+    setIsDragging(true);
+  }
+
+  async function saveEventTimes(eventId: number, startMs: number, endMs: number) {
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start_time: new Date(startMs).toISOString(),
+          end_time: new Date(endMs).toISOString(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update event time");
+      router.refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to update event time");
+      router.refresh();
+    }
+  }
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    function onMove(e: PointerEvent) {
+      const d = dragRef.current;
+      if (!d) return;
+      const deltaPx = e.clientY - d.startClientY;
+      const deltaMs = snapToQuarterHour(deltaPx * MS_PER_PX);
+
+      let currentStartMs = d.originStartMs;
+      let currentEndMs = d.originEndMs;
+      if (d.mode === "move") {
+        currentStartMs = d.originStartMs + deltaMs;
+        currentEndMs = d.originEndMs + deltaMs;
+      } else if (d.mode === "resize-start") {
+        currentStartMs = Math.min(d.originStartMs + deltaMs, d.originEndMs - MIN_DRAG_DURATION_MS);
+      } else {
+        currentEndMs = Math.max(d.originEndMs + deltaMs, d.originStartMs + MIN_DRAG_DURATION_MS);
+      }
+
+      const moved = d.moved || Math.abs(deltaPx) > 3;
+      dragRef.current = { ...d, currentStartMs, currentEndMs, moved };
+      setDragPreview({ eventId: d.eventId, startMs: currentStartMs, endMs: currentEndMs });
+    }
+
+    function onUp() {
+      const d = dragRef.current;
+      dragRef.current = null;
+      setIsDragging(false);
+      setDragPreview(null);
+      if (d && d.moved && (d.currentStartMs !== d.originStartMs || d.currentEndMs !== d.originEndMs)) {
+        suppressClickRef.current = true;
+        saveEventTimes(d.eventId, d.currentStartMs, d.currentEndMs);
+      }
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDragging]);
+
   async function handleCreateEvent() {
     setCreatingEvent(true);
     setNewEventError(null);
@@ -290,6 +392,15 @@ export default function CalendarClient({
     [events, weekStart, weekEnd]
   );
 
+  const eventsForLayout = useMemo(() => {
+    if (!dragPreview) return eventsInWeek;
+    return eventsInWeek.map((e) =>
+      e.id === dragPreview.eventId
+        ? { ...e, start: new Date(dragPreview.startMs).toISOString(), end: new Date(dragPreview.endMs).toISOString() }
+        : e
+    );
+  }, [eventsInWeek, dragPreview]);
+
   const today = new Date();
   const rangeLabel = `${weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDays[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
@@ -389,7 +500,7 @@ export default function CalendarClient({
             ))}
           </div>
           {weekDays.map((day) => {
-            const laidOut = layoutDay(day, eventsInWeek);
+            const laidOut = layoutDay(day, eventsForLayout);
             return (
               <div
                 key={day.toISOString()}
@@ -397,26 +508,60 @@ export default function CalendarClient({
                 style={{ height: HOUR_HEIGHT * 24, ["--hour-height" as string]: `${HOUR_HEIGHT}px` }}
               >
                 {laidOut.map(({ event, lane, totalLanes, top, height }) => (
-                  <button
+                  <div
                     key={event.id}
-                    type="button"
-                    className={styles["event-block"]}
+                    role="button"
+                    tabIndex={0}
+                    className={`${styles["event-block"]} ${dragPreview?.eventId === event.id ? styles["is-dragging"] : ""}`}
                     style={{
                       top,
                       height,
                       left: `${(lane / totalLanes) * 100}%`,
                       width: `${100 / totalLanes}%`,
                     }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      beginDrag(event, "move", e.clientY);
+                    }}
                     onClick={() => {
+                      if (suppressClickRef.current) {
+                        suppressClickRef.current = false;
+                        return;
+                      }
                       setSelectedEvent(event);
                       setLightboxIndex(null);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedEvent(event);
+                        setLightboxIndex(null);
+                      }
+                    }}
                   >
+                    <div
+                      className={styles["event-resize-handle"]}
+                      style={{ top: 0 }}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        beginDrag(event, "resize-start", e.clientY);
+                      }}
+                    />
                     <div className={styles["event-title"]}>{eventLabel(event)}</div>
                     <div className={styles["event-meta"]}>
                       {timeRangeLabel(event)} · {event.photos.length} photo{event.photos.length === 1 ? "" : "s"}
                     </div>
-                  </button>
+                    <div
+                      className={styles["event-resize-handle"]}
+                      style={{ bottom: 0 }}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        beginDrag(event, "resize-end", e.clientY);
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
             );
