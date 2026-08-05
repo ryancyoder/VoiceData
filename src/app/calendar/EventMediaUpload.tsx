@@ -3,12 +3,14 @@
 import { useRef, useState } from "react";
 import styles from "./calendar.module.css";
 import type { CalendarEvent, GeoPhoto } from "./CalendarClient";
-import { fetchWithTimeout } from "@/lib/withTimeout";
+import { fetchWithTimeout, withTimeout } from "@/lib/withTimeout";
 import { capturePosterFrame } from "@/lib/videoPoster";
+import { compressVideo } from "@/lib/compressVideo";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 
 const UPLOAD_TIMEOUT_MS = 60000;
+const COMPRESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
 // A video's base-level attachment is to the event only — no deal is needed
 // at upload time (the event can be attached to a deal separately, in the
@@ -22,15 +24,18 @@ export default function EventMediaUpload({
   onUploaded: (photo: GeoPhoto) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const [stage, setStage] = useState<"idle" | "compressing" | "uploading">("idle");
   const [error, setError] = useState<string | null>(null);
+  const uploading = stage !== "idle";
 
-  async function upload(file: File) {
-    setUploading(true);
+  async function upload(rawFile: File) {
+    setStage("compressing");
     setError(null);
     try {
-      const posterBlob = await capturePosterFrame(file);
+      const posterBlob = await capturePosterFrame(rawFile);
+      const file = await withTimeout(compressVideo(rawFile), COMPRESSION_TIMEOUT_MS, "Video compression");
 
+      setStage("uploading");
       const urlRes = await fetchWithTimeout(
         `/api/events/${event.id}/videos/upload-url`,
         {
@@ -82,7 +87,7 @@ export default function EventMediaUpload({
             : "Upload failed";
       setError(message);
     } finally {
-      setUploading(false);
+      setStage("idle");
     }
   }
 
@@ -105,7 +110,7 @@ export default function EventMediaUpload({
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
       >
-        {uploading ? "Uploading…" : "+ Add Video"}
+        {stage === "compressing" ? "Compressing…" : stage === "uploading" ? "Uploading…" : "+ Add Video"}
       </button>
       {error && <div className={styles["upload-error"]}>{error}</div>}
     </div>

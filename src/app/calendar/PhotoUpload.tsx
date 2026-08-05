@@ -9,11 +9,13 @@ import { compressImage } from "@/lib/compressImage";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 import { capturePosterFrame } from "@/lib/videoPoster";
+import { compressVideo } from "@/lib/compressVideo";
 
 const GPS_READ_TIMEOUT_MS = 6000;
 const MATCH_FETCH_TIMEOUT_MS = 8000;
 const UPLOAD_TIMEOUT_MS = 60000;
 const VIDEO_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+const COMPRESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface MatchCandidate {
   id: number;
@@ -185,15 +187,18 @@ export default function PhotoUpload({
   // Videos upload straight from the browser to Supabase Storage via a
   // signed URL — routing them through our own API route would run into
   // Vercel's request body size limit, the same wall photo uploads hit
-  // before client-side compression was added (videos are far too large to
-  // compress the same way).
+  // before client-side compression was added. Supabase Storage itself also
+  // caps object size (50MB on the Free plan), so the video is re-encoded
+  // client-side first to fit under that regardless of the original size.
   async function uploadVideoItemRaw(item: PendingPhoto) {
+    const file = await withTimeout(compressVideo(item.file), COMPRESSION_TIMEOUT_MS, "Video compression");
+
     const urlRes = await fetchWithTimeout(
       `/api/sales-board/${item.selectedDealId}/videos/upload-url`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoFileName: item.file.name, hasPoster: !!item.posterBlob }),
+        body: JSON.stringify({ videoFileName: file.name, hasPoster: !!item.posterBlob }),
       },
       MATCH_FETCH_TIMEOUT_MS
     );
@@ -202,8 +207,8 @@ export default function PhotoUpload({
 
     const { error: videoUploadError } = await supabase.storage
       .from(DEAL_PHOTOS_BUCKET)
-      .uploadToSignedUrl(urlData.video.path, urlData.video.token, item.file, {
-        contentType: item.file.type || undefined,
+      .uploadToSignedUrl(urlData.video.path, urlData.video.token, file, {
+        contentType: file.type || undefined,
       });
     if (videoUploadError) throw new Error(videoUploadError.message);
 
