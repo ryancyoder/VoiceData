@@ -81,3 +81,7 @@ A text box is also available as a fallback if you'd rather type.
 - `src/app/api/sales-board/match-location/route.ts` — ranks deals by
   distance from a given GPS point (via geocoded address or existing photo
   locations) for the upload-matching flow
+- `/admin/geocode-backfill` — one-time utility to geocode jobsite
+  addresses on deals that existed before automatic geocoding shipped;
+  processes addresses in small batches (`src/app/api/sales-board/geocode-backfill/route.ts`)
+  to respect Nominatim's ~1 request/second rate limit
