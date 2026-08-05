@@ -510,7 +510,8 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
             <label htmlFor="f-contact-email">Contact email</label>
             <input
               id="f-contact-email"
-              type="email"
+              type="text"
+              inputMode="email"
               maxLength={200}
               autoComplete="off"
               value={addForm.contact_email}

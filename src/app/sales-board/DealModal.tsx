@@ -206,7 +206,7 @@ export default function DealModal({
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-email">Contact email</label>
-            <input id="dm-email" type="email" autoComplete="off" value={form.contact_email} onChange={(e) => set("contact_email", e.target.value)} />
+            <input id="dm-email" type="text" inputMode="email" autoComplete="off" value={form.contact_email} onChange={(e) => set("contact_email", e.target.value)} />
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-phone">Contact phone</label>
