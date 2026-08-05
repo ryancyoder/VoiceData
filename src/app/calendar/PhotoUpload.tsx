@@ -1,11 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import exifr from "exifr";
 import styles from "./calendar.module.css";
 import type { DealOption } from "./CalendarClient";
-
-const CONFIDENT_MATCH_METERS = 200;
 
 interface MatchCandidate {
   id: number;
@@ -91,7 +89,7 @@ export default function PhotoUpload({
         }
       }
       const best = candidates[0];
-      const autoSelected: number | "" = best && best.distanceMeters <= CONFIDENT_MATCH_METERS ? best.id : "";
+      const autoSelected: number | "" = best ? best.id : "";
       setPending((p) =>
         p.map((it) => (it.id === item.id ? { ...it, gps, candidates, selectedDealId: autoSelected, status: "ready" } : it))
       );
@@ -148,6 +146,34 @@ export default function PhotoUpload({
   const readyCount = pending.filter((p) => p.status !== "done" && p.selectedDealId !== "").length;
   const allResolved = pending.every((p) => p.status !== "matching");
 
+  const dominantMatch = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const item of pending) {
+      if (typeof item.selectedDealId === "number") {
+        counts.set(item.selectedDealId, (counts.get(item.selectedDealId) ?? 0) + 1);
+      }
+    }
+    let bestId: number | null = null;
+    let bestCount = 0;
+    for (const [id, count] of counts) {
+      if (count > bestCount) {
+        bestId = id;
+        bestCount = count;
+      }
+    }
+    if (bestId == null) return null;
+
+    const name =
+      pending.flatMap((p) => p.candidates).find((c) => c.id === bestId)?.deal_name ??
+      dealOptions.find((d) => d.id === bestId)?.deal_name ??
+      `Deal #${bestId}`;
+    return { id: bestId, name, count: bestCount };
+  }, [pending, dealOptions]);
+
+  function setAllToDeal(dealId: number) {
+    setPending((p) => p.map((it) => (it.status === "done" ? it : { ...it, selectedDealId: dealId })));
+  }
+
   return (
     <>
       <input
@@ -184,6 +210,23 @@ export default function PhotoUpload({
                 ×
               </button>
             </div>
+
+            {dominantMatch && pending.length > 1 && (
+              <div className={styles["bulk-match-bar"]}>
+                <span>
+                  {dominantMatch.count} of {pending.length} photo{pending.length === 1 ? "" : "s"} best-match{" "}
+                  <strong>{dominantMatch.name}</strong>
+                </span>
+                <button
+                  type="button"
+                  className={styles["bulk-match-btn"]}
+                  disabled={uploading}
+                  onClick={() => setAllToDeal(dominantMatch.id)}
+                >
+                  Set all {pending.length} to {dominantMatch.name}
+                </button>
+              </div>
+            )}
 
             <div className={styles["upload-list"]}>
               {pending.map((item) => (

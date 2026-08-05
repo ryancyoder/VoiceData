@@ -264,6 +264,35 @@
 .lightbox-nav:hover { color: var(--text); border-color: var(--text-faint); }
 .lightbox-nav:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.bulk-match-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 0.76rem;
+  color: var(--text);
+}
+.bulk-match-btn {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.bulk-match-btn:hover:not(:disabled) { filter: brightness(1.05); }
+.bulk-match-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .upload-list { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
 .upload-item {
   display: flex;
