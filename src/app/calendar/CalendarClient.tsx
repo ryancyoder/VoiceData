@@ -10,7 +10,7 @@ import EventMediaUpload from "./EventMediaUpload";
 
 export interface GeoPhoto {
   id: number;
-  deal_id: number;
+  deal_id: number | null;
   storage_path: string;
   caption: string | null;
   created_at: string;
@@ -28,6 +28,7 @@ export interface CalendarEvent {
   start: string;
   end: string;
   propertyId: number | null;
+  dealId: number | null;
   latitude: number | null;
   longitude: number | null;
   dealIds: number[];
@@ -152,11 +153,12 @@ interface EventFormState {
   start: string;
   end: string;
   propertyId: number | "";
+  dealId: number | "";
 }
 
 function emptyEventForm(): EventFormState {
   const now = toDatetimeLocal(new Date().toISOString());
-  return { name: "", start: now, end: now, propertyId: "" };
+  return { name: "", start: now, end: now, propertyId: "", dealId: "" };
 }
 
 function eventToForm(event: CalendarEvent): EventFormState {
@@ -165,6 +167,7 @@ function eventToForm(event: CalendarEvent): EventFormState {
     start: toDatetimeLocal(event.start),
     end: toDatetimeLocal(event.end),
     propertyId: event.propertyId ?? "",
+    dealId: event.dealId ?? "",
   };
 }
 
@@ -305,6 +308,7 @@ export default function CalendarClient({
           start_time: new Date(newEventForm.start).toISOString(),
           end_time: new Date(newEventForm.end).toISOString(),
           property_id: newEventForm.propertyId === "" ? null : newEventForm.propertyId,
+          deal_id: newEventForm.dealId === "" ? null : newEventForm.dealId,
         }),
       });
       const data = await res.json();
@@ -339,18 +343,36 @@ export default function CalendarClient({
           start_time: new Date(editForm.start).toISOString(),
           end_time: new Date(editForm.end).toISOString(),
           property_id: editForm.propertyId === "" ? null : editForm.propertyId,
+          deal_id: editForm.dealId === "" ? null : editForm.dealId,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save event");
+      const newDealId = data.event.deal_id as number | null;
+      const hasDeal = newDealId == null || selectedEvent.dealIds.includes(newDealId);
+      const dealOption = newDealId != null ? dealOptions.find((d) => d.id === newDealId) : undefined;
       setSelectedEvent({
         ...selectedEvent,
         name: data.event.name,
         start: data.event.start_time,
         end: data.event.end_time,
         propertyId: data.event.property_id,
+        dealId: newDealId,
         latitude: data.event.latitude,
         longitude: data.event.longitude,
+        dealIds: hasDeal || newDealId == null ? selectedEvent.dealIds : [...selectedEvent.dealIds, newDealId],
+        deals:
+          hasDeal || newDealId == null
+            ? selectedEvent.deals
+            : [
+                ...selectedEvent.deals,
+                {
+                  id: newDealId,
+                  name: dealOption?.deal_name ?? `Deal #${newDealId}`,
+                  company: dealOption?.company ?? null,
+                  jobsiteAddress: null,
+                },
+              ],
       });
       setEditingEvent(false);
       router.refresh();
@@ -386,23 +408,26 @@ export default function CalendarClient({
   function handleEventMediaUploaded(eventId: number, photo: GeoPhoto) {
     setSelectedEvent((current) => {
       if (!current || current.id !== eventId) return current;
-      const hasDeal = current.dealIds.includes(photo.deal_id);
+      // A video uploaded straight to an event may have no deal_id at all —
+      // it's attached to the event only until the event itself is linked
+      // to a deal.
+      if (photo.deal_id == null || current.dealIds.includes(photo.deal_id)) {
+        return { ...current, photos: [...current.photos, photo] };
+      }
       const dealOption = dealOptions.find((d) => d.id === photo.deal_id);
       return {
         ...current,
         photos: [...current.photos, photo],
-        dealIds: hasDeal ? current.dealIds : [...current.dealIds, photo.deal_id],
-        deals: hasDeal
-          ? current.deals
-          : [
-              ...current.deals,
-              {
-                id: photo.deal_id,
-                name: dealOption?.deal_name ?? `Deal #${photo.deal_id}`,
-                company: dealOption?.company ?? null,
-                jobsiteAddress: null,
-              },
-            ],
+        dealIds: [...current.dealIds, photo.deal_id],
+        deals: [
+          ...current.deals,
+          {
+            id: photo.deal_id,
+            name: dealOption?.deal_name ?? `Deal #${photo.deal_id}`,
+            company: dealOption?.company ?? null,
+            jobsiteAddress: null,
+          },
+        ],
       };
     });
     router.refresh();
@@ -624,7 +649,6 @@ export default function CalendarClient({
                 <div className={styles["modal-head-actions"]}>
                   <EventMediaUpload
                     event={selectedEvent}
-                    dealOptions={dealOptions}
                     onUploaded={(photo) => handleEventMediaUploaded(selectedEvent.id, photo)}
                   />
                   <button type="button" className={styles["nav-btn"]} onClick={startEditingEvent}>
@@ -682,6 +706,21 @@ export default function CalendarClient({
                     {propertyOptions.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.address}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles["event-edit-label"]}>
+                  Deal
+                  <select
+                    value={editForm.dealId}
+                    onChange={(e) => setEditForm({ ...editForm, dealId: e.target.value ? Number(e.target.value) : "" })}
+                  >
+                    <option value="">No deal</option>
+                    {dealOptions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.deal_name}
+                        {d.company ? ` (${d.company})` : ""}
                       </option>
                     ))}
                   </select>
@@ -868,6 +907,21 @@ export default function CalendarClient({
                   {propertyOptions.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.address}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles["event-edit-label"]}>
+                Deal (optional)
+                <select
+                  value={newEventForm.dealId}
+                  onChange={(e) => setNewEventForm({ ...newEventForm, dealId: e.target.value ? Number(e.target.value) : "" })}
+                >
+                  <option value="">No deal</option>
+                  {dealOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.deal_name}
+                      {d.company ? ` (${d.company})` : ""}
                     </option>
                   ))}
                 </select>

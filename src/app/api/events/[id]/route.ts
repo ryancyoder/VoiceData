@@ -10,9 +10,16 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     start_time?: unknown;
     end_time?: unknown;
     property_id?: unknown;
+    deal_id?: unknown;
   };
 
-  const patch: { name?: string | null; start_time?: string; end_time?: string; property_id?: number | null } = {};
+  const patch: {
+    name?: string | null;
+    start_time?: string;
+    end_time?: string;
+    property_id?: number | null;
+    deal_id?: number | null;
+  } = {};
 
   if ("name" in body) {
     patch.name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : null;
@@ -31,6 +38,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   }
   if ("property_id" in body) {
     patch.property_id = body.property_id == null ? null : Number(body.property_id);
+  }
+  if ("deal_id" in body) {
+    patch.deal_id = body.deal_id == null ? null : Number(body.deal_id);
   }
 
   try {

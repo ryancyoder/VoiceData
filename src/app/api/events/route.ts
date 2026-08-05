@@ -7,6 +7,7 @@ export async function POST(req: NextRequest) {
     start_time?: unknown;
     end_time?: unknown;
     property_id?: unknown;
+    deal_id?: unknown;
   };
 
   const startTime = typeof body.start_time === "string" ? body.start_time : "";
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : null;
   const propertyId =
     typeof body.property_id === "number" ? body.property_id : Number(body.property_id) || null;
+  const dealId = typeof body.deal_id === "number" ? body.deal_id : Number(body.deal_id) || null;
 
   try {
     const event = await createEventManually({
@@ -25,6 +27,7 @@ export async function POST(req: NextRequest) {
       start_time: startTime,
       end_time: endTime,
       property_id: propertyId,
+      deal_id: dealId,
     });
     return NextResponse.json({ event }, { status: 201 });
   } catch (err) {

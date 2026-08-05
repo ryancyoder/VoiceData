@@ -14,7 +14,7 @@ export type Stage = (typeof STAGES)[number];
 
 export interface DealPhoto {
   id: number;
-  deal_id: number;
+  deal_id: number | null;
   storage_path: string;
   caption: string | null;
   created_at: string;

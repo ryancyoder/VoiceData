@@ -3,12 +3,9 @@ import { createVideoSignedUploadUrls } from "@/lib/videoUploadUrls";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
-// Videos are uploaded directly from the browser to Supabase Storage using a
-// signed upload URL, bypassing our own server entirely — routing a
-// multi-hundred-MB file through a Next.js API route would run straight into
-// Vercel's request body size limit (the same wall photo uploads hit before
-// client-side compression was added). This route only hands out the
-// destination paths + upload tokens; the actual bytes never touch it.
+// A video's base-level attachment is to an event, not a deal — this route
+// (unlike the deal-scoped one) needs no deal_id at all. Same signed-URL
+// pattern: the browser uploads straight to Storage, bypassing our server.
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const body = (await req.json()) as { videoFileName?: unknown; hasPoster?: unknown };
@@ -19,7 +16,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const urls = await createVideoSignedUploadUrls(`deal-${id}`, videoFileName, !!body.hasPoster);
+    const urls = await createVideoSignedUploadUrls(`event-${id}`, videoFileName, !!body.hasPoster);
     return NextResponse.json(urls);
   } catch (err) {
     return NextResponse.json(

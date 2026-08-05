@@ -14,6 +14,7 @@ type RawEvent = {
   start_time: string;
   end_time: string;
   property_id: number | null;
+  deal_id: number | null;
   latitude: number | null;
   longitude: number | null;
   deal_photos: RawPhoto[];
@@ -47,14 +48,21 @@ export default async function CalendarPage() {
   const dealOptions = (dealsRes.data ?? []) as DealOption[];
   const propertyOptions = (propertiesRes.data ?? []) as PropertyOption[];
   const ungeotaggedCount = ungroupedRes.count ?? 0;
+  const dealOptionsById = new Map(dealOptions.map((d) => [d.id, d]));
 
   const calendarEvents: CalendarEvent[] = rawEvents.map((event) => {
     const photos = event.deal_photos ?? [];
     const dealsById = new Map<number, RawPhoto["deal"]>();
     for (const p of photos) {
-      if (p.deal && !dealsById.has(p.deal_id)) dealsById.set(p.deal_id, p.deal);
+      if (p.deal_id != null && p.deal && !dealsById.has(p.deal_id)) dealsById.set(p.deal_id, p.deal);
     }
-    const dealIds = Array.from(new Set(photos.map((p) => p.deal_id)));
+    // A video attached only to the event (no deal_id of its own) doesn't
+    // contribute a deal here — but the event's own deal_id (set directly,
+    // separate from any individual photo's deal_id) still should.
+    const dealIdSet = new Set<number>();
+    for (const p of photos) if (p.deal_id != null) dealIdSet.add(p.deal_id);
+    if (event.deal_id != null) dealIdSet.add(event.deal_id);
+    const dealIds = Array.from(dealIdSet);
 
     return {
       id: event.id,
@@ -62,6 +70,7 @@ export default async function CalendarPage() {
       start: event.start_time,
       end: event.end_time,
       propertyId: event.property_id,
+      dealId: event.deal_id,
       latitude: event.latitude,
       longitude: event.longitude,
       dealIds,
@@ -79,12 +88,13 @@ export default async function CalendarPage() {
         poster_path: p.poster_path,
       })),
       deals: dealIds.map((id) => {
-        const d = dealsById.get(id);
+        const fromPhoto = dealsById.get(id);
+        const fromOption = dealOptionsById.get(id);
         return {
           id,
-          name: d?.deal_name ?? `Deal #${id}`,
-          company: d?.company ?? null,
-          jobsiteAddress: d?.jobsite_address ?? null,
+          name: fromPhoto?.deal_name ?? fromOption?.deal_name ?? `Deal #${id}`,
+          company: fromPhoto?.company ?? fromOption?.company ?? null,
+          jobsiteAddress: fromPhoto?.jobsite_address ?? null,
         };
       }),
     };

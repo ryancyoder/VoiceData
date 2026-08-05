@@ -8,6 +8,7 @@ export interface Event {
   start_time: string;
   end_time: string;
   property_id: number | null;
+  deal_id: number | null;
   latitude: number | null;
   longitude: number | null;
   created_at: string;
@@ -46,8 +47,9 @@ export async function findOrCreateEvent(input: {
   longitude: number;
   takenAt: string;
   propertyId: number | null;
+  dealId?: number | null;
 }): Promise<Event> {
-  const { latitude, longitude, takenAt, propertyId } = input;
+  const { latitude, longitude, takenAt, propertyId, dealId = null } = input;
   const takenAtMs = new Date(takenAt).getTime();
 
   const { data: existing, error } = await supabase.from("events").select("*");
@@ -81,6 +83,7 @@ export async function findOrCreateEvent(input: {
         latitude: centroid?.latitude ?? event.latitude,
         longitude: centroid?.longitude ?? event.longitude,
         property_id: event.property_id ?? propertyId,
+        deal_id: event.deal_id ?? dealId,
       })
       .eq("id", event.id)
       .select()
@@ -97,6 +100,7 @@ export async function findOrCreateEvent(input: {
       latitude,
       longitude,
       property_id: propertyId,
+      deal_id: dealId,
     })
     .select()
     .single();
@@ -125,6 +129,7 @@ export async function linkToEvent(
       longitude,
       takenAt: takenAt ?? new Date().toISOString(),
       propertyId: deal?.property_id ?? null,
+      dealId,
     });
     return event.id;
   } catch (err) {
@@ -138,6 +143,7 @@ export async function createEventManually(input: {
   start_time: string;
   end_time: string;
   property_id: number | null;
+  deal_id: number | null;
 }): Promise<Event> {
   let latitude: number | null = null;
   let longitude: number | null = null;
@@ -160,6 +166,7 @@ export async function createEventManually(input: {
       start_time: input.start_time,
       end_time: input.end_time,
       property_id: input.property_id,
+      deal_id: input.deal_id,
       latitude,
       longitude,
     })
@@ -171,7 +178,13 @@ export async function createEventManually(input: {
 
 export async function updateEvent(
   id: number,
-  patch: { name?: string | null; start_time?: string; end_time?: string; property_id?: number | null }
+  patch: {
+    name?: string | null;
+    start_time?: string;
+    end_time?: string;
+    property_id?: number | null;
+    deal_id?: number | null;
+  }
 ): Promise<Event> {
   const update: Record<string, unknown> = { ...patch };
 
@@ -233,6 +246,7 @@ export async function mergeEvents(sourceId: number, targetId: number): Promise<E
       latitude: centroid?.latitude ?? target.latitude,
       longitude: centroid?.longitude ?? target.longitude,
       property_id: target.property_id ?? source.property_id,
+      deal_id: target.deal_id ?? source.deal_id,
     })
     .eq("id", targetId)
     .select()
