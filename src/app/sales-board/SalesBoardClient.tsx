@@ -363,6 +363,10 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
                 Photos
               </Link>{" "}
               ·{" "}
+              <Link href="/calendar" className={styles["brand-back"]}>
+                Calendar
+              </Link>{" "}
+              ·{" "}
               <Link href="/" className={styles["brand-back"]}>
                 ← VoiceData
               </Link>

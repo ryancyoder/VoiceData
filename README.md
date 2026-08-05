@@ -23,9 +23,14 @@ you go.
   Supabase Postgres table, separate from the voice-driven SQLite database.
   Deals move through `Lead → Propose → Sent → Sold → Scheduled → Project
   Management → Job Costing → Invoiced → Paid in Full`.
-- **Photo Gallery** (`/photos`): browses every photo uploaded to a deal, with
-  a dropdown to filter down to a single deal and a lightbox for viewing/
-  deleting individual photos.
+- **Photo Gallery** (`/photos`): album-style browsing of every photo uploaded
+  to a deal — one cover per deal, click through to that deal's full photo
+  grid, with a lightbox for viewing/deleting individual photos.
+- **Calendar** (`/calendar`): a week-view, hour-by-hour calendar of "events"
+  inferred from photo metadata. Photos are geotagged (GPS) and timestamped
+  from their EXIF data at upload time; photos taken at the same location
+  with no gap longer than an hour between them are grouped into one event
+  block. Click a block to see its photos and jump to the deal.
 
 ## Setup
 
@@ -60,4 +65,7 @@ A text box is also available as a fallback if you'd rather type.
 - `src/lib/salesBoard.ts` — Sales Board stage list and types
 - `src/app/api/sales-board/` — REST endpoints for the Sales Board table
 - `src/app/sales-board/page.tsx` — Sales Board Kanban UI
-- `src/app/photos/page.tsx` — Photo Gallery, filterable by deal
+- `src/app/photos/page.tsx` — Photo Gallery (album view, filterable by deal)
+- `src/lib/photoEvents.ts` — clusters geotagged photos into calendar events
+  (same location + gaps no longer than an hour)
+- `src/app/calendar/page.tsx` — Calendar, week view of photo-derived events

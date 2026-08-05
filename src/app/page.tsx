@@ -107,6 +107,12 @@ export default function Home() {
           >
             Photos →
           </Link>
+          <Link
+            href="/calendar"
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+          >
+            Calendar →
+          </Link>
         </div>
       </header>
 

@@ -18,6 +18,9 @@ export interface DealPhoto {
   storage_path: string;
   caption: string | null;
   created_at: string;
+  latitude: number | null;
+  longitude: number | null;
+  taken_at: string | null;
 }
 
 export interface Deal {
