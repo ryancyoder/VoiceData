@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { STAGES, type Deal, type Stage } from "@/lib/salesBoard";
+import { STAGES, dealPhotoUrl, type Deal, type Stage } from "@/lib/salesBoard";
 
 interface NewDealForm {
   deal_name: string;
@@ -81,6 +81,47 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
     } catch (err) {
       setDeals(previous);
       setError(err instanceof Error ? err.message : "Failed to delete deal");
+    }
+  }
+
+  async function handleUploadPhoto(dealId: number, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/photos`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload photo");
+      setDeals((d) =>
+        d.map((deal) =>
+          deal.id === dealId ? { ...deal, photos: [...deal.photos, data.photo] } : deal
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload photo");
+    }
+  }
+
+  async function handleDeletePhoto(dealId: number, photoId: number) {
+    const previous = deals;
+    setDeals((d) =>
+      d.map((deal) =>
+        deal.id === dealId
+          ? { ...deal, photos: deal.photos.filter((p) => p.id !== photoId) }
+          : deal
+      )
+    );
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/photos/${photoId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete photo");
+    } catch (err) {
+      setDeals(previous);
+      setError(err instanceof Error ? err.message : "Failed to delete photo");
     }
   }
 
@@ -215,6 +256,43 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
                             ${deal.value.toLocaleString()}
                           </div>
                         )}
+                        {deal.photos.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {deal.photos.map((photo) => (
+                              <div
+                                key={photo.id}
+                                className="group relative h-12 w-12 overflow-hidden rounded border border-zinc-200 dark:border-zinc-700"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={dealPhotoUrl(photo.storage_path)}
+                                  alt={photo.caption ?? deal.deal_name}
+                                  className="h-full w-full object-cover"
+                                />
+                                <button
+                                  onClick={() => handleDeletePhoto(deal.id, photo.id)}
+                                  aria-label="Delete photo"
+                                  className="absolute right-0 top-0 hidden h-4 w-4 items-center justify-center rounded-bl bg-black/60 text-[10px] leading-none text-white group-hover:flex"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <label className="w-fit cursor-pointer text-xs text-blue-600 dark:text-blue-400">
+                          + Photo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleUploadPhoto(deal.id, file);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
                         <div className="flex items-center gap-2">
                           <select
                             value={deal.stage}

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function SalesBoardPage() {
   const { data, error } = await supabase
     .from("Sales Board")
-    .select("*")
+    .select("*, photos:deal_photos(*)")
     .order("created_at", { ascending: true });
 
   if (error) {

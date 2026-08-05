@@ -5,7 +5,7 @@ import { STAGES, type DealInput } from "@/lib/salesBoard";
 export async function GET() {
   const { data, error } = await supabase
     .from("Sales Board")
-    .select("*")
+    .select("*, photos:deal_photos(*)")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       value: body.value ?? null,
       stage: body.stage ?? "Lead",
     })
-    .select()
+    .select("*, photos:deal_photos(*)")
     .single();
 
   if (error) {
