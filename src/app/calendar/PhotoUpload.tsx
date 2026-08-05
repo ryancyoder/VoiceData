@@ -10,6 +10,7 @@ import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 import { capturePosterFrame } from "@/lib/videoPoster";
 import { compressVideo } from "@/lib/compressVideo";
 import { readClientExif } from "@/lib/clientExif";
+import { readVideoCreationTime } from "@/lib/videoMetadata";
 
 const MATCH_FETCH_TIMEOUT_MS = 8000;
 const UPLOAD_TIMEOUT_MS = 60000;
@@ -71,10 +72,10 @@ export default function PhotoUpload({
         previewUrl: mediaType === "photo" ? URL.createObjectURL(file) : "",
         posterBlob: null,
         gps: null,
-        // Videos aren't scanned for EXIF/GPS (no client-side library for
-        // that here) — file.lastModified is the best capture-time guess we
-        // have, and the user picks a deal manually for these.
-        takenAt: mediaType === "video" && file.lastModified ? new Date(file.lastModified).toISOString() : null,
+        // Real embedded capture time (read below, async) is authoritative;
+        // takenAt starts null and is filled in once that resolves. Videos
+        // have no GPS extraction — the user picks a deal manually for these.
+        takenAt: null,
         candidates: [],
         selectedDealId: "",
         status: "matching",
@@ -89,9 +90,19 @@ export default function PhotoUpload({
     await Promise.all(
       items.map(async (item) => {
         if (item.mediaType === "video") {
-          const posterBlob = await capturePosterFrame(item.file);
+          const [posterBlob, creationTime] = await Promise.all([
+            capturePosterFrame(item.file),
+            readVideoCreationTime(item.file),
+          ]);
           const previewUrl = posterBlob ? URL.createObjectURL(posterBlob) : "";
-          setPending((p) => p.map((it) => (it.id === item.id ? { ...it, posterBlob, previewUrl, status: "ready" } : it)));
+          const takenAt = creationTime
+            ? creationTime.toISOString()
+            : item.file.lastModified
+              ? new Date(item.file.lastModified).toISOString()
+              : null;
+          setPending((p) =>
+            p.map((it) => (it.id === item.id ? { ...it, posterBlob, previewUrl, takenAt, status: "ready" } : it))
+          );
           return;
         }
 
