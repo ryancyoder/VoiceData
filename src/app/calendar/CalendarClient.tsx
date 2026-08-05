@@ -7,6 +7,7 @@ import styles from "./calendar.module.css";
 import { dealPhotoUrl, dealThumbUrl } from "@/lib/salesBoard";
 import PhotoUpload from "./PhotoUpload";
 import EventMediaUpload from "./EventMediaUpload";
+import EventPhotoUpload from "./EventPhotoUpload";
 
 export interface GeoPhoto {
   id: number;
@@ -647,6 +648,10 @@ export default function CalendarClient({
                   </div>
                 </div>
                 <div className={styles["modal-head-actions"]}>
+                  <EventPhotoUpload
+                    event={selectedEvent}
+                    onUploaded={(photo) => handleEventMediaUploaded(selectedEvent.id, photo)}
+                  />
                   <EventMediaUpload
                     event={selectedEvent}
                     onUploaded={(photo) => handleEventMediaUploaded(selectedEvent.id, photo)}
