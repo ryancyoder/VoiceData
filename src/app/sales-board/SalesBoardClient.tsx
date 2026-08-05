@@ -1,86 +1,259 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { STAGES, dealPhotoUrl, type Deal, type Stage } from "@/lib/salesBoard";
+import styles from "./sales-board.module.css";
+import { STAGES, type Deal, type DealInput, type Stage } from "@/lib/salesBoard";
+import DealCard, { type UiDeal } from "./DealCard";
+import DealModal from "./DealModal";
+import LostModal from "./LostModal";
 
-interface NewDealForm {
-  deal_name: string;
-  company: string;
-  contact_first_name: string;
-  contact_last_name: string;
-  value: string;
-}
-
-const EMPTY_FORM: NewDealForm = {
-  deal_name: "",
-  company: "",
-  contact_first_name: "",
-  contact_last_name: "",
-  value: "",
+const STAGE_COLORS: Record<Stage, string> = {
+  Lead: "var(--c-lead)",
+  Propose: "var(--c-propose)",
+  Sent: "var(--c-send)",
+  Sold: "var(--c-sold)",
+  Scheduled: "var(--c-schedule)",
+  "Project Management": "var(--c-pm)",
+  "Job Costing": "var(--c-jobcosting)",
+  Invoiced: "var(--c-invoiced)",
+  "Paid in Full": "var(--c-paid)",
 };
 
+const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+const EMPTY_ADD_FORM = {
+  deal_name: "",
+  company: "",
+  value: "",
+  contact_first_name: "",
+  contact_last_name: "",
+  contact_email: "",
+  contact_phone: "",
+  proposal_number: "",
+  proposal_date: "",
+  appointment_date: "",
+  jobsite_address: "",
+  next_action: "",
+  proposal_description: "",
+};
+
+function sortDeals(list: UiDeal[], mode: string) {
+  const sorted = [...list];
+  if (mode === "value_desc") sorted.sort((a, b) => (b.value || 0) - (a.value || 0));
+  else if (mode === "value_asc") sorted.sort((a, b) => (a.value || 0) - (b.value || 0));
+  else if (mode === "alpha_asc") sorted.sort((a, b) => a.deal_name.localeCompare(b.deal_name));
+  else if (mode === "alpha_desc") sorted.sort((a, b) => b.deal_name.localeCompare(a.deal_name));
+  return sorted;
+}
+
+function nextValueSort(current: string) {
+  if (current === "value_desc") return "value_asc";
+  if (current === "value_asc") return "";
+  return "value_desc";
+}
+
+function nextAlphaSort(current: string) {
+  if (current === "alpha_asc") return "alpha_desc";
+  if (current === "alpha_desc") return "";
+  return "alpha_asc";
+}
+
+interface DragState {
+  id: number;
+  pointerId: number;
+  handle: HTMLElement;
+  card: HTMLElement;
+  ghost: HTMLElement;
+  offsetX: number;
+  offsetY: number;
+  currentColumn: HTMLElement | null;
+}
+
 export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[] }) {
-  const [deals, setDeals] = useState<Deal[]>(initialDeals);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<NewDealForm>(EMPTY_FORM);
-  const [submitting, setSubmitting] = useState(false);
+  const [deals, setDeals] = useState<UiDeal[]>(initialDeals);
+  const [activeDealId, setActiveDealId] = useState<number | null>(null);
+  const [lostModalOpen, setLostModalOpen] = useState(false);
+  const [showDescriptions, setShowDescriptions] = useState(false);
+  const [showNextAction, setShowNextAction] = useState(false);
+  const [columnSortState, setColumnSortState] = useState<Record<string, string>>({});
+  const [columnCollapsedState, setColumnCollapsedState] = useState<Record<string, boolean>>({});
+  const [addFormOpen, setAddFormOpen] = useState(false);
+  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
 
-  async function handleAddDeal(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.deal_name.trim() || submitting) return;
-    setSubmitting(true);
-    setError(null);
+  function showToast(msg: string) {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+  }
+
+  const activeDeals = deals.filter((d) => !d.lost_at);
+  const lostCount = deals.length - activeDeals.length;
+  const totalValue = activeDeals.reduce((sum, d) => sum + (d.value || 0), 0);
+  const closedValue = activeDeals
+    .filter((d) => d.stage === "Paid in Full")
+    .reduce((sum, d) => sum + (d.value || 0), 0);
+
+  async function refreshBoard() {
+    setRefreshing(true);
     try {
-      const res = await fetch("/api/sales-board", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deal_name: form.deal_name.trim(),
-          company: form.company.trim() || null,
-          contact_first_name: form.contact_first_name.trim() || null,
-          contact_last_name: form.contact_last_name.trim() || null,
-          value: form.value ? Number(form.value) : null,
-        }),
-      });
+      const res = await fetch("/api/sales-board");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create deal");
-      setDeals((d) => [...d, data.deal]);
-      setForm(EMPTY_FORM);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create deal");
+      if (res.ok) setDeals(data.deals);
     } finally {
-      setSubmitting(false);
+      setRefreshing(false);
     }
   }
 
-  async function handleStageChange(id: number, stage: Stage) {
-    const previous = deals;
-    setDeals((d) => d.map((deal) => (deal.id === id ? { ...deal, stage } : deal)));
-    try {
-      const res = await fetch(`/api/sales-board/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage }),
+  function moveDeal(id: number, stage: Stage) {
+    const deal = deals.find((d) => d.id === id);
+    if (!deal || deal.stage === stage || deal._pending) return;
+    const previousStage = deal.stage;
+    const name = deal.deal_name;
+    setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, stage, _pending: true, _error: undefined } : d)));
+
+    fetch(`/api/sales-board/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage }),
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to update stage");
+        setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, _pending: false } : d)));
+      })
+      .catch((err) => {
+        setDeals((ds) =>
+          ds.map((d) => (d.id === id ? { ...d, stage: previousStage, _pending: false } : d))
+        );
+        showToast(`Couldn't move "${name}" — ${err instanceof Error ? err.message : "try again"}`);
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to update stage");
-    } catch (err) {
-      setDeals(previous);
-      setError(err instanceof Error ? err.message : "Failed to update stage");
-    }
   }
 
-  async function handleDelete(id: number) {
+  function handleDragStart(e: React.PointerEvent<HTMLSpanElement>, deal: UiDeal) {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const card = handle.closest<HTMLElement>("[data-card]");
+    if (!card) return;
+
+    const rect = card.getBoundingClientRect();
+    const ghost = card.cloneNode(true) as HTMLElement;
+    ghost.classList.add(styles["drag-ghost"]);
+    ghost.style.width = rect.width + "px";
+    ghost.style.left = rect.left + "px";
+    ghost.style.top = rect.top + "px";
+    document.body.appendChild(ghost);
+    card.classList.add(styles["is-dragging"]);
+
+    const state: DragState = {
+      id: deal.id,
+      pointerId: e.pointerId,
+      handle,
+      card,
+      ghost,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      currentColumn: null,
+    };
+    dragStateRef.current = state;
+    handle.setPointerCapture(e.pointerId);
+
+    function onMove(ev: PointerEvent) {
+      const s = dragStateRef.current;
+      if (!s || ev.pointerId !== s.pointerId) return;
+      s.ghost.style.left = ev.clientX - s.offsetX + "px";
+      s.ghost.style.top = ev.clientY - s.offsetY + "px";
+      s.ghost.style.visibility = "hidden";
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      s.ghost.style.visibility = "";
+      const columnEl = el ? (el as HTMLElement).closest<HTMLElement>("[data-column]") : null;
+      if (columnEl !== s.currentColumn) {
+        if (s.currentColumn) s.currentColumn.classList.remove(styles["is-dragover"]);
+        if (columnEl) columnEl.classList.add(styles["is-dragover"]);
+        s.currentColumn = columnEl;
+      }
+    }
+
+    function onEnd(ev: PointerEvent) {
+      const s = dragStateRef.current;
+      if (!s || ev.pointerId !== s.pointerId) return;
+      const targetColumn = s.currentColumn;
+      const dealId = s.id;
+
+      s.card.classList.remove(styles["is-dragging"]);
+      if (s.currentColumn) s.currentColumn.classList.remove(styles["is-dragover"]);
+      s.ghost.remove();
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      try {
+        handle.releasePointerCapture(ev.pointerId);
+      } catch {
+        /* already released */
+      }
+      dragStateRef.current = null;
+
+      if (targetColumn) {
+        moveDeal(dealId, targetColumn.dataset.stage as Stage);
+      }
+    }
+
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+  }
+
+  async function handleSaveDeal(id: number, updates: Partial<DealInput>) {
+    const res = await fetch(`/api/sales-board/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to save");
+    setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, ...data.deal } : d)));
+  }
+
+  async function handleDeleteDeal(deal: Deal) {
+    setActiveDealId(null);
     const previous = deals;
-    setDeals((d) => d.filter((deal) => deal.id !== id));
+    setDeals((ds) => ds.filter((d) => d.id !== deal.id));
     try {
-      const res = await fetch(`/api/sales-board/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/sales-board/${deal.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete deal");
+      showToast(`Deleted "${deal.deal_name}"`);
     } catch (err) {
       setDeals(previous);
-      setError(err instanceof Error ? err.message : "Failed to delete deal");
+      showToast(`Couldn't delete "${deal.deal_name}" — ${err instanceof Error ? err.message : "try again"}`);
+    }
+  }
+
+  async function handleToggleLost(deal: Deal) {
+    const lost = !deal.lost_at;
+    const previous = deals;
+    const lostAt = lost ? new Date().toISOString() : null;
+    setDeals((ds) => ds.map((d) => (d.id === deal.id ? { ...d, lost_at: lostAt } : d)));
+    try {
+      const res = await fetch(`/api/sales-board/${deal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lost_at: lostAt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update");
+      setDeals((ds) => ds.map((d) => (d.id === deal.id ? { ...d, ...data.deal } : d)));
+      showToast(lost ? `Marked "${deal.deal_name}" as lost` : `Restored "${deal.deal_name}" to the pipeline`);
+    } catch (err) {
+      setDeals(previous);
+      showToast(`Couldn't update "${deal.deal_name}" — ${err instanceof Error ? err.message : "try again"}`);
+      throw err;
     }
   }
 
@@ -88,240 +261,431 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch(`/api/sales-board/${dealId}/photos`, {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch(`/api/sales-board/${dealId}/photos`, { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to upload photo");
-      setDeals((d) =>
-        d.map((deal) =>
-          deal.id === dealId ? { ...deal, photos: [...deal.photos, data.photo] } : deal
-        )
+      setDeals((ds) =>
+        ds.map((d) => (d.id === dealId ? { ...d, photos: [...d.photos, data.photo] } : d))
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to upload photo");
+      showToast(err instanceof Error ? err.message : "Failed to upload photo");
     }
   }
 
   async function handleDeletePhoto(dealId: number, photoId: number) {
     const previous = deals;
-    setDeals((d) =>
-      d.map((deal) =>
-        deal.id === dealId
-          ? { ...deal, photos: deal.photos.filter((p) => p.id !== photoId) }
-          : deal
-      )
+    setDeals((ds) =>
+      ds.map((d) => (d.id === dealId ? { ...d, photos: d.photos.filter((p) => p.id !== photoId) } : d))
     );
     try {
-      const res = await fetch(`/api/sales-board/${dealId}/photos/${photoId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/sales-board/${dealId}/photos/${photoId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete photo");
     } catch (err) {
       setDeals(previous);
-      setError(err instanceof Error ? err.message : "Failed to delete photo");
+      showToast(err instanceof Error ? err.message : "Failed to delete photo");
     }
   }
 
+  function openNewDealForm() {
+    setAddFormOpen(true);
+  }
+
+  function closeNewDealForm() {
+    setAddFormOpen(false);
+    setAddForm(EMPTY_ADD_FORM);
+    setAddError("");
+  }
+
+  async function handleCreateDeal(e: React.FormEvent) {
+    e.preventDefault();
+    const name = addForm.deal_name.trim();
+    if (!name || addSubmitting) return;
+    setAddSubmitting(true);
+    setAddError("");
+    try {
+      const res = await fetch("/api/sales-board", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deal_name: name,
+          company: addForm.company.trim() || null,
+          value: addForm.value ? Number(addForm.value) : null,
+          contact_first_name: addForm.contact_first_name.trim() || null,
+          contact_last_name: addForm.contact_last_name.trim() || null,
+          contact_email: addForm.contact_email.trim() || null,
+          contact_phone: addForm.contact_phone.trim() || null,
+          proposal_number: addForm.proposal_number.trim() || null,
+          proposal_date: addForm.proposal_date || null,
+          appointment_date: addForm.appointment_date || null,
+          jobsite_address: addForm.jobsite_address.trim() || null,
+          next_action: addForm.next_action.trim() || null,
+          proposal_description: addForm.proposal_description.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create deal");
+      setDeals((ds) => [...ds, data.deal]);
+      closeNewDealForm();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Failed to create deal");
+    } finally {
+      setAddSubmitting(false);
+    }
+  }
+
+  const activeDeal = activeDealId != null ? deals.find((d) => d.id === activeDealId) ?? null : null;
+
   return (
-    <div className="flex min-h-full flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
-      <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            Sales Board
-          </h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Deals moving through the pipeline.
-          </p>
+    <div className={styles.salesBoard}>
+      <div className={styles.topbar}>
+        <div className={styles.brand}>
+          <div className={styles["brand-mark"]}>
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M4 19V10M11 19V5M18 19V13"
+                stroke="white"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div>
+            <div className={styles["brand-row"]}>
+              <h1>Sales Board</h1>
+            </div>
+            <p>
+              Deals moving through the pipeline ·{" "}
+              <Link href="/" className={styles["brand-back"]}>
+                ← VoiceData
+              </Link>
+            </p>
+          </div>
         </div>
-        <Link
-          href="/"
-          className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-        >
-          ← VoiceData
-        </Link>
-      </header>
 
-      <main className="flex flex-1 flex-col gap-6 p-6">
-        <form
-          onSubmit={handleAddDeal}
-          className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
-        >
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500 dark:text-zinc-400">Deal name</label>
-            <input
-              value={form.deal_name}
-              onChange={(e) => setForm((f) => ({ ...f, deal_name: e.target.value }))}
-              placeholder="Acme HVAC install"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500 dark:text-zinc-400">Company</label>
-            <input
-              value={form.company}
-              onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500 dark:text-zinc-400">Contact first name</label>
-            <input
-              value={form.contact_first_name}
-              onChange={(e) => setForm((f) => ({ ...f, contact_first_name: e.target.value }))}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500 dark:text-zinc-400">Contact last name</label>
-            <input
-              value={form.contact_last_name}
-              onChange={(e) => setForm((f) => ({ ...f, contact_last_name: e.target.value }))}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500 dark:text-zinc-400">Value ($)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={form.value}
-              onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
-              className="w-32 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </div>
+        <div className={styles.stats}>
           <button
-            type="submit"
-            disabled={submitting || !form.deal_name.trim()}
-            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-black"
+            type="button"
+            className={`${styles["refresh-btn"]} ${styles["desc-toggle"]} ${showDescriptions ? styles["is-active"] : ""}`}
+            onClick={() => setShowDescriptions((v) => !v)}
+            title="Show/hide proposal descriptions on cards"
           >
-            Add deal
+            Descriptions
           </button>
+          <button
+            type="button"
+            className={`${styles["refresh-btn"]} ${styles["desc-toggle"]} ${showNextAction ? styles["is-active"] : ""}`}
+            onClick={() => setShowNextAction((v) => !v)}
+            title="Show/hide next action on cards"
+          >
+            Next Action
+          </button>
+          <button
+            type="button"
+            className={styles["refresh-btn"]}
+            onClick={refreshBoard}
+            disabled={refreshing}
+            title="Refresh now"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6" />
+            </svg>
+            <span>{refreshing ? "Refreshing…" : "Refresh"}</span>
+          </button>
+          <div className={styles.stat}>
+            <span className={styles["stat-value"]}>{activeDeals.length}</span>
+            <span className={styles["stat-label"]}>Deals</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles["stat-value"]}>{currency.format(totalValue)}</span>
+            <span className={styles["stat-label"]}>Pipeline</span>
+          </div>
+          <div className={`${styles.stat} ${styles["is-success"]}`}>
+            <span className={styles["stat-value"]}>{currency.format(closedValue)}</span>
+            <span className={styles["stat-label"]}>Paid in full</span>
+          </div>
+          <button type="button" className={`${styles.stat} ${styles["lost-stat"]}`} onClick={() => setLostModalOpen(true)} title="View lost deals">
+            <span className={styles["stat-value"]}>{lostCount}</span>
+            <span className={styles["stat-label"]}>Lost</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles["add-bar"]}>
+        <div className={styles["add-bar-row"]}>
+          {!addFormOpen && (
+            <button type="button" className={styles["new-deal-toggle"]} onClick={openNewDealForm}>
+              + New deal
+            </button>
+          )}
+        </div>
+        <form className={`${styles["add-form"]} ${addFormOpen ? styles["is-open"] : ""}`} onSubmit={handleCreateDeal}>
+          <div className={styles.field}>
+            <label htmlFor="f-name">Customer last name</label>
+            <input
+              id="f-name"
+              required
+              maxLength={120}
+              autoComplete="off"
+              placeholder="Maar"
+              value={addForm.deal_name}
+              onChange={(e) => setAddForm((f) => ({ ...f, deal_name: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-company">Company</label>
+            <input
+              id="f-company"
+              maxLength={120}
+              autoComplete="off"
+              placeholder="Optional"
+              value={addForm.company}
+              onChange={(e) => setAddForm((f) => ({ ...f, company: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-value">Value ($)</label>
+            <input
+              id="f-value"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="Optional"
+              value={addForm.value}
+              onChange={(e) => setAddForm((f) => ({ ...f, value: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-contact-first">Contact first name</label>
+            <input
+              id="f-contact-first"
+              maxLength={120}
+              autoComplete="off"
+              value={addForm.contact_first_name}
+              onChange={(e) => setAddForm((f) => ({ ...f, contact_first_name: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-contact-last">Contact last name</label>
+            <input
+              id="f-contact-last"
+              maxLength={120}
+              autoComplete="off"
+              value={addForm.contact_last_name}
+              onChange={(e) => setAddForm((f) => ({ ...f, contact_last_name: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-contact-email">Contact email</label>
+            <input
+              id="f-contact-email"
+              type="email"
+              maxLength={200}
+              autoComplete="off"
+              value={addForm.contact_email}
+              onChange={(e) => setAddForm((f) => ({ ...f, contact_email: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-contact-phone">Contact phone</label>
+            <input
+              id="f-contact-phone"
+              type="tel"
+              maxLength={40}
+              autoComplete="off"
+              value={addForm.contact_phone}
+              onChange={(e) => setAddForm((f) => ({ ...f, contact_phone: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-proposal-number">Proposal #</label>
+            <input
+              id="f-proposal-number"
+              maxLength={40}
+              autoComplete="off"
+              value={addForm.proposal_number}
+              onChange={(e) => setAddForm((f) => ({ ...f, proposal_number: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-proposal-date">Proposal date</label>
+            <input
+              id="f-proposal-date"
+              type="date"
+              value={addForm.proposal_date}
+              onChange={(e) => setAddForm((f) => ({ ...f, proposal_date: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-appointment-date">Appointment date</label>
+            <input
+              id="f-appointment-date"
+              type="date"
+              value={addForm.appointment_date}
+              onChange={(e) => setAddForm((f) => ({ ...f, appointment_date: e.target.value }))}
+            />
+          </div>
+          <div className={`${styles.field} ${styles["is-full"]}`}>
+            <label htmlFor="f-jobsite">Jobsite address</label>
+            <input
+              id="f-jobsite"
+              maxLength={200}
+              autoComplete="off"
+              value={addForm.jobsite_address}
+              onChange={(e) => setAddForm((f) => ({ ...f, jobsite_address: e.target.value }))}
+            />
+          </div>
+          <div className={`${styles.field} ${styles["is-full"]}`}>
+            <label htmlFor="f-next-action">Next action</label>
+            <input
+              id="f-next-action"
+              maxLength={200}
+              autoComplete="off"
+              value={addForm.next_action}
+              onChange={(e) => setAddForm((f) => ({ ...f, next_action: e.target.value }))}
+            />
+          </div>
+          <div className={`${styles.field} ${styles["is-full"]}`}>
+            <label htmlFor="f-proposal-description">Proposal description</label>
+            <textarea
+              id="f-proposal-description"
+              rows={2}
+              maxLength={2000}
+              value={addForm.proposal_description}
+              onChange={(e) => setAddForm((f) => ({ ...f, proposal_description: e.target.value }))}
+            />
+          </div>
+          <div className={styles["add-actions"]}>
+            <button type="button" className={styles["add-cancel"]} onClick={closeNewDealForm}>
+              Cancel
+            </button>
+            <button type="submit" className={styles["add-submit"]} disabled={addSubmitting}>
+              {addSubmitting ? "Creating…" : "Create deal"}
+            </button>
+          </div>
+          {addError && <div className={styles["add-error"]}>{addError}</div>}
         </form>
+      </div>
 
-        {error && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            {error}
-          </p>
-        )}
-
-        <div className="flex flex-1 gap-4 overflow-x-auto pb-4">
+      <div className={styles["board-wrap"]}>
+        <div className={styles.board}>
           {STAGES.map((stage) => {
-              const stageDeals = deals.filter((d) => d.stage === stage && !d.lost_at);
+            const stageDeals = activeDeals.filter((d) => d.stage === stage);
+            const stageTotal = stageDeals.reduce((sum, d) => sum + (d.value || 0), 0);
+            const color = STAGE_COLORS[stage];
+            const collapsed = !!columnCollapsedState[stage];
+            const sortMode = columnSortState[stage] || "";
+
+            if (collapsed) {
               return (
                 <div
                   key={stage}
-                  className="flex w-64 flex-shrink-0 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950"
+                  className={`${styles.column} ${styles["is-collapsed"]}`}
+                  style={{ ["--col-color" as string]: color }}
+                  data-column
+                  data-stage={stage}
                 >
-                  <h2 className="flex items-center justify-between text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                    {stage}
-                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-normal text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                      {stageDeals.length}
-                    </span>
-                  </h2>
-                  <div className="flex flex-col gap-2">
-                    {stageDeals.map((deal) => (
-                      <div
-                        key={deal.id}
-                        className="flex flex-col gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
-                      >
-                        <div className="font-medium text-zinc-900 dark:text-zinc-50">
-                          {deal.deal_name}
-                        </div>
-                        {(() => {
-                          const contactName = [deal.contact_first_name, deal.contact_last_name]
-                            .filter(Boolean)
-                            .join(" ");
-                          const metaParts = [deal.company, contactName].filter(Boolean);
-                          return metaParts.length > 0 ? (
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                              {metaParts.join(" · ")}
-                            </div>
-                          ) : null;
-                        })()}
-                        {(deal.proposal_number || deal.proposal_date) && (
-                          <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                            {[
-                              deal.proposal_number ? `#${deal.proposal_number}` : null,
-                              deal.proposal_date,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </div>
-                        )}
-                        {deal.value != null && (
-                          <div className="text-xs text-zinc-600 dark:text-zinc-300">
-                            ${deal.value.toLocaleString()}
-                          </div>
-                        )}
-                        {deal.photos.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {deal.photos.map((photo) => (
-                              <div
-                                key={photo.id}
-                                className="group relative h-12 w-12 overflow-hidden rounded border border-zinc-200 dark:border-zinc-700"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={dealPhotoUrl(photo.storage_path)}
-                                  alt={photo.caption ?? deal.deal_name}
-                                  className="h-full w-full object-cover"
-                                />
-                                <button
-                                  onClick={() => handleDeletePhoto(deal.id, photo.id)}
-                                  aria-label="Delete photo"
-                                  className="absolute right-0 top-0 hidden h-4 w-4 items-center justify-center rounded-bl bg-black/60 text-[10px] leading-none text-white group-hover:flex"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <label className="w-fit cursor-pointer text-xs text-blue-600 dark:text-blue-400">
-                          + Photo
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleUploadPhoto(deal.id, file);
-                              e.target.value = "";
-                            }}
-                          />
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={deal.stage}
-                            onChange={(e) =>
-                              handleStageChange(deal.id, e.target.value as Stage)
-                            }
-                            className="flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs outline-none dark:border-zinc-700 dark:bg-zinc-950"
-                          >
-                            {STAGES.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => handleDelete(deal.id)}
-                            className="text-xs text-red-600 dark:text-red-400"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    className={styles["column-expand-btn"]}
+                    aria-label={`Expand ${stage} (${stageDeals.length} deals)`}
+                    onClick={() => setColumnCollapsedState((s) => ({ ...s, [stage]: false }))}
+                  >
+                    <span className={styles["column-dot"]} />
+                    <span className={styles["column-count"]}>{stageDeals.length}</span>
+                    <span className={styles["column-title-vertical"]}>{stage}</span>
+                  </button>
                 </div>
               );
+            }
+
+            return (
+              <div
+                key={stage}
+                className={styles.column}
+                style={{ ["--col-color" as string]: color }}
+                data-column
+                data-stage={stage}
+              >
+                <div className={styles["column-head"]}>
+                  <button
+                    type="button"
+                    className={styles["column-collapse-btn"]}
+                    aria-label={`Collapse ${stage}`}
+                    onClick={() => setColumnCollapsedState((s) => ({ ...s, [stage]: true }))}
+                  >
+                    ‹
+                  </button>
+                  <span className={styles["column-dot"]} />
+                  <span className={styles["column-title"]}>{stage}</span>
+                  <div className={styles["column-sort-group"]}>
+                    <button
+                      type="button"
+                      className={`${styles["column-sort-btn"]} ${sortMode.indexOf("value_") === 0 ? styles["is-active"] : ""}`}
+                      aria-label={`Sort ${stage} by value`}
+                      onClick={() =>
+                        setColumnSortState((s) => ({ ...s, [stage]: nextValueSort(sortMode) }))
+                      }
+                    >
+                      {"$" + (sortMode === "value_desc" ? "▾" : sortMode === "value_asc" ? "▴" : "")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles["column-sort-btn"]} ${sortMode.indexOf("alpha_") === 0 ? styles["is-active"] : ""}`}
+                      aria-label={`Sort ${stage} alphabetically`}
+                      onClick={() =>
+                        setColumnSortState((s) => ({ ...s, [stage]: nextAlphaSort(sortMode) }))
+                      }
+                    >
+                      {"A/Z" + (sortMode === "alpha_asc" ? "▴" : sortMode === "alpha_desc" ? "▾" : "")}
+                    </button>
+                  </div>
+                  <span className={styles["column-count"]}>{stageDeals.length}</span>
+                </div>
+                <div className={styles["column-total"]}>{stageTotal > 0 ? currency.format(stageTotal) : "—"}</div>
+                <div className={styles["column-body"]}>
+                  {stageDeals.length === 0 ? (
+                    <div className={styles["column-empty"]}>No deals</div>
+                  ) : (
+                    sortDeals(stageDeals, sortMode).map((deal) => (
+                      <DealCard
+                        key={deal.id}
+                        deal={deal}
+                        color={color}
+                        showDescriptions={showDescriptions}
+                        showNextAction={showNextAction}
+                        onDragStart={handleDragStart}
+                        onOpen={(d) => setActiveDealId(d.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            );
           })}
         </div>
-      </main>
+      </div>
+
+      <div className={`${styles.toast} ${toast ? styles["is-visible"] : ""}`} role="status" aria-live="polite">
+        <span>{toast}</span>
+      </div>
+
+      {activeDeal && (
+        <DealModal
+          deal={activeDeal}
+          onClose={() => setActiveDealId(null)}
+          onSave={handleSaveDeal}
+          onDelete={handleDeleteDeal}
+          onToggleLost={handleToggleLost}
+          onUploadPhoto={handleUploadPhoto}
+          onDeletePhoto={handleDeletePhoto}
+        />
+      )}
+
+      {lostModalOpen && (
+        <LostModal deals={deals} onClose={() => setLostModalOpen(false)} onRestore={handleToggleLost} />
+      )}
     </div>
   );
 }
