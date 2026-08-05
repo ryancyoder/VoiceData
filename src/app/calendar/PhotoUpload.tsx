@@ -5,6 +5,7 @@ import exifr from "exifr";
 import styles from "./calendar.module.css";
 import type { DealOption } from "./CalendarClient";
 import { withTimeout, fetchWithTimeout } from "@/lib/withTimeout";
+import { compressImage } from "@/lib/compressImage";
 
 const GPS_READ_TIMEOUT_MS = 6000;
 const MATCH_FETCH_TIMEOUT_MS = 8000;
@@ -26,22 +27,34 @@ interface PendingPhoto {
   file: File;
   previewUrl: string;
   gps: { latitude: number; longitude: number } | null;
+  takenAt: string | null;
   candidates: MatchCandidate[];
   selectedDealId: number | "";
   status: "matching" | "ready" | "uploading" | "done" | "error";
   error?: string;
 }
 
-async function readClientGps(file: File) {
+// Reads GPS + capture-time from the ORIGINAL file, before any compression
+// happens — canvas-based compression re-encodes the image and strips all
+// EXIF metadata, so this must run first and the results carried separately.
+async function readClientExif(file: File) {
   try {
-    const gps = await withTimeout(exifr.gps(file), GPS_READ_TIMEOUT_MS, "GPS read");
-    if (gps && typeof gps.latitude === "number" && typeof gps.longitude === "number") {
-      return { latitude: gps.latitude, longitude: gps.longitude };
-    }
+    const exif = await withTimeout(
+      exifr.parse(file, { gps: true, exif: true, ifd1: false, icc: false, iptc: false, xmp: false, interop: false }),
+      GPS_READ_TIMEOUT_MS,
+      "EXIF read"
+    );
+    const gps =
+      exif && typeof exif.latitude === "number" && typeof exif.longitude === "number"
+        ? { latitude: exif.latitude, longitude: exif.longitude }
+        : null;
+    const captured = exif?.DateTimeOriginal ?? exif?.CreateDate;
+    const takenAt = captured instanceof Date && !isNaN(captured.getTime()) ? captured.toISOString() : null;
+    return { gps, takenAt };
   } catch {
-    /* no readable GPS, or the read timed out — fall back to manual deal selection */
+    /* no readable EXIF, or the read timed out — fall back to manual deal selection */
+    return { gps: null, takenAt: null };
   }
-  return null;
 }
 
 function distanceLabel(meters: number) {
@@ -70,6 +83,7 @@ export default function PhotoUpload({
       file,
       previewUrl: URL.createObjectURL(file),
       gps: null,
+      takenAt: null,
       candidates: [],
       selectedDealId: "",
       status: "matching",
@@ -81,7 +95,7 @@ export default function PhotoUpload({
     // file (large HEIC, unusual EXIF) only delays itself, not the batch.
     await Promise.all(
       items.map(async (item) => {
-        const gps = await readClientGps(item.file);
+        const { gps, takenAt } = await readClientExif(item.file);
         let candidates: MatchCandidate[] = [];
         if (gps) {
           try {
@@ -103,7 +117,9 @@ export default function PhotoUpload({
         const best = candidates[0];
         const autoSelected: number | "" = best ? best.id : "";
         setPending((p) =>
-          p.map((it) => (it.id === item.id ? { ...it, gps, candidates, selectedDealId: autoSelected, status: "ready" } : it))
+          p.map((it) =>
+            it.id === item.id ? { ...it, gps, takenAt, candidates, selectedDealId: autoSelected, status: "ready" } : it
+          )
         );
       })
     );
@@ -131,8 +147,17 @@ export default function PhotoUpload({
       if (item.status === "done" || item.selectedDealId === "") continue;
       setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "uploading" } : it)));
       try {
+        // Compress after EXIF has already been read client-side — canvas
+        // re-encoding strips metadata, so GPS/capture-time are carried as
+        // separate fields instead of relying on the server re-reading them.
+        const uploadFile = await compressImage(item.file);
         const formData = new FormData();
-        formData.append("file", item.file);
+        formData.append("file", uploadFile);
+        if (item.gps) {
+          formData.append("latitude", String(item.gps.latitude));
+          formData.append("longitude", String(item.gps.longitude));
+        }
+        if (item.takenAt) formData.append("takenAt", item.takenAt);
         const res = await fetchWithTimeout(
           `/api/sales-board/${item.selectedDealId}/photos`,
           { method: "POST", body: formData },

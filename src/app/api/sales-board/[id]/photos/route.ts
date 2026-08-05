@@ -61,7 +61,39 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const { latitude, longitude, takenAt } = await readExif(file);
+    // The client reads EXIF from the original photo before compressing it
+    // for upload (compression re-encodes the image, which strips metadata),
+    // so prefer those client-supplied values when present. Fall back to
+    // reading EXIF from the uploaded file ourselves otherwise.
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    let takenAt: string | null = null;
+
+    const clientLat = formData.get("latitude");
+    const clientLng = formData.get("longitude");
+    if (typeof clientLat === "string" && typeof clientLng === "string") {
+      const lat = Number(clientLat);
+      const lng = Number(clientLng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        latitude = lat;
+        longitude = lng;
+      }
+    }
+
+    const clientTakenAt = formData.get("takenAt");
+    if (typeof clientTakenAt === "string" && clientTakenAt) {
+      const parsed = new Date(clientTakenAt);
+      if (!isNaN(parsed.getTime())) takenAt = parsed.toISOString();
+    }
+
+    if (latitude === null || takenAt === null) {
+      const fromFile = await readExif(file);
+      if (latitude === null) {
+        latitude = fromFile.latitude;
+        longitude = fromFile.longitude;
+      }
+      if (takenAt === null) takenAt = fromFile.takenAt;
+    }
 
     const ext = safeExtension(file.name);
     const path = `deal-${id}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
