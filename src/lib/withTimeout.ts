@@ -11,3 +11,18 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label = "operati
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
+
+/**
+ * fetch() with a timeout, using a manually-managed AbortController rather
+ * than AbortSignal.timeout() (a newer API, Safari 16+) for the widest
+ * compatibility.
+ */
+export async function fetchWithTimeout(input: string, init: RequestInit, ms: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}

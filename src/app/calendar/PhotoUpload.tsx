@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import exifr from "exifr";
 import styles from "./calendar.module.css";
 import type { DealOption } from "./CalendarClient";
-import { withTimeout } from "@/lib/withTimeout";
+import { withTimeout, fetchWithTimeout } from "@/lib/withTimeout";
 
 const GPS_READ_TIMEOUT_MS = 6000;
 const MATCH_FETCH_TIMEOUT_MS = 8000;
@@ -85,12 +85,15 @@ export default function PhotoUpload({
         let candidates: MatchCandidate[] = [];
         if (gps) {
           try {
-            const res = await fetch("/api/sales-board/match-location", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(gps),
-              signal: AbortSignal.timeout(MATCH_FETCH_TIMEOUT_MS),
-            });
+            const res = await fetchWithTimeout(
+              "/api/sales-board/match-location",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(gps),
+              },
+              MATCH_FETCH_TIMEOUT_MS
+            );
             const data = await res.json();
             if (res.ok) candidates = data.candidates ?? [];
           } catch {
@@ -130,18 +133,22 @@ export default function PhotoUpload({
       try {
         const formData = new FormData();
         formData.append("file", item.file);
-        const res = await fetch(`/api/sales-board/${item.selectedDealId}/photos`, {
-          method: "POST",
-          body: formData,
-          signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
-        });
+        const res = await fetchWithTimeout(
+          `/api/sales-board/${item.selectedDealId}/photos`,
+          { method: "POST", body: formData },
+          UPLOAD_TIMEOUT_MS
+        );
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Upload failed");
         anyUploaded = true;
         setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "done" } : it)));
       } catch (err) {
         const message =
-          err instanceof Error && err.name === "TimeoutError" ? "Upload timed out — try again" : err instanceof Error ? err.message : "Upload failed";
+          err instanceof Error && err.name === "AbortError"
+            ? "Upload timed out — try again"
+            : err instanceof Error
+              ? err.message
+              : "Upload failed";
         setPending((p) =>
           p.map((it) => (it.id === item.id ? { ...it, status: "error", error: message } : it))
         );
