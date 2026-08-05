@@ -1,3 +1,5 @@
+import type { EventType } from "@/lib/events";
+
 export const STAGES = [
   "Lead",
   "Propose",
@@ -24,6 +26,15 @@ export interface DealPhoto {
   event_id: number | null;
   media_type: "photo" | "video";
   poster_path: string | null;
+}
+
+export interface DealEvent {
+  id: number;
+  name: string | null;
+  start_time: string;
+  end_time: string;
+  event_type: EventType | null;
+  photos: DealPhoto[];
 }
 
 export interface Property {
@@ -59,7 +70,16 @@ export interface Deal {
   stage: Stage;
   status: "Open" | "Closed";
   lost_at: string | null;
-  photos: DealPhoto[];
+  // A photo/video is attached to an event first — the event is the base
+  // unit of truth — and a deal is made up of the events attached to it.
+  // There is no direct deal->photo relationship; every photo is reached by
+  // way of its event.
+  events: DealEvent[];
+}
+
+/** All of a deal's photos across every one of its events, flattened. */
+export function flattenDealPhotos(deal: Pick<Deal, "events">): DealPhoto[] {
+  return deal.events.flatMap((e) => e.photos);
 }
 
 export const DEAL_PHOTOS_BUCKET = "deal-photos";

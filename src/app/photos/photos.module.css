@@ -100,6 +100,23 @@
   gap: 14px;
 }
 
+.event-groups { display: flex; flex-direction: column; gap: 28px; }
+.event-group { display: flex; flex-direction: column; gap: 12px; }
+.event-group-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.event-group-name { font-size: 0.9rem; font-weight: 650; }
+.event-group-date { font-size: 0.78rem; color: var(--text-muted); }
+.event-type-badge {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
 .thumb {
   position: relative;
   border: 1px solid var(--border);

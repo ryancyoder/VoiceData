@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
-import { dealPhotoUrl, dealThumbUrl, type Deal } from "@/lib/salesBoard";
+import { dealPhotoUrl, dealThumbUrl, flattenDealPhotos, type Deal } from "@/lib/salesBoard";
 
-type GalleryDeal = Pick<Deal, "id" | "deal_name" | "company" | "stage" | "lost_at" | "photos">;
-type GalleryPhoto = GalleryDeal["photos"][number];
+type GalleryDeal = Pick<Deal, "id" | "deal_name" | "company" | "stage" | "lost_at" | "events">;
+type GalleryPhoto = GalleryDeal["events"][number]["photos"][number];
 
 export default function PhotoGalleryClient({ deals: initialDeals }: { deals: GalleryDeal[] }) {
   const searchParams = useSearchParams();
@@ -16,16 +16,21 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
     const raw = searchParams.get("deal");
     const id = raw ? Number(raw) : NaN;
     if (!Number.isFinite(id)) return null;
-    return initialDeals.some((d) => d.id === id && d.photos.length > 0) ? id : null;
+    return initialDeals.some((d) => d.id === id && flattenDealPhotos(d).length > 0) ? id : null;
   });
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const dealsWithPhotos = useMemo(() => deals.filter((d) => d.photos.length > 0), [deals]);
-  const totalPhotoCount = useMemo(() => dealsWithPhotos.reduce((n, d) => n + d.photos.length, 0), [dealsWithPhotos]);
+  const dealsWithPhotos = useMemo(() => deals.filter((d) => flattenDealPhotos(d).length > 0), [deals]);
+  const totalPhotoCount = useMemo(
+    () => dealsWithPhotos.reduce((n, d) => n + flattenDealPhotos(d).length, 0),
+    [dealsWithPhotos]
+  );
 
   const activeDeal = activeDealId != null ? dealsWithPhotos.find((d) => d.id === activeDealId) ?? null : null;
-  const activePhotos = activeDeal?.photos ?? [];
+  // Lightbox prev/next navigates this flat, event-ordered list; the grid
+  // below renders the same photos grouped into per-event sections.
+  const activePhotos = useMemo(() => (activeDeal ? flattenDealPhotos(activeDeal) : []), [activeDeal]);
   const activePhoto: GalleryPhoto | null = activeIndex != null ? activePhotos[activeIndex] ?? null : null;
 
   useEffect(() => {
@@ -55,9 +60,15 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
       const res = await fetch(`/api/sales-board/${deal.id}/photos/${photo.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete photo");
-      setDeals((ds) => ds.map((d) => (d.id === deal.id ? { ...d, photos: d.photos.filter((p) => p.id !== photo.id) } : d)));
+      setDeals((ds) =>
+        ds.map((d) =>
+          d.id === deal.id
+            ? { ...d, events: d.events.map((e) => ({ ...e, photos: e.photos.filter((p) => p.id !== photo.id) })) }
+            : d
+        )
+      );
       if (activePhoto?.id === photo.id) setActiveIndex(null);
-      if (deal.photos.length <= 1) {
+      if (flattenDealPhotos(deal).length <= 1) {
         setActiveDealId(null);
         setActiveIndex(null);
       }
@@ -107,7 +118,8 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
         ) : !activeDeal ? (
           <div className={styles.grid}>
             {dealsWithPhotos.map((deal) => {
-              const cover = deal.photos[0];
+              const photos = flattenDealPhotos(deal);
+              const cover = photos[0];
               const coverThumb = dealThumbUrl(cover);
               return (
                 <button key={deal.id} type="button" className={styles.album} onClick={() => openAlbum(deal.id)}>
@@ -119,7 +131,7 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
                       <span className={styles["thumb-placeholder"]}>🎬</span>
                     )}
                     <span className={styles["album-badge"]}>
-                      {deal.photos.length} photo{deal.photos.length === 1 ? "" : "s"}
+                      {photos.length} photo{photos.length === 1 ? "" : "s"}
                     </span>
                   </span>
                   <span className={styles["thumb-caption"]}>
@@ -131,38 +143,64 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
             })}
           </div>
         ) : (
-          <div className={styles.grid}>
-            {activePhotos.map((photo, i) => {
-              const thumbUrl = dealThumbUrl(photo);
-              return (
-              <div key={photo.id} className={styles.thumb}>
-                <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
-                  <span className={styles["thumb-image-wrap"]}>
-                    {thumbUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={thumbUrl} alt={photo.caption ?? activeDeal.deal_name} loading="lazy" />
-                    ) : (
-                      <span className={styles["thumb-placeholder"]}>🎬</span>
-                    )}
-                    {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={styles["thumb-delete"]}
-                  aria-label="Delete photo"
-                  disabled={deletingId === photo.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(activeDeal, photo);
-                  }}
-                >
-                  ×
-                </button>
+          (() => {
+            let runningIndex = -1;
+            return (
+              <div className={styles["event-groups"]}>
+                {activeDeal.events
+                  .filter((event) => event.photos.length > 0)
+                  .map((event) => (
+                    <div key={event.id} className={styles["event-group"]}>
+                      <div className={styles["event-group-header"]}>
+                        {event.event_type && <span className={styles["event-type-badge"]}>{event.event_type}</span>}
+                        <span className={styles["event-group-name"]}>{event.name ?? "Site visit"}</span>
+                        <span className={styles["event-group-date"]}>
+                          {new Date(event.start_time).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                      <div className={styles.grid}>
+                        {event.photos.map((photo) => {
+                          runningIndex += 1;
+                          const i = runningIndex;
+                          const thumbUrl = dealThumbUrl(photo);
+                          return (
+                            <div key={photo.id} className={styles.thumb}>
+                              <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
+                                <span className={styles["thumb-image-wrap"]}>
+                                  {thumbUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={thumbUrl} alt={photo.caption ?? activeDeal.deal_name} loading="lazy" />
+                                  ) : (
+                                    <span className={styles["thumb-placeholder"]}>🎬</span>
+                                  )}
+                                  {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles["thumb-delete"]}
+                                aria-label="Delete photo"
+                                disabled={deletingId === photo.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(activeDeal, photo);
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
               </div>
-              );
-            })}
-          </div>
+            );
+          })()
         )}
       </div>
 

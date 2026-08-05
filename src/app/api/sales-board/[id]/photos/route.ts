@@ -32,27 +32,33 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
-    // If the client already knows which event this belongs to (e.g.
-    // uploading straight from an event's detail view), use that directly.
-    // Otherwise group this photo into an event (a site visit — same
-    // time+place as other nearby photos) when we have a location for it.
-    // Never blocks the upload itself if this fails.
-    const clientEventId = formData.get("eventId");
-    const eventId =
-      typeof clientEventId === "string" && clientEventId
-        ? Number(clientEventId)
-        : await linkToEvent(Number(id), latitude, longitude, takenAt);
+    // Every photo must belong to an event — the event, not the deal, is the
+    // base unit of truth here. deal_id on the row is derived from whatever
+    // deal the resolved event is (or isn't) attached to, not blindly from
+    // this URL's deal id. If this fails, the upload fails with it rather
+    // than leaving an eventless photo behind.
+    let eventId: number;
+    let resolvedDealId: number | null;
+    try {
+      const linked = await linkToEvent(Number(id), latitude, longitude, takenAt);
+      eventId = linked.eventId;
+      resolvedDealId = linked.dealId;
+    } catch (err) {
+      console.error("Event linking failed:", err);
+      await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove([path]);
+      return NextResponse.json({ error: "Failed to attach photo to an event" }, { status: 500 });
+    }
 
     const { data, error } = await supabase
       .from("deal_photos")
       .insert({
-        deal_id: Number(id),
+        deal_id: resolvedDealId,
+        event_id: eventId,
         storage_path: path,
         caption: typeof caption === "string" && caption.trim() ? caption.trim() : null,
         latitude,
         longitude,
         taken_at: takenAt,
-        event_id: eventId,
       })
       .select()
       .single();

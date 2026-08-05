@@ -114,33 +114,89 @@ export async function findOrCreateEvent(input: {
 }
 
 /**
- * Convenience wrapper around findOrCreateEvent for the photo/video upload
- * routes: resolves the uploading deal's property, then finds or creates a
- * matching event. Returns null (never throws) when there's no location to
- * link with, or if linking fails for any reason — this must never block
- * the upload itself.
+ * Groups an event purely by deal + time proximity, for the rare case where
+ * neither the photo itself nor the deal's jobsite has any known location at
+ * all — there's nothing to cluster by except "close in time, same deal".
+ */
+async function findOrCreateEventForDeal(dealId: number, takenAt: string, propertyId: number | null): Promise<Event> {
+  const takenAtMs = new Date(takenAt).getTime();
+
+  const { data: existing, error } = await supabase.from("events").select("*").eq("deal_id", dealId);
+  if (error) throw new Error(error.message);
+
+  for (const event of (existing ?? []) as Event[]) {
+    const startMs = new Date(event.start_time).getTime();
+    const endMs = new Date(event.end_time).getTime();
+    const gapMs = takenAtMs < startMs ? startMs - takenAtMs : takenAtMs > endMs ? takenAtMs - endMs : 0;
+    if (gapMs > DEFAULT_MAX_GAP_MS) continue;
+
+    const newStartMs = Math.min(startMs, takenAtMs);
+    const newEndMs = Math.max(endMs, takenAtMs);
+    const { data: updated, error: updateError } = await supabase
+      .from("events")
+      .update({ start_time: new Date(newStartMs).toISOString(), end_time: new Date(newEndMs).toISOString() })
+      .eq("id", event.id)
+      .select()
+      .single();
+    if (updateError) throw new Error(updateError.message);
+    return updated as Event;
+  }
+
+  const { data: created, error: insertError } = await supabase
+    .from("events")
+    .insert({ start_time: takenAt, end_time: takenAt, deal_id: dealId, property_id: propertyId })
+    .select()
+    .single();
+  if (insertError) throw new Error(insertError.message);
+  return created as Event;
+}
+
+/**
+ * Resolves the event a photo/video belongs to — every piece of media must
+ * end up attached to some event, since the event (not the deal) is the base
+ * unit of truth; a deal is just what an event may subsequently be attached
+ * to. Prefers the photo's own GPS; falls back to the deal's geocoded
+ * jobsite location when the photo has none; falls back further to grouping
+ * by deal + time proximity alone when neither is known. Unlike the old
+ * version of this function, failures are no longer swallowed — an event
+ * that can't be created is a real upload failure, not something to proceed
+ * past silently.
  */
 export async function linkToEvent(
   dealId: number,
   latitude: number | null,
   longitude: number | null,
   takenAt: string | null
-): Promise<number | null> {
-  if (latitude == null || longitude == null) return null;
-  try {
-    const { data: deal } = await supabase.from("Sales Board").select("property_id").eq("id", dealId).maybeSingle();
-    const event = await findOrCreateEvent({
-      latitude,
-      longitude,
-      takenAt: takenAt ?? new Date().toISOString(),
-      propertyId: deal?.property_id ?? null,
-      dealId,
-    });
-    return event.id;
-  } catch (err) {
-    console.error("Event linking failed:", err);
-    return null;
+): Promise<{ eventId: number; dealId: number | null }> {
+  const effectiveTakenAt = takenAt ?? new Date().toISOString();
+
+  const { data: deal, error: dealError } = await supabase
+    .from("Sales Board")
+    .select("property_id")
+    .eq("id", dealId)
+    .maybeSingle();
+  if (dealError) throw new Error(dealError.message);
+  const propertyId = deal?.property_id ?? null;
+
+  let effectiveLat = latitude;
+  let effectiveLng = longitude;
+  if ((effectiveLat == null || effectiveLng == null) && propertyId != null) {
+    const { data: property, error: propertyError } = await supabase
+      .from("properties")
+      .select("latitude, longitude")
+      .eq("id", propertyId)
+      .maybeSingle();
+    if (propertyError) throw new Error(propertyError.message);
+    effectiveLat = property?.latitude ?? null;
+    effectiveLng = property?.longitude ?? null;
   }
+
+  const event =
+    effectiveLat != null && effectiveLng != null
+      ? await findOrCreateEvent({ latitude: effectiveLat, longitude: effectiveLng, takenAt: effectiveTakenAt, propertyId, dealId })
+      : await findOrCreateEventForDeal(dealId, effectiveTakenAt, propertyId);
+
+  return { eventId: event.id, dealId: event.deal_id };
 }
 
 export async function createEventManually(input: {

@@ -2,17 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
 import { findOrCreateProperty } from "@/lib/properties";
+import { mapRawDealEvents, DEAL_EVENTS_SELECT } from "@/lib/dealEvents";
 
 export async function GET() {
   const { data, error } = await supabase
     .from("Sales Board")
-    .select("*, photos:deal_photos(*)")
+    .select(DEAL_EVENTS_SELECT)
     .order("created_at", { ascending: true });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ deals: data });
+  return NextResponse.json({ deals: mapRawDealEvents(data ?? []) });
 }
 
 export async function POST(req: NextRequest) {
@@ -55,11 +56,12 @@ export async function POST(req: NextRequest) {
       value: body.value ?? null,
       stage: body.stage ?? "Lead",
     })
-    .select("*, photos:deal_photos(*)")
+    .select()
     .single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ deal: data }, { status: 201 });
+  // A brand-new deal has no events yet.
+  return NextResponse.json({ deal: { ...data, events: [] } }, { status: 201 });
 }

@@ -239,29 +239,42 @@ export default function DealModal({
             <textarea id="dm-description" rows={3} value={form.proposal_description} onChange={(e) => set("proposal_description", e.target.value)} />
           </div>
 
-          <div className={`${styles["photo-row"]}`}>
-            {deal.photos.map((photo) => {
-              const thumbUrl = dealThumbUrl(photo);
-              return (
-                <div key={photo.id} className={styles["photo-thumb"]}>
-                  {thumbUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={thumbUrl} alt={photo.caption ?? deal.deal_name} />
-                  ) : (
-                    <span className={styles["photo-thumb-placeholder"]}>🎬</span>
-                  )}
-                  {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
-                  <button
-                    type="button"
-                    className={styles["photo-remove"]}
-                    aria-label="Delete photo"
-                    onClick={() => onDeletePhoto(deal.id, photo.id)}
-                  >
-                    ×
-                  </button>
+          <div className={styles["photo-events"]}>
+            {deal.events
+              .filter((event) => event.photos.length > 0)
+              .map((event) => (
+                <div key={event.id} className={styles["photo-event-group"]}>
+                  <div className={styles["photo-event-header"]}>
+                    {event.event_type && <span className={styles["event-type-badge"]}>{event.event_type}</span>}
+                    <span className={styles["photo-event-name"]}>{event.name ?? "Site visit"}</span>
+                    <span className={styles["photo-event-date"]}>{formatDateTime(event.start_time)}</span>
+                  </div>
+                  <div className={styles["photo-row"]}>
+                    {event.photos.map((photo) => {
+                      const thumbUrl = dealThumbUrl(photo);
+                      return (
+                        <div key={photo.id} className={styles["photo-thumb"]}>
+                          {thumbUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumbUrl} alt={photo.caption ?? deal.deal_name} />
+                          ) : (
+                            <span className={styles["photo-thumb-placeholder"]}>🎬</span>
+                          )}
+                          {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                          <button
+                            type="button"
+                            className={styles["photo-remove"]}
+                            aria-label="Delete photo"
+                            onClick={() => onDeletePhoto(deal.id, photo.id)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              );
-            })}
+              ))}
             <label className={styles["photo-add"]}>
               + Photo
               <input

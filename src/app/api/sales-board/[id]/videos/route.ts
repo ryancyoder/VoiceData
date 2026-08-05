@@ -17,7 +17,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     latitude?: unknown;
     longitude?: unknown;
     caption?: unknown;
-    eventId?: unknown;
   };
 
   const videoPath = typeof body.videoPath === "string" ? body.videoPath : "";
@@ -40,18 +39,26 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    // If the client already knows which event this belongs to (e.g.
-    // uploading straight from an event's detail view), use that directly
-    // instead of trying to auto-match by time+location.
-    const eventId =
-      typeof body.eventId === "number" || (typeof body.eventId === "string" && body.eventId)
-        ? Number(body.eventId)
-        : await linkToEvent(Number(id), latitude, longitude, takenAt);
+    // Every video must belong to an event — see the equivalent photos
+    // route for the full rationale. deal_id is derived from the resolved
+    // event, not blindly from this URL's deal id.
+    let eventId: number;
+    let resolvedDealId: number | null;
+    try {
+      const linked = await linkToEvent(Number(id), latitude, longitude, takenAt);
+      eventId = linked.eventId;
+      resolvedDealId = linked.dealId;
+    } catch (err) {
+      console.error("Event linking failed:", err);
+      await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove(posterPath ? [videoPath, posterPath] : [videoPath]);
+      return NextResponse.json({ error: "Failed to attach video to an event" }, { status: 500 });
+    }
 
     const { data, error } = await supabase
       .from("deal_photos")
       .insert({
-        deal_id: Number(id),
+        deal_id: resolvedDealId,
+        event_id: eventId,
         storage_path: videoPath,
         poster_path: posterPath,
         media_type: "video",
@@ -59,7 +66,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         latitude,
         longitude,
         taken_at: takenAt,
-        event_id: eventId,
       })
       .select()
       .single();

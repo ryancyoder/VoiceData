@@ -273,9 +273,10 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to upload photo");
-      setDeals((ds) =>
-        ds.map((d) => (d.id === dealId ? { ...d, photos: [...d.photos, data.photo] } : d))
-      );
+      // Which event the photo landed in isn't known client-side (it's
+      // resolved server-side from GPS/time/deal), so a full refresh is
+      // simpler and more correct than trying to reconstruct that nesting.
+      router.refresh();
     } catch (err) {
       const message =
         err instanceof Error && err.name === "AbortError"
@@ -290,7 +291,11 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
   async function handleDeletePhoto(dealId: number, photoId: number) {
     const previous = deals;
     setDeals((ds) =>
-      ds.map((d) => (d.id === dealId ? { ...d, photos: d.photos.filter((p) => p.id !== photoId) } : d))
+      ds.map((d) =>
+        d.id === dealId
+          ? { ...d, events: d.events.map((e) => ({ ...e, photos: e.photos.filter((p) => p.id !== photoId) })) }
+          : d
+      )
     );
     try {
       const res = await fetch(`/api/sales-board/${dealId}/photos/${photoId}`, { method: "DELETE" });
