@@ -5,10 +5,30 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./calendar.module.css";
 import { dealPhotoUrl } from "@/lib/salesBoard";
-import type { PhotoEvent } from "@/lib/photoEvents";
 import PhotoUpload from "./PhotoUpload";
 
-export interface CalendarEvent extends PhotoEvent {
+export interface GeoPhoto {
+  id: number;
+  deal_id: number;
+  storage_path: string;
+  caption: string | null;
+  created_at: string;
+  taken_at: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  event_id: number | null;
+}
+
+export interface CalendarEvent {
+  id: number;
+  name: string | null;
+  start: string;
+  end: string;
+  propertyId: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  dealIds: number[];
+  photos: GeoPhoto[];
   deals: { id: number; name: string; company: string | null; jobsiteAddress: string | null }[];
 }
 
@@ -18,6 +38,11 @@ export interface DealOption {
   company: string | null;
   stage: string;
   lost_at: string | null;
+}
+
+export interface PropertyOption {
+  id: number;
+  address: string;
 }
 
 const HOUR_HEIGHT = 48;
@@ -91,9 +116,17 @@ function layoutDay(day: Date, events: CalendarEvent[]): LaidOutEvent[] {
 }
 
 function eventLabel(event: CalendarEvent) {
+  if (event.name) return event.name;
   if (event.deals.length === 0) return "Unknown deal";
   if (event.deals.length === 1) return event.deals[0].name;
   return `${event.deals[0].name} +${event.deals.length - 1}`;
+}
+
+// <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in local time.
+function toDatetimeLocal(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function timeRangeLabel(event: CalendarEvent) {
@@ -104,20 +137,146 @@ function timeRangeLabel(event: CalendarEvent) {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
+interface EventFormState {
+  name: string;
+  start: string;
+  end: string;
+  propertyId: number | "";
+}
+
+function emptyEventForm(): EventFormState {
+  const now = toDatetimeLocal(new Date().toISOString());
+  return { name: "", start: now, end: now, propertyId: "" };
+}
+
+function eventToForm(event: CalendarEvent): EventFormState {
+  return {
+    name: event.name ?? "",
+    start: toDatetimeLocal(event.start),
+    end: toDatetimeLocal(event.end),
+    propertyId: event.propertyId ?? "",
+  };
+}
+
 export default function CalendarClient({
   events,
   ungeotaggedCount,
   dealOptions,
+  propertyOptions,
 }: {
   events: CalendarEvent[];
   ungeotaggedCount: number;
   dealOptions: DealOption[];
+  propertyOptions: PropertyOption[];
 }) {
   const router = useRouter();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  const [newEventOpen, setNewEventOpen] = useState(false);
+  const [newEventForm, setNewEventForm] = useState<EventFormState>(emptyEventForm);
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [newEventError, setNewEventError] = useState<string | null>(null);
+
+  const [editingEvent, setEditingEvent] = useState(false);
+  const [editForm, setEditForm] = useState<EventFormState | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const [mergeTargetId, setMergeTargetId] = useState<number | "">("");
+  const [merging, setMerging] = useState(false);
+
+  async function handleCreateEvent() {
+    setCreatingEvent(true);
+    setNewEventError(null);
+    try {
+      const res = await fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newEventForm.name || null,
+          start_time: new Date(newEventForm.start).toISOString(),
+          end_time: new Date(newEventForm.end).toISOString(),
+          property_id: newEventForm.propertyId === "" ? null : newEventForm.propertyId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create event");
+      setNewEventOpen(false);
+      setNewEventForm(emptyEventForm());
+      router.refresh();
+    } catch (err) {
+      setNewEventError(err instanceof Error ? err.message : "Failed to create event");
+    } finally {
+      setCreatingEvent(false);
+    }
+  }
+
+  function startEditingEvent() {
+    if (!selectedEvent) return;
+    setEditForm(eventToForm(selectedEvent));
+    setEditError(null);
+    setEditingEvent(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!selectedEvent || !editForm) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/events/${selectedEvent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editForm.name || null,
+          start_time: new Date(editForm.start).toISOString(),
+          end_time: new Date(editForm.end).toISOString(),
+          property_id: editForm.propertyId === "" ? null : editForm.propertyId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save event");
+      setSelectedEvent({
+        ...selectedEvent,
+        name: data.event.name,
+        start: data.event.start_time,
+        end: data.event.end_time,
+        propertyId: data.event.property_id,
+        latitude: data.event.latitude,
+        longitude: data.event.longitude,
+      });
+      setEditingEvent(false);
+      router.refresh();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to save event");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleMerge() {
+    if (!selectedEvent || mergeTargetId === "") return;
+    if (!window.confirm("Merge this event into the selected one? This event will be deleted.")) return;
+    setMerging(true);
+    try {
+      const res = await fetch(`/api/events/${selectedEvent.id}/merge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetEventId: mergeTargetId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to merge events");
+      setSelectedEvent(null);
+      setMergeTargetId("");
+      router.refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to merge events");
+    } finally {
+      setMerging(false);
+    }
+  }
 
   useLayoutEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = 6 * HOUR_HEIGHT;
@@ -163,7 +322,7 @@ export default function CalendarClient({
         <div className={styles.brand}>
           <h1>Calendar</h1>
           <p>
-            Job site events built from photo timestamps &amp; location ·{" "}
+            Job site events, auto-grouped from photo timestamps &amp; location or created by hand ·{" "}
             <Link href="/photos" className={styles["brand-back"]}>
               Photos
             </Link>{" "}
@@ -187,6 +346,17 @@ export default function CalendarClient({
         </button>
         <span className={styles["range-label"]}>{rangeLabel}</span>
         <PhotoUpload dealOptions={dealOptions} onUploaded={() => router.refresh()} />
+        <button
+          type="button"
+          className={styles["nav-btn"]}
+          onClick={() => {
+            setNewEventForm(emptyEventForm());
+            setNewEventError(null);
+            setNewEventOpen(true);
+          }}
+        >
+          + New Event
+        </button>
         {ungeotaggedCount > 0 && (
           <span className={styles["ungeotagged-note"]}>
             {ungeotaggedCount} photo{ungeotaggedCount === 1 ? "" : "s"} without location data can&apos;t be placed here.
@@ -258,26 +428,119 @@ export default function CalendarClient({
         <div
           className={styles["modal-overlay"]}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedEvent(null);
+            if (e.target === e.currentTarget) {
+              setSelectedEvent(null);
+              setEditingEvent(false);
+            }
           }}
         >
           <div className={styles["modal-panel"]}>
-            <div className={styles["modal-head"]}>
-              <div>
-                <h2 className={styles["modal-title"]}>{eventLabel(selectedEvent)}</h2>
-                <div className={styles["modal-subtitle"]}>
-                  {new Date(selectedEvent.start).toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  })}{" "}
-                  · {timeRangeLabel(selectedEvent)}
+            {!editingEvent && (
+              <div className={styles["modal-head"]}>
+                <div>
+                  <h2 className={styles["modal-title"]}>{eventLabel(selectedEvent)}</h2>
+                  <div className={styles["modal-subtitle"]}>
+                    {new Date(selectedEvent.start).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}{" "}
+                    · {timeRangeLabel(selectedEvent)}
+                  </div>
+                </div>
+                <div className={styles["modal-head-actions"]}>
+                  <button type="button" className={styles["nav-btn"]} onClick={startEditingEvent}>
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={styles["modal-close"]}
+                    aria-label="Close"
+                    onClick={() => {
+                      setSelectedEvent(null);
+                      setEditingEvent(false);
+                    }}
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
-              <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={() => setSelectedEvent(null)}>
-                ×
-              </button>
-            </div>
+            )}
+
+            {editingEvent && editForm && (
+              <div className={styles["event-edit-form"]}>
+                <label className={styles["event-edit-label"]}>
+                  Name
+                  <input
+                    type="text"
+                    placeholder={eventLabel(selectedEvent)}
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  />
+                </label>
+                <label className={styles["event-edit-label"]}>
+                  Start
+                  <input
+                    type="datetime-local"
+                    value={editForm.start}
+                    onChange={(e) => setEditForm({ ...editForm, start: e.target.value })}
+                  />
+                </label>
+                <label className={styles["event-edit-label"]}>
+                  End
+                  <input
+                    type="datetime-local"
+                    value={editForm.end}
+                    onChange={(e) => setEditForm({ ...editForm, end: e.target.value })}
+                  />
+                </label>
+                <label className={styles["event-edit-label"]}>
+                  Property
+                  <select
+                    value={editForm.propertyId}
+                    onChange={(e) => setEditForm({ ...editForm, propertyId: e.target.value ? Number(e.target.value) : "" })}
+                  >
+                    <option value="">No property</option>
+                    {propertyOptions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.address}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {editError && <div className={styles["upload-error"]}>{editError}</div>}
+                <div className={styles["upload-actions"]}>
+                  <button type="button" className={styles["card-edit-cancel"]} onClick={() => setEditingEvent(false)} disabled={savingEdit}>
+                    Cancel
+                  </button>
+                  <button type="button" className={styles["card-edit-save"]} onClick={handleSaveEdit} disabled={savingEdit}>
+                    {savingEdit ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!editingEvent && events.length > 1 && (
+              <div className={styles["merge-bar"]}>
+                <select
+                  value={mergeTargetId}
+                  onChange={(e) => setMergeTargetId(e.target.value ? Number(e.target.value) : "")}
+                  disabled={merging}
+                >
+                  <option value="">Merge into…</option>
+                  {events
+                    .filter((e) => e.id !== selectedEvent.id)
+                    .map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {eventLabel(e)} · {new Date(e.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </option>
+                    ))}
+                </select>
+                <button type="button" className={styles["nav-btn"]} disabled={mergeTargetId === "" || merging} onClick={handleMerge}>
+                  {merging ? "Merging…" : "Merge"}
+                </button>
+              </div>
+            )}
 
             <div className={styles["deal-list"]}>
               {selectedEvent.deals.map((deal) => (
@@ -345,6 +608,87 @@ export default function CalendarClient({
               <button type="button" className={styles["lightbox-nav"]} onClick={() => setLightboxIndex(null)}>
                 Back to event
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {newEventOpen && (
+        <div
+          className={styles["modal-overlay"]}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !creatingEvent) setNewEventOpen(false);
+          }}
+        >
+          <div className={styles["modal-panel"]}>
+            <div className={styles["modal-head"]}>
+              <h2 className={styles["modal-title"]}>New event</h2>
+              <button
+                type="button"
+                className={styles["modal-close"]}
+                aria-label="Close"
+                onClick={() => setNewEventOpen(false)}
+                disabled={creatingEvent}
+              >
+                ×
+              </button>
+            </div>
+            <div className={styles["event-edit-form"]}>
+              <label className={styles["event-edit-label"]}>
+                Name (optional)
+                <input
+                  type="text"
+                  placeholder="e.g. Site walkthrough"
+                  value={newEventForm.name}
+                  onChange={(e) => setNewEventForm({ ...newEventForm, name: e.target.value })}
+                />
+              </label>
+              <label className={styles["event-edit-label"]}>
+                Start
+                <input
+                  type="datetime-local"
+                  value={newEventForm.start}
+                  onChange={(e) => setNewEventForm({ ...newEventForm, start: e.target.value })}
+                />
+              </label>
+              <label className={styles["event-edit-label"]}>
+                End
+                <input
+                  type="datetime-local"
+                  value={newEventForm.end}
+                  onChange={(e) => setNewEventForm({ ...newEventForm, end: e.target.value })}
+                />
+              </label>
+              <label className={styles["event-edit-label"]}>
+                Property (optional)
+                <select
+                  value={newEventForm.propertyId}
+                  onChange={(e) =>
+                    setNewEventForm({ ...newEventForm, propertyId: e.target.value ? Number(e.target.value) : "" })
+                  }
+                >
+                  <option value="">No property</option>
+                  {propertyOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.address}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {newEventError && <div className={styles["upload-error"]}>{newEventError}</div>}
+              <div className={styles["upload-actions"]}>
+                <button
+                  type="button"
+                  className={styles["card-edit-cancel"]}
+                  onClick={() => setNewEventOpen(false)}
+                  disabled={creatingEvent}
+                >
+                  Cancel
+                </button>
+                <button type="button" className={styles["card-edit-save"]} onClick={handleCreateEvent} disabled={creatingEvent}>
+                  {creatingEvent ? "Creating…" : "Create event"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

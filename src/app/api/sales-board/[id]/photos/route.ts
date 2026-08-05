@@ -3,6 +3,7 @@ import exifr from "exifr";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 import { withTimeout } from "@/lib/withTimeout";
+import { findOrCreateEvent } from "@/lib/events";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -107,6 +108,29 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
+    // Group this photo into an event (a site visit — same time+place as
+    // other nearby photos) when we have a location for it. Never blocks
+    // the upload itself if this fails.
+    let eventId: number | null = null;
+    if (latitude != null && longitude != null) {
+      try {
+        const { data: deal } = await supabase
+          .from("Sales Board")
+          .select("property_id")
+          .eq("id", id)
+          .maybeSingle();
+        const event = await findOrCreateEvent({
+          latitude,
+          longitude,
+          takenAt: takenAt ?? new Date().toISOString(),
+          propertyId: deal?.property_id ?? null,
+        });
+        eventId = event.id;
+      } catch (err) {
+        console.error("Event linking failed:", err);
+      }
+    }
+
     const { data, error } = await supabase
       .from("deal_photos")
       .insert({
@@ -116,6 +140,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         latitude,
         longitude,
         taken_at: takenAt,
+        event_id: eventId,
       })
       .select()
       .single();

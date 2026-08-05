@@ -21,6 +21,7 @@ export interface DealPhoto {
   latitude: number | null;
   longitude: number | null;
   taken_at: string | null;
+  event_id: number | null;
 }
 
 export interface Property {

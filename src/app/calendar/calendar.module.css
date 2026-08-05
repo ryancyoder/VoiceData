@@ -360,3 +360,46 @@
   color: var(--text-muted);
 }
 .card-edit-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.modal-head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.event-edit-form { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+.event-edit-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.event-edit-label input,
+.event-edit-label select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.event-edit-label input:focus,
+.event-edit-label select:focus { border-color: var(--accent); outline: none; }
+
+.merge-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.merge-bar select {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  color: var(--text);
+}
