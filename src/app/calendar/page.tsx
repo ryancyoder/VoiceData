@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import type { Deal, DealPhoto } from "@/lib/salesBoard";
+import type { EventType } from "@/lib/events";
 import CalendarClient, { type CalendarEvent, type DealOption, type PropertyOption } from "./CalendarClient";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ type RawEvent = {
   end_time: string;
   property_id: number | null;
   deal_id: number | null;
+  event_type: EventType | null;
   latitude: number | null;
   longitude: number | null;
   deal_photos: RawPhoto[];
@@ -71,6 +73,7 @@ export default async function CalendarPage() {
       end: event.end_time,
       propertyId: event.property_id,
       dealId: event.deal_id,
+      eventType: event.event_type,
       latitude: event.latitude,
       longitude: event.longitude,
       dealIds,

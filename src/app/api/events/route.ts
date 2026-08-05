@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createEventManually } from "@/lib/events";
+import { createEventManually, EVENT_TYPES, type EventType } from "@/lib/events";
+
+function parseEventType(value: unknown): EventType | null {
+  return typeof value === "string" && (EVENT_TYPES as readonly string[]).includes(value) ? (value as EventType) : null;
+}
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as {
@@ -8,6 +12,7 @@ export async function POST(req: NextRequest) {
     end_time?: unknown;
     property_id?: unknown;
     deal_id?: unknown;
+    event_type?: unknown;
   };
 
   const startTime = typeof body.start_time === "string" ? body.start_time : "";
@@ -20,6 +25,7 @@ export async function POST(req: NextRequest) {
   const propertyId =
     typeof body.property_id === "number" ? body.property_id : Number(body.property_id) || null;
   const dealId = typeof body.deal_id === "number" ? body.deal_id : Number(body.deal_id) || null;
+  const eventType = parseEventType(body.event_type);
 
   try {
     const event = await createEventManually({
@@ -28,6 +34,7 @@ export async function POST(req: NextRequest) {
       end_time: endTime,
       property_id: propertyId,
       deal_id: dealId,
+      event_type: eventType,
     });
     return NextResponse.json({ event }, { status: 201 });
   } catch (err) {

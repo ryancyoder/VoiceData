@@ -2,6 +2,10 @@ import { supabase } from "@/lib/supabaseClient";
 import { haversineMeters } from "@/lib/geocode";
 import { DEFAULT_MAX_GAP_MS, DEFAULT_MAX_DISTANCE_METERS } from "@/lib/photoEvents";
 
+export const EVENT_TYPES = ["Appointment", "Consultation", "Design", "Estimating", "Meeting", "Job", "Other"] as const;
+
+export type EventType = (typeof EVENT_TYPES)[number];
+
 export interface Event {
   id: number;
   name: string | null;
@@ -9,6 +13,7 @@ export interface Event {
   end_time: string;
   property_id: number | null;
   deal_id: number | null;
+  event_type: EventType | null;
   latitude: number | null;
   longitude: number | null;
   created_at: string;
@@ -144,6 +149,7 @@ export async function createEventManually(input: {
   end_time: string;
   property_id: number | null;
   deal_id: number | null;
+  event_type: EventType | null;
 }): Promise<Event> {
   let latitude: number | null = null;
   let longitude: number | null = null;
@@ -167,6 +173,7 @@ export async function createEventManually(input: {
       end_time: input.end_time,
       property_id: input.property_id,
       deal_id: input.deal_id,
+      event_type: input.event_type,
       latitude,
       longitude,
     })
@@ -184,6 +191,7 @@ export async function updateEvent(
     end_time?: string;
     property_id?: number | null;
     deal_id?: number | null;
+    event_type?: EventType | null;
   }
 ): Promise<Event> {
   const update: Record<string, unknown> = { ...patch };
@@ -247,6 +255,7 @@ export async function mergeEvents(sourceId: number, targetId: number): Promise<E
       longitude: centroid?.longitude ?? target.longitude,
       property_id: target.property_id ?? source.property_id,
       deal_id: target.deal_id ?? source.deal_id,
+      event_type: target.event_type ?? source.event_type,
     })
     .eq("id", targetId)
     .select()

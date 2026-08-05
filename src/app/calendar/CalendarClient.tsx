@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./calendar.module.css";
 import { dealPhotoUrl, dealThumbUrl } from "@/lib/salesBoard";
+import { EVENT_TYPES, type EventType } from "@/lib/events";
 import PhotoUpload from "./PhotoUpload";
 import EventMediaUpload from "./EventMediaUpload";
 import EventPhotoUpload from "./EventPhotoUpload";
@@ -30,6 +31,7 @@ export interface CalendarEvent {
   end: string;
   propertyId: number | null;
   dealId: number | null;
+  eventType: EventType | null;
   latitude: number | null;
   longitude: number | null;
   dealIds: number[];
@@ -155,11 +157,12 @@ interface EventFormState {
   end: string;
   propertyId: number | "";
   dealId: number | "";
+  eventType: EventType | "";
 }
 
 function emptyEventForm(): EventFormState {
   const now = toDatetimeLocal(new Date().toISOString());
-  return { name: "", start: now, end: now, propertyId: "", dealId: "" };
+  return { name: "", start: now, end: now, propertyId: "", dealId: "", eventType: "" };
 }
 
 function eventToForm(event: CalendarEvent): EventFormState {
@@ -169,6 +172,7 @@ function eventToForm(event: CalendarEvent): EventFormState {
     end: toDatetimeLocal(event.end),
     propertyId: event.propertyId ?? "",
     dealId: event.dealId ?? "",
+    eventType: event.eventType ?? "",
   };
 }
 
@@ -310,6 +314,7 @@ export default function CalendarClient({
           end_time: new Date(newEventForm.end).toISOString(),
           property_id: newEventForm.propertyId === "" ? null : newEventForm.propertyId,
           deal_id: newEventForm.dealId === "" ? null : newEventForm.dealId,
+          event_type: newEventForm.eventType === "" ? null : newEventForm.eventType,
         }),
       });
       const data = await res.json();
@@ -345,6 +350,7 @@ export default function CalendarClient({
           end_time: new Date(editForm.end).toISOString(),
           property_id: editForm.propertyId === "" ? null : editForm.propertyId,
           deal_id: editForm.dealId === "" ? null : editForm.dealId,
+          event_type: editForm.eventType === "" ? null : editForm.eventType,
         }),
       });
       const data = await res.json();
@@ -359,6 +365,7 @@ export default function CalendarClient({
         end: data.event.end_time,
         propertyId: data.event.property_id,
         dealId: newDealId,
+        eventType: data.event.event_type,
         latitude: data.event.latitude,
         longitude: data.event.longitude,
         dealIds: hasDeal || newDealId == null ? selectedEvent.dealIds : [...selectedEvent.dealIds, newDealId],
@@ -602,6 +609,7 @@ export default function CalendarClient({
                         beginDrag(event, "resize-start", e.clientY);
                       }}
                     />
+                    {event.eventType && <div className={styles["event-type-badge"]}>{event.eventType}</div>}
                     <div className={styles["event-title"]}>{eventLabel(event)}</div>
                     <div className={styles["event-meta"]}>
                       {timeRangeLabel(event)} · {event.photos.length} photo{event.photos.length === 1 ? "" : "s"}
@@ -637,6 +645,9 @@ export default function CalendarClient({
             {!editingEvent && (
               <div className={styles["modal-head"]}>
                 <div>
+                  {selectedEvent.eventType && (
+                    <div className={styles["event-type-badge"]}>{selectedEvent.eventType}</div>
+                  )}
                   <h2 className={styles["modal-title"]}>{eventLabel(selectedEvent)}</h2>
                   <div className={styles["modal-subtitle"]}>
                     {new Date(selectedEvent.start).toLocaleDateString("en-US", {
@@ -726,6 +737,20 @@ export default function CalendarClient({
                       <option key={d.id} value={d.id}>
                         {d.deal_name}
                         {d.company ? ` (${d.company})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles["event-edit-label"]}>
+                  Type
+                  <select
+                    value={editForm.eventType}
+                    onChange={(e) => setEditForm({ ...editForm, eventType: e.target.value as EventType | "" })}
+                  >
+                    <option value="">No type</option>
+                    {EVENT_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
                       </option>
                     ))}
                   </select>
@@ -927,6 +952,20 @@ export default function CalendarClient({
                     <option key={d.id} value={d.id}>
                       {d.deal_name}
                       {d.company ? ` (${d.company})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles["event-edit-label"]}>
+                Type (optional)
+                <select
+                  value={newEventForm.eventType}
+                  onChange={(e) => setNewEventForm({ ...newEventForm, eventType: e.target.value as EventType | "" })}
+                >
+                  <option value="">No type</option>
+                  {EVENT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
                     </option>
                   ))}
                 </select>

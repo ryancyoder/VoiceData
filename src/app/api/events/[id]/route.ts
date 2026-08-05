@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateEvent } from "@/lib/events";
+import { updateEvent, EVENT_TYPES, type EventType } from "@/lib/events";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -11,6 +11,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     end_time?: unknown;
     property_id?: unknown;
     deal_id?: unknown;
+    event_type?: unknown;
   };
 
   const patch: {
@@ -19,6 +20,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     end_time?: string;
     property_id?: number | null;
     deal_id?: number | null;
+    event_type?: EventType | null;
   } = {};
 
   if ("name" in body) {
@@ -41,6 +43,12 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   }
   if ("deal_id" in body) {
     patch.deal_id = body.deal_id == null ? null : Number(body.deal_id);
+  }
+  if ("event_type" in body) {
+    patch.event_type =
+      typeof body.event_type === "string" && (EVENT_TYPES as readonly string[]).includes(body.event_type)
+        ? (body.event_type as EventType)
+        : null;
   }
 
   try {
