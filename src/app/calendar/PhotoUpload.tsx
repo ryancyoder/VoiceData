@@ -4,6 +4,11 @@ import { useMemo, useRef, useState } from "react";
 import exifr from "exifr";
 import styles from "./calendar.module.css";
 import type { DealOption } from "./CalendarClient";
+import { withTimeout } from "@/lib/withTimeout";
+
+const GPS_READ_TIMEOUT_MS = 6000;
+const MATCH_FETCH_TIMEOUT_MS = 8000;
+const UPLOAD_TIMEOUT_MS = 60000;
 
 interface MatchCandidate {
   id: number;
@@ -29,12 +34,12 @@ interface PendingPhoto {
 
 async function readClientGps(file: File) {
   try {
-    const gps = await exifr.gps(file);
+    const gps = await withTimeout(exifr.gps(file), GPS_READ_TIMEOUT_MS, "GPS read");
     if (gps && typeof gps.latitude === "number" && typeof gps.longitude === "number") {
       return { latitude: gps.latitude, longitude: gps.longitude };
     }
   } catch {
-    /* no readable GPS — fall back to manual deal selection */
+    /* no readable GPS, or the read timed out — fall back to manual deal selection */
   }
   return null;
 }
@@ -72,28 +77,33 @@ export default function PhotoUpload({
     setPending((p) => [...p, ...items]);
     setPanelOpen(true);
 
-    for (const item of items) {
-      const gps = await readClientGps(item.file);
-      let candidates: MatchCandidate[] = [];
-      if (gps) {
-        try {
-          const res = await fetch("/api/sales-board/match-location", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(gps),
-          });
-          const data = await res.json();
-          if (res.ok) candidates = data.candidates ?? [];
-        } catch {
-          /* match lookup failed — user can still pick a deal manually */
+    // Each file is matched independently and in parallel — a slow or stuck
+    // file (large HEIC, unusual EXIF) only delays itself, not the batch.
+    await Promise.all(
+      items.map(async (item) => {
+        const gps = await readClientGps(item.file);
+        let candidates: MatchCandidate[] = [];
+        if (gps) {
+          try {
+            const res = await fetch("/api/sales-board/match-location", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(gps),
+              signal: AbortSignal.timeout(MATCH_FETCH_TIMEOUT_MS),
+            });
+            const data = await res.json();
+            if (res.ok) candidates = data.candidates ?? [];
+          } catch {
+            /* match lookup failed or timed out — user can still pick a deal manually */
+          }
         }
-      }
-      const best = candidates[0];
-      const autoSelected: number | "" = best ? best.id : "";
-      setPending((p) =>
-        p.map((it) => (it.id === item.id ? { ...it, gps, candidates, selectedDealId: autoSelected, status: "ready" } : it))
-      );
-    }
+        const best = candidates[0];
+        const autoSelected: number | "" = best ? best.id : "";
+        setPending((p) =>
+          p.map((it) => (it.id === item.id ? { ...it, gps, candidates, selectedDealId: autoSelected, status: "ready" } : it))
+        );
+      })
+    );
   }
 
   function removePending(id: string) {
@@ -123,18 +133,17 @@ export default function PhotoUpload({
         const res = await fetch(`/api/sales-board/${item.selectedDealId}/photos`, {
           method: "POST",
           body: formData,
+          signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Upload failed");
         anyUploaded = true;
         setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "done" } : it)));
       } catch (err) {
+        const message =
+          err instanceof Error && err.name === "TimeoutError" ? "Upload timed out — try again" : err instanceof Error ? err.message : "Upload failed";
         setPending((p) =>
-          p.map((it) =>
-            it.id === item.id
-              ? { ...it, status: "error", error: err instanceof Error ? err.message : "Upload failed" }
-              : it
-          )
+          p.map((it) => (it.id === item.id ? { ...it, status: "error", error: message } : it))
         );
       }
     }

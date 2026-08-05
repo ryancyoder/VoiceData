@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import exifr from "exifr";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
+import { withTimeout } from "@/lib/withTimeout";
 
 type RouteParams = { params: Promise<{ id: string }> };
+
+const EXIF_TIMEOUT_MS = 8000;
 
 async function readExif(file: File) {
   let latitude: number | null = null;
@@ -12,7 +15,13 @@ async function readExif(file: File) {
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const exif = await exifr.parse(buffer);
+    // Only the segments we actually use — skips thumbnail/ICC/IPTC/XMP,
+    // which can be large and slow to parse on real camera photos.
+    const exif = await withTimeout(
+      exifr.parse(buffer, { gps: true, exif: true, ifd1: false, icc: false, iptc: false, xmp: false, interop: false }),
+      EXIF_TIMEOUT_MS,
+      "EXIF parse"
+    );
     if (typeof exif?.latitude === "number" && typeof exif?.longitude === "number") {
       latitude = exif.latitude;
       longitude = exif.longitude;
@@ -22,7 +31,8 @@ async function readExif(file: File) {
       takenAt = captured.toISOString();
     }
   } catch {
-    // No readable EXIF data (screenshot, stripped metadata, unsupported format) — proceed without it.
+    // No readable EXIF data, or parsing timed out — proceed without it.
+    // This must never block the actual upload.
   }
 
   return { latitude, longitude, takenAt };

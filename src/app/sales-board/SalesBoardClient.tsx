@@ -9,6 +9,8 @@ import DealCard, { type UiDeal } from "./DealCard";
 import DealModal from "./DealModal";
 import LostModal from "./LostModal";
 
+const PHOTO_UPLOAD_TIMEOUT_MS = 60000;
+
 const STAGE_COLORS: Record<Stage, string> = {
   Lead: "var(--c-lead)",
   Propose: "var(--c-propose)",
@@ -263,14 +265,24 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch(`/api/sales-board/${dealId}/photos`, { method: "POST", body: formData });
+      const res = await fetch(`/api/sales-board/${dealId}/photos`, {
+        method: "POST",
+        body: formData,
+        signal: AbortSignal.timeout(PHOTO_UPLOAD_TIMEOUT_MS),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to upload photo");
       setDeals((ds) =>
         ds.map((d) => (d.id === dealId ? { ...d, photos: [...d.photos, data.photo] } : d))
       );
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to upload photo");
+      const message =
+        err instanceof Error && err.name === "TimeoutError"
+          ? "Upload timed out — try again"
+          : err instanceof Error
+            ? err.message
+            : "Failed to upload photo";
+      showToast(message);
     }
   }
 
