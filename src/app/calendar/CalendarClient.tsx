@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import styles from "./calendar.module.css";
 import { dealPhotoUrl, dealThumbUrl } from "@/lib/salesBoard";
 import PhotoUpload from "./PhotoUpload";
+import EventMediaUpload from "./EventMediaUpload";
 
 export interface GeoPhoto {
   id: number;
@@ -382,6 +383,31 @@ export default function CalendarClient({
     }
   }
 
+  function handleEventMediaUploaded(eventId: number, photo: GeoPhoto) {
+    setSelectedEvent((current) => {
+      if (!current || current.id !== eventId) return current;
+      const hasDeal = current.dealIds.includes(photo.deal_id);
+      const dealOption = dealOptions.find((d) => d.id === photo.deal_id);
+      return {
+        ...current,
+        photos: [...current.photos, photo],
+        dealIds: hasDeal ? current.dealIds : [...current.dealIds, photo.deal_id],
+        deals: hasDeal
+          ? current.deals
+          : [
+              ...current.deals,
+              {
+                id: photo.deal_id,
+                name: dealOption?.deal_name ?? `Deal #${photo.deal_id}`,
+                company: dealOption?.company ?? null,
+                jobsiteAddress: null,
+              },
+            ],
+      };
+    });
+    router.refresh();
+  }
+
   useLayoutEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = 6 * HOUR_HEIGHT;
   }, []);
@@ -596,6 +622,11 @@ export default function CalendarClient({
                   </div>
                 </div>
                 <div className={styles["modal-head-actions"]}>
+                  <EventMediaUpload
+                    event={selectedEvent}
+                    dealOptions={dealOptions}
+                    onUploaded={(photo) => handleEventMediaUploaded(selectedEvent.id, photo)}
+                  />
                   <button type="button" className={styles["nav-btn"]} onClick={startEditingEvent}>
                     Edit
                   </button>

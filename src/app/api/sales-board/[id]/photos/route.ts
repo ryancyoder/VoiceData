@@ -97,10 +97,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
-    // Group this photo into an event (a site visit — same time+place as
-    // other nearby photos) when we have a location for it. Never blocks
-    // the upload itself if this fails.
-    const eventId = await linkToEvent(Number(id), latitude, longitude, takenAt);
+    // If the client already knows which event this belongs to (e.g.
+    // uploading straight from an event's detail view), use that directly.
+    // Otherwise group this photo into an event (a site visit — same
+    // time+place as other nearby photos) when we have a location for it.
+    // Never blocks the upload itself if this fails.
+    const clientEventId = formData.get("eventId");
+    const eventId =
+      typeof clientEventId === "string" && clientEventId
+        ? Number(clientEventId)
+        : await linkToEvent(Number(id), latitude, longitude, takenAt);
 
     const { data, error } = await supabase
       .from("deal_photos")

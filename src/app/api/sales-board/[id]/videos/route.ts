@@ -17,6 +17,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     latitude?: unknown;
     longitude?: unknown;
     caption?: unknown;
+    eventId?: unknown;
   };
 
   const videoPath = typeof body.videoPath === "string" ? body.videoPath : "";
@@ -39,7 +40,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const eventId = await linkToEvent(Number(id), latitude, longitude, takenAt);
+    // If the client already knows which event this belongs to (e.g.
+    // uploading straight from an event's detail view), use that directly
+    // instead of trying to auto-match by time+location.
+    const eventId =
+      typeof body.eventId === "number" || (typeof body.eventId === "string" && body.eventId)
+        ? Number(body.eventId)
+        : await linkToEvent(Number(id), latitude, longitude, takenAt);
 
     const { data, error } = await supabase
       .from("deal_photos")
