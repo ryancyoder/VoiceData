@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
-import { dealPhotoUrl, type Deal } from "@/lib/salesBoard";
+import { dealPhotoUrl, dealThumbUrl, type Deal } from "@/lib/salesBoard";
 
 type GalleryDeal = Pick<Deal, "id" | "deal_name" | "company" | "stage" | "lost_at" | "photos">;
 type GalleryPhoto = GalleryDeal["photos"][number];
@@ -108,11 +108,16 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
           <div className={styles.grid}>
             {dealsWithPhotos.map((deal) => {
               const cover = deal.photos[0];
+              const coverThumb = dealThumbUrl(cover);
               return (
                 <button key={deal.id} type="button" className={styles.album} onClick={() => openAlbum(deal.id)}>
                   <span className={styles["thumb-image-wrap"]}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={dealPhotoUrl(cover.storage_path)} alt={cover.caption ?? deal.deal_name} loading="lazy" />
+                    {coverThumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={coverThumb} alt={cover.caption ?? deal.deal_name} loading="lazy" />
+                    ) : (
+                      <span className={styles["thumb-placeholder"]}>🎬</span>
+                    )}
                     <span className={styles["album-badge"]}>
                       {deal.photos.length} photo{deal.photos.length === 1 ? "" : "s"}
                     </span>
@@ -127,12 +132,19 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
           </div>
         ) : (
           <div className={styles.grid}>
-            {activePhotos.map((photo, i) => (
+            {activePhotos.map((photo, i) => {
+              const thumbUrl = dealThumbUrl(photo);
+              return (
               <div key={photo.id} className={styles.thumb}>
                 <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
                   <span className={styles["thumb-image-wrap"]}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={dealPhotoUrl(photo.storage_path)} alt={photo.caption ?? activeDeal.deal_name} loading="lazy" />
+                    {thumbUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumbUrl} alt={photo.caption ?? activeDeal.deal_name} loading="lazy" />
+                    ) : (
+                      <span className={styles["thumb-placeholder"]}>🎬</span>
+                    )}
+                    {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
                   </span>
                 </button>
                 <button
@@ -148,7 +160,8 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
                   ×
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -162,8 +175,19 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
         >
           <div className={styles["lightbox-panel"]}>
             <div className={styles["lightbox-image-wrap"]}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? activeDeal.deal_name} />
+              {activePhoto.media_type === "video" ? (
+                <video
+                  key={activePhoto.id}
+                  src={dealPhotoUrl(activePhoto.storage_path)}
+                  poster={activePhoto.poster_path ? dealPhotoUrl(activePhoto.poster_path) : undefined}
+                  controls
+                  autoPlay
+                  className={styles["lightbox-video"]}
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? activeDeal.deal_name} />
+              )}
             </div>
             <div className={styles["lightbox-head"]}>
               <div className={styles["lightbox-head-main"]}>

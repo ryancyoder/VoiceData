@@ -104,6 +104,35 @@ export async function findOrCreateEvent(input: {
   return created as Event;
 }
 
+/**
+ * Convenience wrapper around findOrCreateEvent for the photo/video upload
+ * routes: resolves the uploading deal's property, then finds or creates a
+ * matching event. Returns null (never throws) when there's no location to
+ * link with, or if linking fails for any reason — this must never block
+ * the upload itself.
+ */
+export async function linkToEvent(
+  dealId: number,
+  latitude: number | null,
+  longitude: number | null,
+  takenAt: string | null
+): Promise<number | null> {
+  if (latitude == null || longitude == null) return null;
+  try {
+    const { data: deal } = await supabase.from("Sales Board").select("property_id").eq("id", dealId).maybeSingle();
+    const event = await findOrCreateEvent({
+      latitude,
+      longitude,
+      takenAt: takenAt ?? new Date().toISOString(),
+      propertyId: deal?.property_id ?? null,
+    });
+    return event.id;
+  } catch (err) {
+    console.error("Event linking failed:", err);
+    return null;
+  }
+}
+
 export async function createEventManually(input: {
   name: string | null;
   start_time: string;

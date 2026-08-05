@@ -3,7 +3,8 @@ import exifr from "exifr";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 import { withTimeout } from "@/lib/withTimeout";
-import { findOrCreateEvent } from "@/lib/events";
+import { linkToEvent } from "@/lib/events";
+import { safeExtension } from "@/lib/storagePaths";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -37,18 +38,6 @@ async function readExif(file: File) {
   }
 
   return { latitude, longitude, takenAt };
-}
-
-// The uploaded filename's extension ends up directly in the storage path,
-// which the storage client embeds in a request URL — an unusual filename
-// (unicode, stray punctuation, no extension at all) can otherwise produce
-// a path that fails URL parsing deep inside the storage client, surfacing
-// a cryptic "The string did not match the expected pattern." error.
-function safeExtension(fileName: string): string {
-  const dot = fileName.lastIndexOf(".");
-  const raw = dot === -1 ? "" : fileName.slice(dot + 1);
-  const cleaned = raw.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10);
-  return cleaned || "jpg";
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
@@ -111,25 +100,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     // Group this photo into an event (a site visit — same time+place as
     // other nearby photos) when we have a location for it. Never blocks
     // the upload itself if this fails.
-    let eventId: number | null = null;
-    if (latitude != null && longitude != null) {
-      try {
-        const { data: deal } = await supabase
-          .from("Sales Board")
-          .select("property_id")
-          .eq("id", id)
-          .maybeSingle();
-        const event = await findOrCreateEvent({
-          latitude,
-          longitude,
-          takenAt: takenAt ?? new Date().toISOString(),
-          propertyId: deal?.property_id ?? null,
-        });
-        eventId = event.id;
-      } catch (err) {
-        console.error("Event linking failed:", err);
-      }
-    }
+    const eventId = await linkToEvent(Number(id), latitude, longitude, takenAt);
 
     const { data, error } = await supabase
       .from("deal_photos")

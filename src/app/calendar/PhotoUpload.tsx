@@ -6,10 +6,14 @@ import styles from "./calendar.module.css";
 import type { DealOption } from "./CalendarClient";
 import { withTimeout, fetchWithTimeout } from "@/lib/withTimeout";
 import { compressImage } from "@/lib/compressImage";
+import { supabase } from "@/lib/supabaseClient";
+import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 
 const GPS_READ_TIMEOUT_MS = 6000;
 const MATCH_FETCH_TIMEOUT_MS = 8000;
 const UPLOAD_TIMEOUT_MS = 60000;
+const VIDEO_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+const POSTER_CAPTURE_TIMEOUT_MS = 8000;
 
 interface MatchCandidate {
   id: number;
@@ -25,7 +29,9 @@ interface MatchCandidate {
 interface PendingPhoto {
   id: string;
   file: File;
+  mediaType: "photo" | "video";
   previewUrl: string;
+  posterBlob: Blob | null;
   gps: { latitude: number; longitude: number } | null;
   takenAt: string | null;
   candidates: MatchCandidate[];
@@ -57,6 +63,55 @@ async function readClientExif(file: File) {
   }
 }
 
+// Videos can't be shown in an <img> tag, so we grab a still frame client-side
+// to use as a thumbnail — both for the pending-item preview here and as the
+// poster stored alongside the video for the calendar/gallery views.
+function capturePosterFrameRaw(file: File): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.src = url;
+
+    function finish(blob: Blob | null) {
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      resolve(blob);
+    }
+
+    video.addEventListener("loadeddata", () => {
+      video.currentTime = Math.min(0.1, (video.duration || 0) / 2);
+    });
+    video.addEventListener("seeked", () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 240;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          finish(null);
+          return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => finish(blob), "image/jpeg", 0.8);
+      } catch {
+        finish(null);
+      }
+    });
+    video.addEventListener("error", () => finish(null));
+  });
+}
+
+async function capturePosterFrame(file: File): Promise<Blob | null> {
+  try {
+    return await withTimeout(capturePosterFrameRaw(file), POSTER_CAPTURE_TIMEOUT_MS, "poster capture");
+  } catch {
+    return null;
+  }
+}
+
 function distanceLabel(meters: number) {
   if (meters < 1000) return `${meters}m away`;
   return `${(meters / 1000).toFixed(1)}km away`;
@@ -78,23 +133,39 @@ export default function PhotoUpload({
     const files = Array.from(fileList);
     if (files.length === 0) return;
 
-    const items: PendingPhoto[] = files.map((file) => ({
-      id: crypto.randomUUID(),
-      file,
-      previewUrl: URL.createObjectURL(file),
-      gps: null,
-      takenAt: null,
-      candidates: [],
-      selectedDealId: "",
-      status: "matching",
-    }));
+    const items: PendingPhoto[] = files.map((file) => {
+      const mediaType: "photo" | "video" = file.type.startsWith("video/") ? "video" : "photo";
+      return {
+        id: crypto.randomUUID(),
+        file,
+        mediaType,
+        previewUrl: mediaType === "photo" ? URL.createObjectURL(file) : "",
+        posterBlob: null,
+        gps: null,
+        // Videos aren't scanned for EXIF/GPS (no client-side library for
+        // that here) — file.lastModified is the best capture-time guess we
+        // have, and the user picks a deal manually for these.
+        takenAt: mediaType === "video" && file.lastModified ? new Date(file.lastModified).toISOString() : null,
+        candidates: [],
+        selectedDealId: "",
+        status: "matching",
+      };
+    });
     setPending((p) => [...p, ...items]);
     setPanelOpen(true);
 
     // Each file is matched independently and in parallel — a slow or stuck
-    // file (large HEIC, unusual EXIF) only delays itself, not the batch.
+    // file (large HEIC, unusual EXIF, big video) only delays itself, not
+    // the batch.
     await Promise.all(
       items.map(async (item) => {
+        if (item.mediaType === "video") {
+          const posterBlob = await capturePosterFrame(item.file);
+          const previewUrl = posterBlob ? URL.createObjectURL(posterBlob) : "";
+          setPending((p) => p.map((it) => (it.id === item.id ? { ...it, posterBlob, previewUrl, status: "ready" } : it)));
+          return;
+        }
+
         const { gps, takenAt } = await readClientExif(item.file);
         let candidates: MatchCandidate[] = [];
         if (gps) {
@@ -128,15 +199,88 @@ export default function PhotoUpload({
   function removePending(id: string) {
     setPending((p) => {
       const item = p.find((it) => it.id === id);
-      if (item) URL.revokeObjectURL(item.previewUrl);
+      if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
       return p.filter((it) => it.id !== id);
     });
   }
 
   function closePanel() {
-    for (const item of pending) URL.revokeObjectURL(item.previewUrl);
+    for (const item of pending) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
     setPending([]);
     setPanelOpen(false);
+  }
+
+  async function uploadPhotoItem(item: PendingPhoto) {
+    // Compress after EXIF has already been read client-side — canvas
+    // re-encoding strips metadata, so GPS/capture-time are carried as
+    // separate fields instead of relying on the server re-reading them.
+    const uploadFile = await compressImage(item.file);
+    const formData = new FormData();
+    formData.append("file", uploadFile);
+    if (item.gps) {
+      formData.append("latitude", String(item.gps.latitude));
+      formData.append("longitude", String(item.gps.longitude));
+    }
+    if (item.takenAt) formData.append("takenAt", item.takenAt);
+    const res = await fetchWithTimeout(
+      `/api/sales-board/${item.selectedDealId}/photos`,
+      { method: "POST", body: formData },
+      UPLOAD_TIMEOUT_MS
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Upload failed");
+  }
+
+  // Videos upload straight from the browser to Supabase Storage via a
+  // signed URL — routing them through our own API route would run into
+  // Vercel's request body size limit, the same wall photo uploads hit
+  // before client-side compression was added (videos are far too large to
+  // compress the same way).
+  async function uploadVideoItemRaw(item: PendingPhoto) {
+    const urlRes = await fetchWithTimeout(
+      `/api/sales-board/${item.selectedDealId}/videos/upload-url`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoFileName: item.file.name, hasPoster: !!item.posterBlob }),
+      },
+      MATCH_FETCH_TIMEOUT_MS
+    );
+    const urlData = await urlRes.json();
+    if (!urlRes.ok) throw new Error(urlData.error || "Failed to prepare video upload");
+
+    const { error: videoUploadError } = await supabase.storage
+      .from(DEAL_PHOTOS_BUCKET)
+      .uploadToSignedUrl(urlData.video.path, urlData.video.token, item.file, {
+        contentType: item.file.type || undefined,
+      });
+    if (videoUploadError) throw new Error(videoUploadError.message);
+
+    let posterPath: string | null = null;
+    if (item.posterBlob && urlData.poster) {
+      const { error: posterUploadError } = await supabase.storage
+        .from(DEAL_PHOTOS_BUCKET)
+        .uploadToSignedUrl(urlData.poster.path, urlData.poster.token, item.posterBlob, {
+          contentType: "image/jpeg",
+        });
+      if (!posterUploadError) posterPath = urlData.poster.path;
+    }
+
+    const finalizeRes = await fetchWithTimeout(
+      `/api/sales-board/${item.selectedDealId}/videos`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoPath: urlData.video.path, posterPath, takenAt: item.takenAt }),
+      },
+      UPLOAD_TIMEOUT_MS
+    );
+    const finalizeData = await finalizeRes.json();
+    if (!finalizeRes.ok) throw new Error(finalizeData.error || "Failed to save video");
+  }
+
+  async function uploadVideoItem(item: PendingPhoto) {
+    await withTimeout(uploadVideoItemRaw(item), VIDEO_UPLOAD_TIMEOUT_MS, "Video upload");
   }
 
   async function handleUploadAll() {
@@ -147,24 +291,11 @@ export default function PhotoUpload({
       if (item.status === "done" || item.selectedDealId === "") continue;
       setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "uploading" } : it)));
       try {
-        // Compress after EXIF has already been read client-side — canvas
-        // re-encoding strips metadata, so GPS/capture-time are carried as
-        // separate fields instead of relying on the server re-reading them.
-        const uploadFile = await compressImage(item.file);
-        const formData = new FormData();
-        formData.append("file", uploadFile);
-        if (item.gps) {
-          formData.append("latitude", String(item.gps.latitude));
-          formData.append("longitude", String(item.gps.longitude));
+        if (item.mediaType === "video") {
+          await uploadVideoItem(item);
+        } else {
+          await uploadPhotoItem(item);
         }
-        if (item.takenAt) formData.append("takenAt", item.takenAt);
-        const res = await fetchWithTimeout(
-          `/api/sales-board/${item.selectedDealId}/photos`,
-          { method: "POST", body: formData },
-          UPLOAD_TIMEOUT_MS
-        );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Upload failed");
         anyUploaded = true;
         setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "done" } : it)));
       } catch (err) {
@@ -220,7 +351,7 @@ export default function PhotoUpload({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         multiple
         style={{ display: "none" }}
         onChange={(e) => {
@@ -229,7 +360,7 @@ export default function PhotoUpload({
         }}
       />
       <button type="button" className={styles["nav-btn"]} onClick={() => inputRef.current?.click()}>
-        + Add Photo
+        + Add Photo/Video
       </button>
 
       {panelOpen && (
@@ -242,9 +373,9 @@ export default function PhotoUpload({
           <div className={styles["modal-panel"]}>
             <div className={styles["modal-head"]}>
               <div>
-                <h2 className={styles["modal-title"]}>Add photos</h2>
+                <h2 className={styles["modal-title"]}>Add photos &amp; videos</h2>
                 <div className={styles["modal-subtitle"]}>
-                  GPS location is used to suggest a matching deal — confirm or change before uploading.
+                  GPS location suggests a matching deal for photos — videos need a deal picked manually.
                 </div>
               </div>
               <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={closePanel} disabled={uploading}>
@@ -272,17 +403,30 @@ export default function PhotoUpload({
             <div className={styles["upload-list"]}>
               {pending.map((item) => (
                 <div key={item.id} className={styles["upload-item"]}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={item.previewUrl} alt="" className={styles["upload-thumb"]} />
+                  {item.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={item.previewUrl} alt="" className={styles["upload-thumb"]} />
+                  ) : (
+                    <div className={styles["upload-thumb-placeholder"]}>{item.mediaType === "video" ? "🎬" : "🖼"}</div>
+                  )}
                   <div className={styles["upload-item-main"]}>
-                    {item.status === "matching" && <div className={styles["upload-status"]}>Reading location…</div>}
+                    {item.status === "matching" && (
+                      <div className={styles["upload-status"]}>
+                        {item.mediaType === "video" ? "Capturing preview…" : "Reading location…"}
+                      </div>
+                    )}
                     {item.status !== "matching" && (
                       <>
-                        {!item.gps && <div className={styles["upload-status"]}>No location data — choose a deal.</div>}
-                        {item.gps && item.candidates.length === 0 && (
+                        {item.mediaType === "video" && (
+                          <div className={styles["upload-status"]}>Video — choose a deal.</div>
+                        )}
+                        {item.mediaType === "photo" && !item.gps && (
+                          <div className={styles["upload-status"]}>No location data — choose a deal.</div>
+                        )}
+                        {item.mediaType === "photo" && item.gps && item.candidates.length === 0 && (
                           <div className={styles["upload-status"]}>No nearby deal found — choose a deal.</div>
                         )}
-                        {item.gps && item.candidates.length > 0 && (
+                        {item.mediaType === "photo" && item.gps && item.candidates.length > 0 && (
                           <div className={styles["upload-status"]}>
                             Best match: {item.candidates[0].deal_name} · {distanceLabel(item.candidates[0].distanceMeters)}
                           </div>

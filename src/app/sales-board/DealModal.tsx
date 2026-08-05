@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./sales-board.module.css";
-import { dealPhotoUrl, type Deal, type DealInput } from "@/lib/salesBoard";
+import { dealThumbUrl, type Deal, type DealInput } from "@/lib/salesBoard";
 
 interface DealModalProps {
   deal: Deal;
@@ -240,20 +240,28 @@ export default function DealModal({
           </div>
 
           <div className={`${styles["photo-row"]}`}>
-            {deal.photos.map((photo) => (
-              <div key={photo.id} className={styles["photo-thumb"]}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={dealPhotoUrl(photo.storage_path)} alt={photo.caption ?? deal.deal_name} />
-                <button
-                  type="button"
-                  className={styles["photo-remove"]}
-                  aria-label="Delete photo"
-                  onClick={() => onDeletePhoto(deal.id, photo.id)}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+            {deal.photos.map((photo) => {
+              const thumbUrl = dealThumbUrl(photo);
+              return (
+                <div key={photo.id} className={styles["photo-thumb"]}>
+                  {thumbUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={thumbUrl} alt={photo.caption ?? deal.deal_name} />
+                  ) : (
+                    <span className={styles["photo-thumb-placeholder"]}>🎬</span>
+                  )}
+                  {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                  <button
+                    type="button"
+                    className={styles["photo-remove"]}
+                    aria-label="Delete photo"
+                    onClick={() => onDeletePhoto(deal.id, photo.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
             <label className={styles["photo-add"]}>
               + Photo
               <input

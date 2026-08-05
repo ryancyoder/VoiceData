@@ -51,7 +51,7 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
 
   const { data: photo, error: fetchError } = await supabase
     .from("deal_photos")
-    .select("storage_path")
+    .select("storage_path, poster_path")
     .eq("id", photoId)
     .single();
 
@@ -68,7 +68,8 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: deleteRowError.message }, { status: 500 });
   }
 
-  await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove([photo.storage_path]);
+  const paths = photo.poster_path ? [photo.storage_path, photo.poster_path] : [photo.storage_path];
+  await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove(paths);
 
   return NextResponse.json({ ok: true });
 }

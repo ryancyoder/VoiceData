@@ -22,6 +22,8 @@ export interface DealPhoto {
   longitude: number | null;
   taken_at: string | null;
   event_id: number | null;
+  media_type: "photo" | "video";
+  poster_path: string | null;
 }
 
 export interface Property {
@@ -65,6 +67,19 @@ export const DEAL_PHOTOS_BUCKET = "deal-photos";
 export function dealPhotoUrl(storagePath: string): string {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   return `${base}/storage/v1/object/public/${DEAL_PHOTOS_BUCKET}/${storagePath}`;
+}
+
+/**
+ * URL for a grid/thumbnail preview of a photo or video. Videos can't be
+ * rendered in an <img> tag, so this points at the captured poster frame
+ * instead — null when no poster exists (capture failed at upload time),
+ * in which case callers should render a placeholder rather than an <img>.
+ */
+export function dealThumbUrl(photo: Pick<DealPhoto, "media_type" | "storage_path" | "poster_path">): string | null {
+  if (photo.media_type === "video") {
+    return photo.poster_path ? dealPhotoUrl(photo.poster_path) : null;
+  }
+  return dealPhotoUrl(photo.storage_path);
 }
 
 export interface DealInput {

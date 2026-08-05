@@ -75,6 +75,8 @@ export default async function CalendarPage() {
         latitude: p.latitude,
         longitude: p.longitude,
         event_id: p.event_id,
+        media_type: p.media_type,
+        poster_path: p.poster_path,
       })),
       deals: dealIds.map((id) => {
         const d = dealsById.get(id);

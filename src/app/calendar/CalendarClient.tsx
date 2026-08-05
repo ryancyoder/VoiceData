@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./calendar.module.css";
-import { dealPhotoUrl } from "@/lib/salesBoard";
+import { dealPhotoUrl, dealThumbUrl } from "@/lib/salesBoard";
 import PhotoUpload from "./PhotoUpload";
 
 export interface GeoPhoto {
@@ -17,6 +17,8 @@ export interface GeoPhoto {
   latitude: number | null;
   longitude: number | null;
   event_id: number | null;
+  media_type: "photo" | "video";
+  poster_path: string | null;
 }
 
 export interface CalendarEvent {
@@ -703,17 +705,25 @@ export default function CalendarClient({
             </div>
 
             <div className={styles["photo-grid"]}>
-              {selectedEvent.photos.map((photo, i) => (
-                <button
-                  key={photo.id}
-                  type="button"
-                  className={styles["photo-thumb"]}
-                  onClick={() => setLightboxIndex(i)}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={dealPhotoUrl(photo.storage_path)} alt={photo.caption ?? eventLabel(selectedEvent)} loading="lazy" />
-                </button>
-              ))}
+              {selectedEvent.photos.map((photo, i) => {
+                const thumbUrl = dealThumbUrl(photo);
+                return (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    className={styles["photo-thumb"]}
+                    onClick={() => setLightboxIndex(i)}
+                  >
+                    {thumbUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumbUrl} alt={photo.caption ?? eventLabel(selectedEvent)} loading="lazy" />
+                    ) : (
+                      <span className={styles["photo-thumb-placeholder"]}>🎬</span>
+                    )}
+                    {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -728,8 +738,19 @@ export default function CalendarClient({
         >
           <div className={styles["lightbox-panel"]}>
             <div className={styles["lightbox-image-wrap"]}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? eventLabel(selectedEvent)} />
+              {activePhoto.media_type === "video" ? (
+                <video
+                  key={activePhoto.id}
+                  src={dealPhotoUrl(activePhoto.storage_path)}
+                  poster={activePhoto.poster_path ? dealPhotoUrl(activePhoto.poster_path) : undefined}
+                  controls
+                  autoPlay
+                  className={styles["lightbox-video"]}
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? eventLabel(selectedEvent)} />
+              )}
             </div>
             <div className={styles["lightbox-foot"]}>
               <button

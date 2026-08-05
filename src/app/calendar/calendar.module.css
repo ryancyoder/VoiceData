@@ -230,6 +230,7 @@
   gap: 8px;
 }
 .photo-thumb {
+  position: relative;
   aspect-ratio: 1 / 1;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -239,6 +240,29 @@
   padding: 0;
 }
 .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+}
+.video-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  line-height: 1;
+}
 
 .lightbox-overlay {
   position: fixed;
@@ -262,6 +286,7 @@
 }
 .lightbox-image-wrap { flex: 1; min-height: 0; background: #000; display: flex; align-items: center; justify-content: center; }
 .lightbox-image-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.lightbox-video { max-width: 100%; max-height: 100%; display: block; }
 .lightbox-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); }
 .lightbox-nav {
   background: none;
@@ -315,6 +340,17 @@
   background: var(--surface-2);
 }
 .upload-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: var(--border); flex-shrink: 0; }
+.upload-thumb-placeholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  background: var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+}
 .upload-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .upload-status { font-size: 0.74rem; color: var(--text-muted); }
 .upload-select {
