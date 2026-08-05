@@ -94,12 +94,20 @@ export default function Home() {
             Talk to build a database on the fly.
           </p>
         </div>
-        <Link
-          href="/sales-board"
-          className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-        >
-          Sales Board →
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/sales-board"
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+          >
+            Sales Board →
+          </Link>
+          <Link
+            href="/photos"
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+          >
+            Photos →
+          </Link>
+        </div>
       </header>
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6 sm:flex-row">

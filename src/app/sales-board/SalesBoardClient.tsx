@@ -357,6 +357,10 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
             </div>
             <p>
               Deals moving through the pipeline ·{" "}
+              <Link href="/photos" className={styles["brand-back"]}>
+                Photos
+              </Link>{" "}
+              ·{" "}
               <Link href="/" className={styles["brand-back"]}>
                 ← VoiceData
               </Link>

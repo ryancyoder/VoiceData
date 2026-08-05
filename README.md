@@ -23,6 +23,9 @@ you go.
   Supabase Postgres table, separate from the voice-driven SQLite database.
   Deals move through `Lead → Propose → Sent → Sold → Scheduled → Project
   Management → Job Costing → Invoiced → Paid in Full`.
+- **Photo Gallery** (`/photos`): browses every photo uploaded to a deal, with
+  a dropdown to filter down to a single deal and a lightbox for viewing/
+  deleting individual photos.
 
 ## Setup
 
@@ -57,3 +60,4 @@ A text box is also available as a fallback if you'd rather type.
 - `src/lib/salesBoard.ts` — Sales Board stage list and types
 - `src/app/api/sales-board/` — REST endpoints for the Sales Board table
 - `src/app/sales-board/page.tsx` — Sales Board Kanban UI
+- `src/app/photos/page.tsx` — Photo Gallery, filterable by deal
