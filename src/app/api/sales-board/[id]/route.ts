@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
+import { geocodeAddress } from "@/lib/geocode";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -31,6 +32,14 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields provided to update" }, { status: 400 });
+  }
+
+  if (body.jobsite_address !== undefined) {
+    const jobsiteAddress = body.jobsite_address?.trim() || null;
+    const geocoded = jobsiteAddress ? await geocodeAddress(jobsiteAddress) : null;
+    updates.latitude = geocoded?.latitude ?? null;
+    updates.longitude = geocoded?.longitude ?? null;
+    updates.geocoded_at = jobsiteAddress ? new Date().toISOString() : null;
   }
 
   const { data, error } = await supabase

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
+import { geocodeAddress } from "@/lib/geocode";
 
 export async function GET() {
   const { data, error } = await supabase
@@ -24,6 +25,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Invalid stage "${body.stage}"` }, { status: 400 });
   }
 
+  const jobsiteAddress = body.jobsite_address?.trim() || null;
+  const geocoded = jobsiteAddress ? await geocodeAddress(jobsiteAddress) : null;
+
   const { data, error } = await supabase
     .from("Sales Board")
     .insert({
@@ -38,7 +42,10 @@ export async function POST(req: NextRequest) {
       proposal_description: body.proposal_description ?? null,
       next_action: body.next_action ?? null,
       appointment_date: body.appointment_date ?? null,
-      jobsite_address: body.jobsite_address ?? null,
+      jobsite_address: jobsiteAddress,
+      latitude: geocoded?.latitude ?? null,
+      longitude: geocoded?.longitude ?? null,
+      geocoded_at: jobsiteAddress ? new Date().toISOString() : null,
       value: body.value ?? null,
       stage: body.stage ?? "Lead",
     })

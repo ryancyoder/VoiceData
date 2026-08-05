@@ -39,6 +39,9 @@ export interface Deal {
   next_action: string | null;
   appointment_date: string | null;
   jobsite_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocoded_at: string | null;
   value: number | null;
   stage: Stage;
   status: "Open" | "Closed";

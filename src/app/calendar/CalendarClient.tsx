@@ -2,12 +2,22 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import styles from "./calendar.module.css";
 import { dealPhotoUrl } from "@/lib/salesBoard";
 import type { PhotoEvent } from "@/lib/photoEvents";
+import PhotoUpload from "./PhotoUpload";
 
 export interface CalendarEvent extends PhotoEvent {
   deals: { id: number; name: string; company: string | null; jobsiteAddress: string | null }[];
+}
+
+export interface DealOption {
+  id: number;
+  deal_name: string;
+  company: string | null;
+  stage: string;
+  lost_at: string | null;
 }
 
 const HOUR_HEIGHT = 48;
@@ -97,10 +107,13 @@ function timeRangeLabel(event: CalendarEvent) {
 export default function CalendarClient({
   events,
   ungeotaggedCount,
+  dealOptions,
 }: {
   events: CalendarEvent[];
   ungeotaggedCount: number;
+  dealOptions: DealOption[];
 }) {
+  const router = useRouter();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -173,6 +186,7 @@ export default function CalendarClient({
           Next ›
         </button>
         <span className={styles["range-label"]}>{rangeLabel}</span>
+        <PhotoUpload dealOptions={dealOptions} onUploaded={() => router.refresh()} />
         {ungeotaggedCount > 0 && (
           <span className={styles["ungeotagged-note"]}>
             {ungeotaggedCount} photo{ungeotaggedCount === 1 ? "" : "s"} without location data can&apos;t be placed here.

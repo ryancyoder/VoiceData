@@ -30,7 +30,11 @@ you go.
   inferred from photo metadata. Photos are geotagged (GPS) and timestamped
   from their EXIF data at upload time; photos taken at the same location
   with no gap longer than an hour between them are grouped into one event
-  block. Click a block to see its photos and jump to the deal.
+  block. Click a block to see its photos and jump to the deal. A "+ Add
+  Photo" button lets you upload straight from the calendar — the photo's
+  GPS is matched against each deal's geocoded jobsite address (or, failing
+  that, the location of that deal's other photos) to suggest which deal it
+  belongs to, which you confirm or override before it uploads.
 
 ## Setup
 
@@ -68,4 +72,12 @@ A text box is also available as a fallback if you'd rather type.
 - `src/app/photos/page.tsx` — Photo Gallery (album view, filterable by deal)
 - `src/lib/photoEvents.ts` — clusters geotagged photos into calendar events
   (same location + gaps no longer than an hour)
+- `src/lib/geocode.ts` — geocodes jobsite addresses (Nominatim/OpenStreetMap,
+  no API key required) and the haversine distance helper
 - `src/app/calendar/page.tsx` — Calendar, week view of photo-derived events
+- `src/app/calendar/PhotoUpload.tsx` — upload-from-calendar flow: reads GPS
+  from the photo client-side, calls `/api/sales-board/match-location` to
+  suggest a deal, then uploads via the existing per-deal photos endpoint
+- `src/app/api/sales-board/match-location/route.ts` — ranks deals by
+  distance from a given GPS point (via geocoded address or existing photo
+  locations) for the upload-matching flow
