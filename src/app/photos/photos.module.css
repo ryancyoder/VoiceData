@@ -69,28 +69,16 @@
 .brand-back { color: var(--text-muted); text-decoration: none; }
 .brand-back:hover { color: var(--text); }
 
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.filter-select {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 0.85rem;
-  min-width: 200px;
-}
-.filter-select:focus { border-color: var(--accent); outline: none; }
-
-.filter-count {
-  font-size: 0.78rem;
+.back-link {
+  background: none;
+  border: none;
+  padding: 0;
   color: var(--text-muted);
-  white-space: nowrap;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: none;
 }
+.back-link:hover { color: var(--text); }
 
 .content { flex: 1; padding: 20px clamp(16px, 4vw, 40px) 40px; }
 
@@ -126,12 +114,41 @@
 .thumb:hover { border-color: var(--text-faint); }
 .thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+.album {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+.album:hover { border-color: var(--accent); }
+.album:hover .thumb-image-wrap img { transform: scale(1.03); }
+.album:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .thumb-image-wrap {
+  position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   background: var(--surface-2);
 }
-.thumb-image-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-image-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s ease; }
+
+.album-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  background: rgba(10, 12, 16, 0.72);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 20px;
+  line-height: 1.2;
+}
 
 .thumb-caption {
   padding: 8px 10px;
