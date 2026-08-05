@@ -201,9 +201,12 @@ export default function DealModal({
               <input
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) onUploadPhoto(deal.id, file);
+                  const files = e.target.files;
+                  if (files) {
+                    Array.from(files).forEach((file) => onUploadPhoto(deal.id, file));
+                  }
                   e.target.value = "";
                 }}
               />
