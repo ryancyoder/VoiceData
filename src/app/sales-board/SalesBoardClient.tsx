@@ -337,6 +337,10 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
   }
 
   const activeDeal = activeDealId != null ? deals.find((d) => d.id === activeDealId) ?? null : null;
+  const relatedDeals =
+    activeDeal && activeDeal.property_id != null
+      ? deals.filter((d) => d.property_id === activeDeal.property_id && d.id !== activeDeal.id)
+      : [];
 
   return (
     <div className={styles.salesBoard}>
@@ -688,7 +692,10 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
 
       {activeDeal && (
         <DealModal
+          key={activeDeal.id}
           deal={activeDeal}
+          relatedDeals={relatedDeals}
+          onSelectDeal={(id) => setActiveDealId(id)}
           onClose={() => setActiveDealId(null)}
           onSave={handleSaveDeal}
           onDelete={handleDeleteDeal}

@@ -384,6 +384,24 @@
 .geocode-status.is-muted { color: var(--text-faint); }
 .geocode-link { color: inherit; text-decoration: underline; }
 
+.related-deals { display: flex; flex-direction: column; gap: 4px; }
+.related-deal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 0.76rem;
+  cursor: pointer;
+  text-align: left;
+}
+.related-deal:hover { border-color: var(--accent); }
+.related-deal-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.related-deal-stage { color: var(--text-muted); font-size: 0.68rem; flex-shrink: 0; }
+
 .modal-overlay {
   position: fixed;
   inset: 0;

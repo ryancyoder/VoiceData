@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
-import { geocodeAddress } from "@/lib/geocode";
+import { findOrCreateProperty } from "@/lib/properties";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -36,10 +36,16 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   if (body.jobsite_address !== undefined) {
     const jobsiteAddress = body.jobsite_address?.trim() || null;
-    const geocoded = jobsiteAddress ? await geocodeAddress(jobsiteAddress) : null;
-    updates.latitude = geocoded?.latitude ?? null;
-    updates.longitude = geocoded?.longitude ?? null;
-    updates.geocoded_at = jobsiteAddress ? new Date().toISOString() : null;
+    let property = null;
+    try {
+      property = jobsiteAddress ? await findOrCreateProperty(jobsiteAddress) : null;
+    } catch {
+      // Property lookup/geocoding is best-effort — never block saving the deal.
+    }
+    updates.property_id = property?.id ?? null;
+    updates.latitude = property?.latitude ?? null;
+    updates.longitude = property?.longitude ?? null;
+    updates.geocoded_at = property?.geocoded_at ?? null;
   }
 
   const { data, error } = await supabase

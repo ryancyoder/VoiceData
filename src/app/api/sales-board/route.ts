@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
-import { geocodeAddress } from "@/lib/geocode";
+import { findOrCreateProperty } from "@/lib/properties";
 
 export async function GET() {
   const { data, error } = await supabase
@@ -26,7 +26,12 @@ export async function POST(req: NextRequest) {
   }
 
   const jobsiteAddress = body.jobsite_address?.trim() || null;
-  const geocoded = jobsiteAddress ? await geocodeAddress(jobsiteAddress) : null;
+  let property = null;
+  try {
+    property = jobsiteAddress ? await findOrCreateProperty(jobsiteAddress) : null;
+  } catch {
+    // Property lookup/geocoding is best-effort — never block creating the deal.
+  }
 
   const { data, error } = await supabase
     .from("Sales Board")
@@ -43,9 +48,10 @@ export async function POST(req: NextRequest) {
       next_action: body.next_action ?? null,
       appointment_date: body.appointment_date ?? null,
       jobsite_address: jobsiteAddress,
-      latitude: geocoded?.latitude ?? null,
-      longitude: geocoded?.longitude ?? null,
-      geocoded_at: jobsiteAddress ? new Date().toISOString() : null,
+      property_id: property?.id ?? null,
+      latitude: property?.latitude ?? null,
+      longitude: property?.longitude ?? null,
+      geocoded_at: property?.geocoded_at ?? null,
       value: body.value ?? null,
       stage: body.stage ?? "Lead",
     })

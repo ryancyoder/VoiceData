@@ -7,6 +7,8 @@ import { dealPhotoUrl, type Deal, type DealInput } from "@/lib/salesBoard";
 
 interface DealModalProps {
   deal: Deal;
+  relatedDeals: Deal[];
+  onSelectDeal: (id: number) => void;
   onClose: () => void;
   onSave: (id: number, updates: Partial<DealInput>) => Promise<void>;
   onDelete: (deal: Deal) => void;
@@ -54,8 +56,28 @@ function GeocodeStatus({ deal }: { deal: Deal }) {
   );
 }
 
+function RelatedDeals({ deals, onSelectDeal }: { deals: Deal[]; onSelectDeal: (id: number) => void }) {
+  if (deals.length === 0) return null;
+
+  return (
+    <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+      <label>Other deals at this property ({deals.length})</label>
+      <div className={styles["related-deals"]}>
+        {deals.map((d) => (
+          <button key={d.id} type="button" className={styles["related-deal"]} onClick={() => onSelectDeal(d.id)}>
+            <span className={styles["related-deal-name"]}>{d.deal_name}</span>
+            <span className={styles["related-deal-stage"]}>{d.lost_at ? "Lost" : d.stage}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function DealModal({
   deal,
+  relatedDeals,
+  onSelectDeal,
   onClose,
   onSave,
   onDelete,
@@ -207,6 +229,7 @@ export default function DealModal({
             <input id="dm-jobsite" autoComplete="off" value={form.jobsite_address} onChange={(e) => set("jobsite_address", e.target.value)} />
             <GeocodeStatus deal={deal} />
           </div>
+          <RelatedDeals deals={relatedDeals} onSelectDeal={onSelectDeal} />
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-next-action">Next action</label>
             <input id="dm-next-action" autoComplete="off" value={form.next_action} onChange={(e) => set("next_action", e.target.value)} />

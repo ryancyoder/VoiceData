@@ -23,6 +23,15 @@ export interface DealPhoto {
   taken_at: string | null;
 }
 
+export interface Property {
+  id: number;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  geocoded_at: string | null;
+  created_at: string;
+}
+
 export interface Deal {
   id: number;
   created_at: string;
@@ -42,6 +51,7 @@ export interface Deal {
   latitude: number | null;
   longitude: number | null;
   geocoded_at: string | null;
+  property_id: number | null;
   value: number | null;
   stage: Stage;
   status: "Open" | "Closed";

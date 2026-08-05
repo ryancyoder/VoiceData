@@ -22,7 +22,10 @@ you go.
 - **Sales Board** (`/sales-board`): a Kanban-style deal pipeline backed by a
   Supabase Postgres table, separate from the voice-driven SQLite database.
   Deals move through `Lead → Propose → Sent → Sold → Scheduled → Project
-  Management → Job Costing → Invoiced → Paid in Full`.
+  Management → Job Costing → Invoiced → Paid in Full`. Deals sharing the
+  same jobsite address are linked to one `properties` row (repeat
+  customers, multiple jobs at the same property over time), and a deal's
+  detail view lists the other deals attached to its property.
 - **Photo Gallery** (`/photos`): album-style browsing of every photo uploaded
   to a deal — one cover per deal, click through to that deal's full photo
   grid, with a lightbox for viewing/deleting individual photos.
@@ -74,6 +77,9 @@ A text box is also available as a fallback if you'd rather type.
   (same location + gaps no longer than an hour)
 - `src/lib/geocode.ts` — geocodes jobsite addresses (Nominatim/OpenStreetMap,
   no API key required) and the haversine distance helper
+- `src/lib/properties.ts` — finds or creates the `properties` row for a
+  jobsite address (one property, many deals), geocoding once per unique
+  address rather than redundantly per deal
 - `src/app/calendar/page.tsx` — Calendar, week view of photo-derived events
 - `src/app/calendar/PhotoUpload.tsx` — upload-from-calendar flow: reads GPS
   from the photo client-side, calls `/api/sales-board/match-location` to
