@@ -12,7 +12,7 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
   const [deals, setDeals] = useState<GalleryDeal[]>(initialDeals);
   const [activeDealId, setActiveDealId] = useState<number | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const dealsWithPhotos = useMemo(() => deals.filter((d) => d.photos.length > 0), [deals]);
   const totalPhotoCount = useMemo(() => dealsWithPhotos.reduce((n, d) => n + d.photos.length, 0), [dealsWithPhotos]);
@@ -43,18 +43,21 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
   }
 
   async function handleDelete(deal: GalleryDeal, photo: GalleryPhoto) {
-    setDeleting(true);
+    setDeletingId(photo.id);
     try {
       const res = await fetch(`/api/sales-board/${deal.id}/photos/${photo.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete photo");
       setDeals((ds) => ds.map((d) => (d.id === deal.id ? { ...d, photos: d.photos.filter((p) => p.id !== photo.id) } : d)));
-      setActiveIndex(null);
-      if (activePhotos.length <= 1) setActiveDealId(null);
+      if (activePhoto?.id === photo.id) setActiveIndex(null);
+      if (deal.photos.length <= 1) {
+        setActiveDealId(null);
+        setActiveIndex(null);
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete photo");
     } finally {
-      setDeleting(false);
+      setDeletingId(null);
     }
   }
 
@@ -114,12 +117,26 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
         ) : (
           <div className={styles.grid}>
             {activePhotos.map((photo, i) => (
-              <button key={photo.id} type="button" className={styles.thumb} onClick={() => setActiveIndex(i)}>
-                <span className={styles["thumb-image-wrap"]}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={dealPhotoUrl(photo.storage_path)} alt={photo.caption ?? activeDeal.deal_name} loading="lazy" />
-                </span>
-              </button>
+              <div key={photo.id} className={styles.thumb}>
+                <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
+                  <span className={styles["thumb-image-wrap"]}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={dealPhotoUrl(photo.storage_path)} alt={photo.caption ?? activeDeal.deal_name} loading="lazy" />
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles["thumb-delete"]}
+                  aria-label="Delete photo"
+                  disabled={deletingId === photo.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(activeDeal, photo);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -164,10 +181,10 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
                 <button
                   type="button"
                   className={styles["lightbox-delete"]}
-                  disabled={deleting}
+                  disabled={deletingId === activePhoto.id}
                   onClick={() => handleDelete(activeDeal, activePhoto)}
                 >
-                  {deleting ? "Deleting…" : "Delete"}
+                  {deletingId === activePhoto.id ? "Deleting…" : "Delete"}
                 </button>
                 <button type="button" className={styles["lightbox-close"]} aria-label="Close" onClick={() => setActiveIndex(null)}>
                   ×
