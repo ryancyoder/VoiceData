@@ -211,6 +211,7 @@ export default function CalendarClient({
 
   const [mergeTargetId, setMergeTargetId] = useState<number | "">("");
   const [merging, setMerging] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState(false);
 
   const [creatingDeal, setCreatingDeal] = useState(false);
 
@@ -483,6 +484,28 @@ export default function CalendarClient({
       window.alert(err instanceof Error ? err.message : "Failed to merge events");
     } finally {
       setMerging(false);
+    }
+  }
+
+  async function handleDeleteEvent() {
+    if (!selectedEvent) return;
+    const photoWarning =
+      selectedEvent.photos.length > 0
+        ? ` Its ${selectedEvent.photos.length} attached photo${selectedEvent.photos.length === 1 ? "" : "s"} will be deleted too.`
+        : "";
+    if (!window.confirm(`Delete this event?${photoWarning} This can't be undone.`)) return;
+    setDeletingEvent(true);
+    try {
+      const res = await fetch(`/api/events/${selectedEvent.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete event");
+      setSelectedEvent(null);
+      setEditingEvent(false);
+      router.refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to delete event");
+    } finally {
+      setDeletingEvent(false);
     }
   }
 
@@ -761,6 +784,14 @@ export default function CalendarClient({
                   />
                   <button type="button" className={styles["nav-btn"]} onClick={startEditingEvent}>
                     Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={styles["delete-btn"]}
+                    onClick={handleDeleteEvent}
+                    disabled={deletingEvent}
+                  >
+                    {deletingEvent ? "Deleting…" : "Delete"}
                   </button>
                   <button
                     type="button"

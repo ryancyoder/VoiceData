@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateEvent, EVENT_TYPES, type EventType } from "@/lib/events";
+import { updateEvent, deleteEvent, EVENT_TYPES, type EventType } from "@/lib/events";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -61,5 +61,16 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ event });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to update event" }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+
+  try {
+    const result = await deleteEvent(Number(id));
+    return NextResponse.json({ ok: true, deletedPhotoCount: result.deletedPhotoCount });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to delete event" }, { status: 500 });
   }
 }

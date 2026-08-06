@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { haversineMeters } from "@/lib/geocode";
 import { DEFAULT_MAX_GAP_MS, DEFAULT_MAX_DISTANCE_METERS } from "@/lib/photoEvents";
+import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 
 export const EVENT_TYPES = ["Appointment", "Consultation", "Design", "Estimating", "Meeting", "Job", "Other"] as const;
 
@@ -533,4 +534,33 @@ export async function mergeEvents(sourceId: number, targetId: number): Promise<E
   if (deleteError) throw new Error(deleteError.message);
 
   return updated as Event;
+}
+
+/**
+ * Deletes an event and everything attached to it. A photo/video can never
+ * exist without an event — deleting the event necessarily deletes its
+ * media too, rather than leaving orphaned rows behind (deal_photos.event_id
+ * has no ON DELETE behavior of its own). DB rows go first, then storage
+ * objects are removed best-effort, mirroring the single-photo delete
+ * route's own order of operations.
+ */
+export async function deleteEvent(id: number): Promise<{ deletedPhotoCount: number }> {
+  const { data: photos, error: fetchError } = await supabase
+    .from("deal_photos")
+    .select("storage_path, poster_path")
+    .eq("event_id", id);
+  if (fetchError) throw new Error(fetchError.message);
+
+  const { error: deletePhotosError } = await supabase.from("deal_photos").delete().eq("event_id", id);
+  if (deletePhotosError) throw new Error(deletePhotosError.message);
+
+  const { error: deleteEventError } = await supabase.from("events").delete().eq("id", id);
+  if (deleteEventError) throw new Error(deleteEventError.message);
+
+  const paths = (photos ?? []).flatMap((p) => (p.poster_path ? [p.storage_path, p.poster_path] : [p.storage_path]));
+  if (paths.length > 0) {
+    await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove(paths);
+  }
+
+  return { deletedPhotoCount: photos?.length ?? 0 };
 }
