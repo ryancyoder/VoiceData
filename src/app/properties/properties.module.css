@@ -245,7 +245,21 @@
 }
 
 .location-modal-panel { width: min(640px, 100%); }
-.location-modal-address { margin: 0 0 2px; font-size: 0.9rem; font-weight: 600; }
+.location-modal-address { margin: 0 0 10px; font-size: 0.9rem; font-weight: 600; }
+.location-search-bar { display: flex; gap: 8px; margin-bottom: 8px; }
+.location-search-bar input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+}
+.location-search-bar input:focus { border-color: var(--accent); outline: none; }
+.location-search-note { margin: 0 0 8px; font-size: 0.78rem; color: var(--text-muted); }
 .location-modal-hint { margin: 0 0 12px; font-size: 0.8rem; color: var(--text-muted); }
 .location-modal-map { height: 360px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
 .geocode-set-link {

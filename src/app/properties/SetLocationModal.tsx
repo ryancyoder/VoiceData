@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import { useEffect, useState } from "react";
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 import type { LeafletMouseEvent, Marker as LeafletMarker } from "leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -18,6 +18,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
+const SEARCH_TIMEOUT_MS = 10000;
 const SAVE_TIMEOUT_MS = 15000;
 // Roughly the middle of the contiguous US — only ever shown when there
 // isn't a single other geocoded property on file to center on instead.
@@ -35,12 +36,37 @@ interface SetLocationModalProps {
   onSaved: (latitude: number, longitude: number) => void;
 }
 
+// The bare HTTP call, with no state of its own — reused by both the search
+// button and the on-open auto-search, which each drive their own
+// loading/error state around it.
+async function geocodeQuery(address: string): Promise<[number, number] | null> {
+  const res = await fetchWithTimeout(
+    "/api/properties/match-address",
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address }) },
+    SEARCH_TIMEOUT_MS
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Search failed");
+  return data.latitude != null && data.longitude != null ? [data.latitude, data.longitude] : null;
+}
+
 function ClickToPlace({ onPlace }: { onPlace: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(e: LeafletMouseEvent) {
       onPlace(e.latlng.lat, e.latlng.lng);
     },
   });
+  return null;
+}
+
+// Pans/zooms the already-mounted map to a search result — MapContainer's
+// own center/zoom props only apply once, at first render, so moving the
+// map after that has to go through the map instance directly.
+function FlyTo({ target }: { target: { pos: [number, number]; zoom: number } | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.setView(target.pos, target.zoom);
+  }, [target, map]);
   return null;
 }
 
@@ -56,11 +82,73 @@ export default function SetLocationModal({
   const [position, setPosition] = useState<[number, number] | null>(
     initialLatitude != null && initialLongitude != null ? [initialLatitude, initialLongitude] : null
   );
+  const [flyTo, setFlyTo] = useState<{ pos: [number, number]; zoom: number } | null>(null);
+  const [query, setQuery] = useState(address);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const center = position ?? defaultCenter ?? FALLBACK_CENTER;
   const zoom = position ? PINNED_ZOOM : defaultCenter ? 11 : FALLBACK_ZOOM;
+
+  async function handleSearch() {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setSearching(true);
+    setSearchError("");
+    try {
+      const found = await geocodeQuery(trimmed);
+      if (!found) {
+        setSearchError("Couldn't find that address — click the map to drop the pin by hand, or try a different search.");
+        return;
+      }
+      setPosition(found);
+      setFlyTo({ pos: found, zoom: PINNED_ZOOM });
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Search failed");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  // Best-effort head start: try the property's address on open, same as
+  // typing it into the search bar and hitting Search, so there's often
+  // already a pin to fine-tune instead of a blank map. Only when nothing's
+  // geocoded yet — an existing pin means someone already resolved this.
+  // The fetch is inlined here (rather than reusing handleSearch) so its
+  // state updates are scoped to this effect, not a call into an outer
+  // function, per the project's established fetch-in-effect pattern.
+  useEffect(() => {
+    const trimmed = address.trim();
+    if (initialLatitude != null || initialLongitude != null || !trimmed) return;
+    let cancelled = false;
+    async function run() {
+      setSearching(true);
+      setSearchError("");
+      try {
+        const found = await geocodeQuery(trimmed);
+        if (cancelled) return;
+        if (!found) {
+          setSearchError("Couldn't find that address — click the map to drop the pin by hand, or try a different search.");
+          return;
+        }
+        setPosition(found);
+        setFlyTo({ pos: found, zoom: PINNED_ZOOM });
+      } catch (err) {
+        if (!cancelled) setSearchError(err instanceof Error ? err.message : "Search failed");
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+    // Runs once, for the initial open only — deliberately not re-run if
+    // props were to change while mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSave() {
     if (!position) return;
@@ -101,8 +189,26 @@ export default function SetLocationModal({
           </button>
         </div>
         <p className={styles["location-modal-address"]}>{address}</p>
+        <div className={styles["location-search-bar"]}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSearch();
+              }
+            }}
+            placeholder="Search an address…"
+            disabled={searching}
+          />
+          <button type="button" className={styles["nav-btn"]} onClick={handleSearch} disabled={searching || !query.trim()}>
+            {searching ? "Searching…" : "Search"}
+          </button>
+        </div>
+        {searchError && <div className={styles["location-search-note"]}>{searchError}</div>}
         <p className={styles["location-modal-hint"]}>
-          {position ? "Drag the pin to fine-tune, then save." : "Click the map to drop a pin at this property."}
+          {position ? "Drag the pin to fine-tune, then save." : "Search an address above, or click the map to drop a pin."}
         </p>
         <MapContainer center={center} zoom={zoom} className={styles["location-modal-map"]} scrollWheelZoom>
           <TileLayer
@@ -110,6 +216,7 @@ export default function SetLocationModal({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <ClickToPlace onPlace={(lat, lng) => setPosition([lat, lng])} />
+          <FlyTo target={flyTo} />
           {position && (
             <Marker
               position={position}
