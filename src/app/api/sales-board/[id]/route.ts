@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
 import { findOrCreateProperty } from "@/lib/properties";
+import { upsertPropertyContact } from "@/lib/contacts";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -13,13 +14,15 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: `Invalid stage "${body.stage}"` }, { status: 400 });
   }
 
+  const contactProvided =
+    body.contact_first_name !== undefined ||
+    body.contact_last_name !== undefined ||
+    body.contact_email !== undefined ||
+    body.contact_phone !== undefined;
+
   const updates: Record<string, unknown> = {};
   if (body.deal_name !== undefined) updates.deal_name = body.deal_name.trim();
   if (body.company !== undefined) updates.company = body.company;
-  if (body.contact_first_name !== undefined) updates.contact_first_name = body.contact_first_name;
-  if (body.contact_last_name !== undefined) updates.contact_last_name = body.contact_last_name;
-  if (body.contact_email !== undefined) updates.contact_email = body.contact_email;
-  if (body.contact_phone !== undefined) updates.contact_phone = body.contact_phone;
   if (body.proposal_number !== undefined) updates.proposal_number = body.proposal_number;
   if (body.proposal_date !== undefined) updates.proposal_date = body.proposal_date;
   if (body.proposal_description !== undefined) updates.proposal_description = body.proposal_description;
@@ -30,10 +33,15 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.stage !== undefined) updates.stage = body.stage;
   if (body.lost_at !== undefined) updates.lost_at = body.lost_at;
 
-  if (Object.keys(updates).length === 0) {
+  if (Object.keys(updates).length === 0 && !contactProvided) {
     return NextResponse.json({ error: "No fields provided to update" }, { status: 400 });
   }
 
+  // Resolved once, and reused for the contact save below — a deal's
+  // contact is saved as its property's primary contact, never a deal
+  // column, so it needs to know which property (new or existing) this
+  // deal points to.
+  let resolvedPropertyId: number | null | undefined;
   if (body.jobsite_address !== undefined) {
     const jobsiteAddress = body.jobsite_address?.trim() || null;
     let property = null;
@@ -46,18 +54,63 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     updates.latitude = property?.latitude ?? null;
     updates.longitude = property?.longitude ?? null;
     updates.geocoded_at = property?.geocoded_at ?? null;
+    resolvedPropertyId = property?.id ?? null;
   }
 
-  const { data, error } = await supabase
-    .from("Sales Board")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (contactProvided && resolvedPropertyId === undefined) {
+    const { data: existing, error: existingError } = await supabase
+      .from("Sales Board")
+      .select("property_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+    resolvedPropertyId = existing?.property_id ?? null;
   }
+
+  if (contactProvided && resolvedPropertyId == null) {
+    return NextResponse.json({ error: "Add a jobsite address before setting a contact" }, { status: 400 });
+  }
+
+  let data: Record<string, unknown> | null = null;
+  if (Object.keys(updates).length > 0) {
+    const { data: updated, error } = await supabase
+      .from("Sales Board")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    data = updated;
+  }
+
+  if (contactProvided && resolvedPropertyId != null) {
+    try {
+      await upsertPropertyContact(resolvedPropertyId, {
+        first_name: body.contact_first_name ?? null,
+        last_name: body.contact_last_name ?? null,
+        email: body.contact_email ?? null,
+        phone: body.contact_phone ?? null,
+      });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Failed to save contact" },
+        { status: 500 }
+      );
+    }
+  }
+
+  if (!data) {
+    const { data: fetched, error: fetchError } = await supabase.from("Sales Board").select().eq("id", id).single();
+    if (fetchError) {
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+    data = fetched;
+  }
+
   return NextResponse.json({ deal: data });
 }
 

@@ -222,7 +222,12 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to save");
-    setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, ...data.deal } : d)));
+    // A full refetch (rather than patching local state with the response)
+    // keeps the deal's joined property/contact correct — editing contact
+    // fields or the jobsite address can change which property (and which
+    // contact) this deal points to, or mutate a contact shared by other
+    // deals at the same property.
+    await refreshBoard();
   }
 
   async function handleDeleteDeal(deal: Deal) {
@@ -345,7 +350,9 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create deal");
-      setDeals((ds) => [...ds, data.deal]);
+      // A full refetch (rather than appending the raw response) ensures the
+      // new deal's joined property/contact are populated correctly.
+      await refreshBoard();
       closeNewDealForm();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to create deal");

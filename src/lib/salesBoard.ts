@@ -37,13 +37,26 @@ export interface DealEvent {
   photos: DealPhoto[];
 }
 
+export interface Contact {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  created_at: string;
+}
+
 export interface Property {
   id: number;
   address: string;
   latitude: number | null;
   longitude: number | null;
   geocoded_at: string | null;
+  primary_contact_id: number | null;
   created_at: string;
+  // Present when joined — a property's primary contact, the single point of
+  // contact every deal at this property shares.
+  contact: Contact | null;
 }
 
 export interface Deal {
@@ -52,10 +65,10 @@ export interface Deal {
   updated_at: string;
   deal_name: string;
   company: string | null;
-  contact_first_name: string | null;
-  contact_last_name: string | null;
-  contact_email: string | null;
-  contact_phone: string | null;
+  // A deal's contact is reached only by way of its property — a property
+  // has one primary contact, and a contact may be primary for several
+  // properties, so it's never stored directly on the deal.
+  property: Property | null;
   proposal_number: string | null;
   proposal_date: string | null;
   proposal_description: string | null;

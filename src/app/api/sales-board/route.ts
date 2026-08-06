@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
 import { findOrCreateProperty } from "@/lib/properties";
+import { upsertPropertyContact } from "@/lib/contacts";
 import { mapRawDealEvents, DEAL_EVENTS_SELECT } from "@/lib/dealEvents";
 
 export async function GET() {
@@ -39,10 +40,6 @@ export async function POST(req: NextRequest) {
     .insert({
       deal_name: body.deal_name.trim(),
       company: body.company ?? null,
-      contact_first_name: body.contact_first_name ?? null,
-      contact_last_name: body.contact_last_name ?? null,
-      contact_email: body.contact_email ?? null,
-      contact_phone: body.contact_phone ?? null,
       proposal_number: body.proposal_number ?? null,
       proposal_date: body.proposal_date ?? null,
       proposal_description: body.proposal_description ?? null,
@@ -62,6 +59,23 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // A contact belongs to the property, not the deal — silently skipped
+  // (rather than failing the whole deal creation) when there's no property
+  // to attach it to, since property resolution above is itself best-effort.
+  if (property) {
+    try {
+      await upsertPropertyContact(property.id, {
+        first_name: body.contact_first_name ?? null,
+        last_name: body.contact_last_name ?? null,
+        email: body.contact_email ?? null,
+        phone: body.contact_phone ?? null,
+      });
+    } catch {
+      /* contact save is best-effort — never block deal creation */
+    }
+  }
+
   // A brand-new deal has no events yet.
   return NextResponse.json({ deal: { ...data, events: [] } }, { status: 201 });
 }
