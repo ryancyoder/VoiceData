@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./properties.module.css";
 import { fetchWithTimeout } from "@/lib/withTimeout";
@@ -163,19 +162,7 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
           <p>
             {visibleProperties.length === properties.length
               ? `${properties.length} propert${properties.length === 1 ? "y" : "ies"}`
-              : `${visibleProperties.length} of ${properties.length} propert${properties.length === 1 ? "y" : "ies"}`}{" "}
-            ·{" "}
-            <Link href="/sales-board" className={styles["brand-back"]}>
-              Sales Board
-            </Link>{" "}
-            ·{" "}
-            <Link href="/calendar" className={styles["brand-back"]}>
-              Calendar
-            </Link>{" "}
-            ·{" "}
-            <Link href="/photos" className={styles["brand-back"]}>
-              Photos
-            </Link>
+              : `${visibleProperties.length} of ${properties.length} propert${properties.length === 1 ? "y" : "ies"}`}
           </p>
         </div>
         <div className={styles.toolbar}>

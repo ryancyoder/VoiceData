@@ -689,20 +689,7 @@ export default function CalendarClient({
       <div className={styles.topbar}>
         <div className={styles.brand}>
           <h1>Calendar</h1>
-          <p>
-            Job site events, auto-grouped from photo timestamps &amp; location or created by hand ·{" "}
-            <Link href="/photos" className={styles["brand-back"]}>
-              Photos
-            </Link>{" "}
-            ·{" "}
-            <Link href="/properties" className={styles["brand-back"]}>
-              Properties
-            </Link>{" "}
-            ·{" "}
-            <Link href="/sales-board" className={styles["brand-back"]}>
-              ← Sales Board
-            </Link>
-          </p>
+          <p>Job site events, auto-grouped from photo timestamps &amp; location or created by hand</p>
         </div>
       </div>
 

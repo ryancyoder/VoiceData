@@ -521,32 +521,14 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
             <div className={styles["brand-row"]}>
               <h1>Sales Board</h1>
             </div>
-            <p>
-              Deals moving through the pipeline ·{" "}
-              <Link href="/photos" className={styles["brand-back"]}>
-                Photos
-              </Link>{" "}
-              ·{" "}
-              <Link href="/calendar" className={styles["brand-back"]}>
-                Calendar
-              </Link>{" "}
-              ·{" "}
-              <Link href="/properties" className={styles["brand-back"]}>
-                Properties
-              </Link>{" "}
-              ·{" "}
-              <Link href="/admin/geocode-backfill" className={styles["brand-back"]}>
-                Geocode backfill
-              </Link>{" "}
-              ·{" "}
-              <Link href="/" className={styles["brand-back"]}>
-                ← VoiceData
-              </Link>
-            </p>
+            <p>Deals moving through the pipeline</p>
           </div>
         </div>
 
         <div className={styles.stats}>
+          <Link href="/admin/geocode-backfill" className={styles["refresh-btn"]} title="Bulk geocode properties missing coordinates">
+            Geocode backfill
+          </Link>
           <button
             type="button"
             className={`${styles["refresh-btn"]} ${styles["desc-toggle"]} ${showDescriptions ? styles["is-active"] : ""}`}

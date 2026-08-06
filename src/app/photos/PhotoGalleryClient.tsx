@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
 import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, type DealPhoto, type Stage } from "@/lib/salesBoard";
@@ -370,19 +369,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
               <>
                 {visiblePropertyGroups.length} of {propertyGroups.length} album{propertyGroups.length === 1 ? "" : "s"}
               </>
-            )}{" "}
-            ·{" "}
-            <Link href="/calendar" className={styles["brand-back"]}>
-              Calendar
-            </Link>{" "}
-            ·{" "}
-            <Link href="/properties" className={styles["brand-back"]}>
-              Properties
-            </Link>{" "}
-            ·{" "}
-            <Link href="/sales-board" className={styles["brand-back"]}>
-              ← Sales Board
-            </Link>
+            )}
           </p>
         </div>
       </div>

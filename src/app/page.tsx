@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Link from "next/link";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { TableSchema } from "@/lib/db";
 import MicButton from "@/components/MicButton";
@@ -85,41 +84,13 @@ export default function Home() {
 
   return (
     <div className="flex min-h-full flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
-      <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            VoiceData
-          </h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Talk to build a database on the fly.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/sales-board"
-            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-          >
-            Sales Board →
-          </Link>
-          <Link
-            href="/photos"
-            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-          >
-            Photos →
-          </Link>
-          <Link
-            href="/calendar"
-            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-          >
-            Calendar →
-          </Link>
-          <Link
-            href="/properties"
-            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-          >
-            Properties →
-          </Link>
-        </div>
+      <header className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          VoiceData
+        </h1>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Talk to build a database on the fly.
+        </p>
       </header>
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6 sm:flex-row">

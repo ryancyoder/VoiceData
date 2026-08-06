@@ -84,8 +84,6 @@
 
 .brand h1 { margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
 .brand p { margin: 2px 0 0; font-size: 0.8rem; color: var(--text-muted); }
-.brand-back { color: var(--text-muted); text-decoration: none; }
-.brand-back:hover { color: var(--text); }
 
 .back-link {
   background: none;

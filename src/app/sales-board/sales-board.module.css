@@ -130,13 +130,6 @@
 
 .brand p { margin: 2px 0 0; font-size: 0.8rem; color: var(--text-muted); }
 
-.brand-back {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  text-decoration: none;
-}
-.brand-back:hover { color: var(--text); }
-
 .stats { display: flex; gap: clamp(16px, 3vw, 32px); align-items: flex-end; }
 
 .stat { display: flex; flex-direction: column; align-items: flex-end; }
