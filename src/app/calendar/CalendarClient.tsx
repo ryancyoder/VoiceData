@@ -211,6 +211,8 @@ export default function CalendarClient({
   const [mergeTargetId, setMergeTargetId] = useState<number | "">("");
   const [merging, setMerging] = useState(false);
 
+  const [creatingDeal, setCreatingDeal] = useState(false);
+
   const [isDragging, setIsDragging] = useState(false);
   const [dragPreview, setDragPreview] = useState<{ eventId: number; startMs: number; endMs: number } | null>(null);
   const dragRef = useRef<{
@@ -396,6 +398,63 @@ export default function CalendarClient({
       setEditError(err instanceof Error ? err.message : "Failed to save event");
     } finally {
       setSavingEdit(false);
+    }
+  }
+
+  // Creates a brand-new deal (stage: Propose) from an event that doesn't
+  // have one yet, using that event's own property (if any) as the deal's
+  // jobsite — findOrCreateProperty resolves back to the exact same property
+  // row since it's matched by address, so the property's existing contact
+  // carries over rather than being duplicated — then attaches the event to
+  // it, the same relationship the Edit form's Deal dropdown sets by hand.
+  async function handleCreateDealFromEvent() {
+    if (!selectedEvent) return;
+    setCreatingDeal(true);
+    try {
+      const property =
+        selectedEvent.propertyId != null ? propertyOptions.find((p) => p.id === selectedEvent.propertyId) : undefined;
+      const dealName = selectedEvent.name?.trim() || property?.address || "New Deal";
+
+      const dealRes = await fetch("/api/sales-board", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deal_name: dealName,
+          stage: "Propose",
+          jobsite_address: property?.address,
+        }),
+      });
+      const dealData = await dealRes.json();
+      if (!dealRes.ok) throw new Error(dealData.error || "Failed to create deal");
+      const newDeal = dealData.deal;
+
+      const eventRes = await fetch(`/api/events/${selectedEvent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal_id: newDeal.id }),
+      });
+      const eventData = await eventRes.json();
+      if (!eventRes.ok) throw new Error(eventData.error || "Failed to attach the new deal to this event");
+
+      setSelectedEvent({
+        ...selectedEvent,
+        dealId: newDeal.id,
+        dealIds: [...selectedEvent.dealIds, newDeal.id],
+        deals: [
+          ...selectedEvent.deals,
+          {
+            id: newDeal.id,
+            name: newDeal.deal_name,
+            company: newDeal.company ?? null,
+            jobsiteAddress: newDeal.jobsite_address ?? null,
+          },
+        ],
+      });
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to create deal");
+    } finally {
+      setCreatingDeal(false);
     }
   }
 
@@ -823,6 +882,11 @@ export default function CalendarClient({
             )}
 
             <div className={styles["deal-list"]}>
+              {!editingEvent && selectedEvent.deals.length === 0 && (
+                <button type="button" className={styles["nav-btn"]} onClick={handleCreateDealFromEvent} disabled={creatingDeal}>
+                  {creatingDeal ? "Creating…" : "+ Create New Deal"}
+                </button>
+              )}
               {selectedEvent.deals.map((deal) => (
                 <div key={deal.id} className={styles["deal-chip"]}>
                   <div className={styles["deal-chip-name"]}>
