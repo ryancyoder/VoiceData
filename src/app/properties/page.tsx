@@ -13,7 +13,11 @@ type RawProperty = Omit<Property, "contact"> & { contacts: Contact | null };
 
 export default async function PropertiesPage() {
   const [propertiesRes, dealsRes, eventsRes] = await Promise.all([
-    supabase.from("properties").select("*, contacts(*)").order("address", { ascending: true }),
+    supabase
+      .from("properties")
+      .select("*, contacts(*)")
+      .order("last_name", { ascending: true, foreignTable: "contacts" })
+      .order("address", { ascending: true }),
     supabase.from("Sales Board").select("property_id").not("property_id", "is", null),
     supabase.from("events").select("property_id").not("property_id", "is", null),
   ]);

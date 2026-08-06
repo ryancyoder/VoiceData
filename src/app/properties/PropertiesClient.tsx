@@ -16,6 +16,20 @@ const SUBMIT_TIMEOUT_MS = 15000;
 
 const EMPTY_FORM = { address: "", first_name: "", last_name: "", email: "", phone: "" };
 
+// Mirrors the server-side order (contacts.last_name, then address as a
+// tiebreaker) so a freshly-added property lands in the right spot locally
+// without needing a full refetch. Properties with no contact yet sort last,
+// matching Postgres' default NULLS LAST for ascending order.
+function comparePropertiesByLastName(a: PropertyRow, b: PropertyRow): number {
+  const aLast = a.contact?.last_name?.trim() ?? "";
+  const bLast = b.contact?.last_name?.trim() ?? "";
+  if (!aLast && !bLast) return a.address.localeCompare(b.address);
+  if (!aLast) return 1;
+  if (!bLast) return -1;
+  const cmp = aLast.localeCompare(bLast, undefined, { sensitivity: "base" });
+  return cmp !== 0 ? cmp : a.address.localeCompare(b.address);
+}
+
 export default function PropertiesClient({ properties: initialProperties }: { properties: PropertyRow[] }) {
   const [properties, setProperties] = useState<PropertyRow[]>(initialProperties);
   const [view, setView] = useState<"table" | "map">("table");
@@ -59,9 +73,7 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to add property");
       const created = data.property as PropertyRow;
-      setProperties((ps) =>
-        [...ps, { ...created, dealCount: 0, eventCount: 0 }].sort((a, b) => a.address.localeCompare(b.address))
-      );
+      setProperties((ps) => [...ps, { ...created, dealCount: 0, eventCount: 0 }].sort(comparePropertiesByLastName));
       closeForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add property");
@@ -123,6 +135,7 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
             <table className={styles.table}>
               <thead>
                 <tr>
+                  <th>Last Name</th>
                   <th>Address</th>
                   <th>Contact</th>
                   <th>Deals</th>
@@ -133,13 +146,12 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
               <tbody>
                 {properties.map((p) => (
                   <tr key={p.id}>
+                    <td className={styles["contact-name"]}>{p.contact?.last_name || <span className={styles["no-contact"]}>—</span>}</td>
                     <td className={styles["address-cell"]}>{p.address}</td>
                     <td>
                       {p.contact ? (
                         <>
-                          <div className={styles["contact-name"]}>
-                            {[p.contact.first_name, p.contact.last_name].filter(Boolean).join(" ") || "—"}
-                          </div>
+                          {p.contact.first_name && <div>{p.contact.first_name}</div>}
                           {p.contact.email && <div className={styles["contact-detail"]}>{p.contact.email}</div>}
                           {p.contact.phone && <div className={styles["contact-detail"]}>{p.contact.phone}</div>}
                         </>
