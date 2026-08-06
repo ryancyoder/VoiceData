@@ -113,6 +113,12 @@ export default function Home() {
           >
             Calendar →
           </Link>
+          <Link
+            href="/properties"
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+          >
+            Properties →
+          </Link>
         </div>
       </header>
 

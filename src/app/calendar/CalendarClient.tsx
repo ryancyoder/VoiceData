@@ -500,6 +500,10 @@ export default function CalendarClient({
               Photos
             </Link>{" "}
             ·{" "}
+            <Link href="/properties" className={styles["brand-back"]}>
+              Properties
+            </Link>{" "}
+            ·{" "}
             <Link href="/sales-board" className={styles["brand-back"]}>
               ← Sales Board
             </Link>

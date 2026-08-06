@@ -103,6 +103,10 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
               Calendar
             </Link>{" "}
             ·{" "}
+            <Link href="/properties" className={styles["brand-back"]}>
+              Properties
+            </Link>{" "}
+            ·{" "}
             <Link href="/sales-board" className={styles["brand-back"]}>
               ← Sales Board
             </Link>

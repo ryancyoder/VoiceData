@@ -396,6 +396,10 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
                 Calendar
               </Link>{" "}
               ·{" "}
+              <Link href="/properties" className={styles["brand-back"]}>
+                Properties
+              </Link>{" "}
+              ·{" "}
               <Link href="/admin/geocode-backfill" className={styles["brand-back"]}>
                 Geocode backfill
               </Link>{" "}
