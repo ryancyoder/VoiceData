@@ -686,7 +686,7 @@ export default function CalendarClient({
                         className={styles["event-photo-badge"]}
                         title={`${event.photos.length} photo${event.photos.length === 1 ? "" : "s"}`}
                       >
-                        📷 {event.photos.length}
+                        📷
                       </div>
                     )}
                     {event.eventType && <div className={styles["event-type-badge"]}>{event.eventType}</div>}
