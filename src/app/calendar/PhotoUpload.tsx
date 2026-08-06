@@ -65,7 +65,12 @@ export default function PhotoUpload({
   onUploaded,
 }: {
   propertyOptions: PropertyOption[];
-  onUploaded: () => void;
+  // Passed a target date (the earliest capture time in the batch) when
+  // every item in the batch uploaded successfully — the panel closes
+  // itself in that case, and the caller can navigate to that date's week.
+  // Passed null on a partial/failed batch, where the panel stays open so
+  // the user can see and retry what failed.
+  onUploaded: (date: Date | null) => void;
 }) {
   const [pending, setPending] = useState<PendingPhoto[]>([]);
   const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>(initialPropertyOptions);
@@ -380,6 +385,7 @@ export default function PhotoUpload({
   async function handleUploadAll() {
     setUploading(true);
     let anyUploaded = false;
+    let anyError = false;
     let noLocationEventId: number | null = null;
     const noLocationItems = pending.filter((p) => p.status !== "done" && p.selectedPropertyId === NO_LOCATION);
 
@@ -403,6 +409,7 @@ export default function PhotoUpload({
         anyUploaded = true;
         setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "done" } : it)));
       } catch (err) {
+        anyError = true;
         const message =
           err instanceof Error && err.name === "AbortError"
             ? "Upload timed out — try again"
@@ -416,7 +423,25 @@ export default function PhotoUpload({
     }
 
     setUploading(false);
-    if (anyUploaded) onUploaded();
+    if (!anyUploaded) return;
+
+    if (anyError) {
+      // Partial failure — leave the panel open so the failed item(s) are
+      // visible to retry, but still refresh so what did succeed shows up.
+      onUploaded(null);
+      return;
+    }
+
+    // Every item in the batch succeeded — jump to the earliest capture
+    // time in the batch (falling back to now for a batch with no capture
+    // times at all, e.g. pasted screenshots) so the caller can navigate
+    // straight to the week the resulting event lands in, then close.
+    const times = pending
+      .map((it) => (it.takenAt ? new Date(it.takenAt).getTime() : null))
+      .filter((t): t is number => t != null);
+    const targetDate = times.length > 0 ? new Date(Math.min(...times)) : new Date();
+    onUploaded(targetDate);
+    closePanel();
   }
 
   const readyCount = pending.filter(
