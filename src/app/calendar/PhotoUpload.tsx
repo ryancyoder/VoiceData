@@ -205,7 +205,11 @@ export default function PhotoUpload({
         // the clipboard. Arming the hidden paste target and prompting a
         // real ⌘V is the reliable fallback: it triggers the browser's own
         // native paste event, which isn't bound by that allowlist.
-        setPasteError("Press ⌘V / Ctrl+V now to paste");
+        setPasteError(
+          typesSeen.length > 0
+            ? `Press ⌘V / Ctrl+V now to paste (clipboard.read() only saw: ${typesSeen.join(", ")})`
+            : "Press ⌘V / Ctrl+V now to paste"
+        );
         armPasteTarget();
         return;
       }
@@ -226,14 +230,25 @@ export default function PhotoUpload({
   useEffect(() => {
     function onPaste(e: ClipboardEvent) {
       const items = e.clipboardData?.items;
-      if (!items) return;
+      if (!items || items.length === 0) return;
       const files: File[] = [];
       for (const item of Array.from(items)) {
         if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
         const file = item.getAsFile();
         if (file) files.push(file);
       }
-      if (files.length === 0) return;
+      if (files.length === 0) {
+        // Something real was on the clipboard (this handler only runs when
+        // an actual paste event fired) but none of it looked like an image
+        // file to us — surface exactly what was offered instead of doing
+        // nothing silently, since that's otherwise indistinguishable from
+        // the paste not registering at all.
+        const seen = Array.from(items)
+          .map((item) => `${item.kind}:${item.type || "(no type)"}`)
+          .join(", ");
+        setPasteError(`No image found in what was pasted (found: ${seen})`);
+        return;
+      }
       e.preventDefault();
       setPasteError(null);
       pasteArmedRef.current = false;
