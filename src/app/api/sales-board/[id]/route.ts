@@ -51,6 +51,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     } catch {
       // Property lookup/geocoding is best-effort — never block saving the deal.
     }
+    updates.jobsite_address = property?.address ?? jobsiteAddress;
     updates.property_id = property?.id ?? null;
     updates.latitude = property?.latitude ?? null;
     updates.longitude = property?.longitude ?? null;

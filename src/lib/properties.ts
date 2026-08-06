@@ -92,11 +92,59 @@ export async function findNearbyProperties(latitude: number, longitude: number):
     .slice(0, MAX_CANDIDATES);
 }
 
+const DEDUPE_MATCH_METERS = 30;
+
+function normalizeAddressForMatch(address: string): string {
+  return address.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 /**
- * Finds the Property row for an exact jobsite address, creating one
- * (and geocoding it) if this is the first deal ever seen at that address.
- * Reusing an existing property avoids re-geocoding the same address on
- * every deal that shares it.
+ * Catches near-duplicate wording ("114 Shore Dr" vs "114 Shore Dr.") that
+ * an exact match misses — stripping punctuation/whitespace/case and
+ * comparing client-side, since this table is small enough that fetching
+ * it all is cheaper than maintaining a generated/indexed column for it.
+ */
+async function findPropertyByNormalizedAddress(trimmed: string): Promise<Property | null> {
+  const target = normalizeAddressForMatch(trimmed);
+  const { data, error } = await supabase.from("properties").select("*");
+  if (error) throw new Error(error.message);
+  return (data as Property[] | null)?.find((p) => normalizeAddressForMatch(p.address) === target) ?? null;
+}
+
+/**
+ * Catches wording that differs enough to dodge normalization ("Dr" vs
+ * "Drive") but still geocodes to (near enough) the same point. The radius
+ * here is deliberately tight — this is for "is this the same property",
+ * not the much looser "properties in the neighborhood" suggestion radius
+ * used by findNearbyProperties, so it won't accidentally merge next-door
+ * neighbors.
+ */
+async function findPropertyByGeocodedProximity(latitude: number, longitude: number): Promise<Property | null> {
+  const { data, error } = await supabase
+    .from("properties")
+    .select("*")
+    .not("latitude", "is", null)
+    .not("longitude", "is", null);
+  if (error) throw new Error(error.message);
+
+  let best: { property: Property; distance: number } | null = null;
+  for (const row of (data ?? []) as Property[]) {
+    if (row.latitude == null || row.longitude == null) continue;
+    const distance = haversineMeters(latitude, longitude, row.latitude, row.longitude);
+    if (distance <= DEDUPE_MATCH_METERS && (!best || distance < best.distance)) {
+      best = { property: row, distance };
+    }
+  }
+  return best?.property ?? null;
+}
+
+/**
+ * Finds the Property row for a jobsite address, creating one (and
+ * geocoding it) only if this address genuinely isn't on file yet under
+ * any of: an exact match, a punctuation/whitespace-insensitive match, or
+ * (once geocoded) a same-point match. Reusing an existing property avoids
+ * re-geocoding the same address on every deal that shares it, and avoids
+ * splitting one physical property across multiple rows over wording.
  */
 export async function findOrCreateProperty(address: string): Promise<Property | null> {
   const trimmed = address.trim();
@@ -107,11 +155,18 @@ export async function findOrCreateProperty(address: string): Promise<Property | 
     .select("*")
     .eq("address", trimmed)
     .maybeSingle();
-
   if (findError) throw new Error(findError.message);
   if (existing) return existing as Property;
 
+  const normalizedMatch = await findPropertyByNormalizedAddress(trimmed);
+  if (normalizedMatch) return normalizedMatch;
+
   const geocoded = await geocodeAddress(trimmed);
+
+  if (geocoded) {
+    const proximityMatch = await findPropertyByGeocodedProximity(geocoded.latitude, geocoded.longitude);
+    if (proximityMatch) return proximityMatch;
+  }
 
   const { data: created, error: insertError } = await supabase
     .from("properties")
