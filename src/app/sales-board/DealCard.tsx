@@ -8,6 +8,15 @@ export type UiDeal = Deal & { _pending?: boolean; _error?: string };
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
+// proposal_date is a plain date (no time component) — parsing it with
+// `new Date(isoDate)` reads it as UTC midnight, which prints as the
+// previous day in a negative-UTC-offset timezone. Parsing the y/m/d parts
+// directly keeps it the literal date that was stored.
+function formatProposalDate(isoDate: string) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
 
@@ -131,6 +140,10 @@ export default function DealCard({
           </div>
         )}
       </div>
+
+      {deal.stage === "Sent" && deal.proposal_date && (
+        <div className={styles["card-proposal-date"]}>Sent {formatProposalDate(deal.proposal_date)}</div>
+      )}
 
       {showNextAction && deal.next_action && (
         <div className={`${styles["card-desc"]} ${styles["card-next-action"]}`}>{"> " + deal.next_action}</div>

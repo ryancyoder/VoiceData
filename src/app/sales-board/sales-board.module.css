@@ -393,6 +393,12 @@
   overflow: hidden;
 }
 .card-next-action { font-style: italic; }
+.card-proposal-date {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
 
 .card-hover-tooltip {
   position: absolute;

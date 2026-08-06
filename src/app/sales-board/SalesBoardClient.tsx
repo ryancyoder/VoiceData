@@ -42,12 +42,25 @@ const EMPTY_ADD_FORM = {
   proposal_description: "",
 };
 
+// Deals with no proposal_date sort to the end regardless of direction —
+// there's no meaningful "earliest"/"latest" position for a date that isn't
+// set, and burying them at the bottom keeps whichever direction is active
+// from being dominated by undated deals landing first.
+function compareProposalDate(a: UiDeal, b: UiDeal, direction: 1 | -1) {
+  if (!a.proposal_date && !b.proposal_date) return 0;
+  if (!a.proposal_date) return 1;
+  if (!b.proposal_date) return -1;
+  return direction * (new Date(a.proposal_date).getTime() - new Date(b.proposal_date).getTime());
+}
+
 function sortDeals(list: UiDeal[], mode: string) {
   const sorted = [...list];
   if (mode === "value_desc") sorted.sort((a, b) => (b.value || 0) - (a.value || 0));
   else if (mode === "value_asc") sorted.sort((a, b) => (a.value || 0) - (b.value || 0));
   else if (mode === "alpha_asc") sorted.sort((a, b) => a.deal_name.localeCompare(b.deal_name));
   else if (mode === "alpha_desc") sorted.sort((a, b) => b.deal_name.localeCompare(a.deal_name));
+  else if (mode === "date_desc") sorted.sort((a, b) => compareProposalDate(a, b, -1));
+  else if (mode === "date_asc") sorted.sort((a, b) => compareProposalDate(a, b, 1));
   return sorted;
 }
 
@@ -61,6 +74,12 @@ function nextAlphaSort(current: string) {
   if (current === "alpha_asc") return "alpha_desc";
   if (current === "alpha_desc") return "";
   return "alpha_asc";
+}
+
+function nextDateSort(current: string) {
+  if (current === "date_desc") return "date_asc";
+  if (current === "date_asc") return "";
+  return "date_desc";
 }
 
 interface DragState {
@@ -764,6 +783,18 @@ export default function SalesBoardClient({
                     >
                       {"A/Z" + (sortMode === "alpha_asc" ? "▴" : sortMode === "alpha_desc" ? "▾" : "")}
                     </button>
+                    {stage === "Sent" && (
+                      <button
+                        type="button"
+                        className={`${styles["column-sort-btn"]} ${sortMode.indexOf("date_") === 0 ? styles["is-active"] : ""}`}
+                        aria-label={`Sort ${stage} by proposal date`}
+                        onClick={() =>
+                          setColumnSortState((s) => ({ ...s, [stage]: nextDateSort(sortMode) }))
+                        }
+                      >
+                        {"Date" + (sortMode === "date_desc" ? "▾" : sortMode === "date_asc" ? "▴" : "")}
+                      </button>
+                    )}
                   </div>
                   <span className={styles["column-count"]}>{stageDeals.length}</span>
                 </div>
