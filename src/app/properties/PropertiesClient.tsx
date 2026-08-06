@@ -25,6 +25,8 @@ const PropertyMap = dynamic(() => import("./PropertyMap"), {
   loading: () => <div className={styles.empty}>Loading map…</div>,
 });
 
+const SetLocationModal = dynamic(() => import("./SetLocationModal"), { ssr: false });
+
 const SUBMIT_TIMEOUT_MS = 15000;
 
 const EMPTY_FORM = { address: "", first_name: "", last_name: "", email: "", phone: "" };
@@ -57,6 +59,26 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [highlightedPropertyId, setHighlightedPropertyId] = useState<number | null>(null);
+  const [locationModalPropertyId, setLocationModalPropertyId] = useState<number | null>(null);
+
+  // Centers the manual location picker on wherever this business's other
+  // properties already are, rather than defaulting to the middle of the
+  // country — much less panning to find the right neighborhood.
+  const defaultMapCenter = useMemo<[number, number] | null>(() => {
+    const geocoded = properties.filter((p) => p.latitude != null && p.longitude != null);
+    if (geocoded.length === 0) return null;
+    return [
+      geocoded.reduce((sum, p) => sum + p.latitude!, 0) / geocoded.length,
+      geocoded.reduce((sum, p) => sum + p.longitude!, 0) / geocoded.length,
+    ];
+  }, [properties]);
+
+  function handleLocationSaved(propertyId: number, latitude: number, longitude: number) {
+    setProperties((ps) =>
+      ps.map((p) => (p.id === propertyId ? { ...p, latitude, longitude, geocoded_at: new Date().toISOString() } : p))
+    );
+    setLocationModalPropertyId(null);
+  }
 
   // All stages selected is the neutral/unfiltered state — every property
   // shows, including ones with no deal at all. Deselecting a stage narrows
@@ -264,7 +286,16 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
                       {p.latitude != null && p.longitude != null ? (
                         <span className={styles["geocode-yes"]}>✓ Geocoded</span>
                       ) : (
-                        <span className={styles["geocode-no"]}>Not geocoded</span>
+                        <>
+                          <span className={styles["geocode-no"]}>Not geocoded</span>{" "}
+                          <button
+                            type="button"
+                            className={styles["geocode-set-link"]}
+                            onClick={() => setLocationModalPropertyId(p.id)}
+                          >
+                            Set location
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -333,6 +364,22 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
           </div>
         </div>
       )}
+
+      {locationModalPropertyId != null && (() => {
+        const property = properties.find((p) => p.id === locationModalPropertyId);
+        if (!property) return null;
+        return (
+          <SetLocationModal
+            propertyId={property.id}
+            address={property.address}
+            initialLatitude={property.latitude}
+            initialLongitude={property.longitude}
+            defaultCenter={defaultMapCenter}
+            onClose={() => setLocationModalPropertyId(null)}
+            onSaved={(latitude, longitude) => handleLocationSaved(property.id, latitude, longitude)}
+          />
+        );
+      })()}
     </div>
   );
 }

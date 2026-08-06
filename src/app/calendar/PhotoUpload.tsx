@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./calendar.module.css";
-import type { PropertyOption } from "./CalendarClient";
+import type { PropertyOption } from "@/lib/salesBoard";
 import { withTimeout, fetchWithTimeout } from "@/lib/withTimeout";
 import { compressImage } from "@/lib/compressImage";
 import { supabase } from "@/lib/supabaseClient";

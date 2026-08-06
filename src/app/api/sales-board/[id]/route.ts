@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
-import { findOrCreateProperty } from "@/lib/properties";
 import { upsertPropertyContact } from "@/lib/contacts";
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -39,19 +38,11 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   // Resolved once, and reused for the contact save below — a deal's
   // contact is saved as its property's primary contact, never a deal
-  // column, so it needs to know which property (new or existing) this
-  // deal points to.
+  // column, so it needs to know which property this deal points to.
   let resolvedPropertyId: number | null | undefined;
-  if (body.jobsite_address !== undefined) {
-    const jobsiteAddress = body.jobsite_address?.trim() || null;
-    let property = null;
-    try {
-      property = jobsiteAddress ? await findOrCreateProperty(jobsiteAddress) : null;
-    } catch {
-      // Property lookup/geocoding is best-effort — never block saving the deal.
-    }
-    updates.property_id = property?.id ?? null;
-    resolvedPropertyId = property?.id ?? null;
+  if (body.property_id !== undefined) {
+    updates.property_id = body.property_id;
+    resolvedPropertyId = body.property_id;
   }
 
   if (contactProvided && resolvedPropertyId === undefined) {

@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
-import type { Deal, DealPhoto } from "@/lib/salesBoard";
+import type { Deal, DealPhoto, PropertyOption } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
-import CalendarClient, { type CalendarEvent, type DealOption, type PropertyOption } from "./CalendarClient";
+import CalendarClient, { type CalendarEvent, type DealOption } from "./CalendarClient";
 
 export const dynamic = "force-dynamic";
 

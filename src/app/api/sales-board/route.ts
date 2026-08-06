@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput } from "@/lib/salesBoard";
-import { findOrCreateProperty } from "@/lib/properties";
 import { upsertPropertyContact } from "@/lib/contacts";
 import { mapRawDealEvents, DEAL_EVENTS_SELECT } from "@/lib/dealEvents";
 
@@ -27,13 +26,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Invalid stage "${body.stage}"` }, { status: 400 });
   }
 
-  const jobsiteAddress = body.jobsite_address?.trim() || null;
-  let property = null;
-  try {
-    property = jobsiteAddress ? await findOrCreateProperty(jobsiteAddress) : null;
-  } catch {
-    // Property lookup/geocoding is best-effort — never block creating the deal.
-  }
+  const propertyId = body.property_id ?? null;
 
   const { data, error } = await supabase
     .from("Sales Board")
@@ -46,7 +39,7 @@ export async function POST(req: NextRequest) {
       next_action: body.next_action ?? null,
       appointment_date: body.appointment_date ?? null,
       aspire_link: body.aspire_link?.trim() || null,
-      property_id: property?.id ?? null,
+      property_id: propertyId,
       value: body.value ?? null,
       stage: body.stage ?? "Lead",
     })
@@ -59,10 +52,10 @@ export async function POST(req: NextRequest) {
 
   // A contact belongs to the property, not the deal — silently skipped
   // (rather than failing the whole deal creation) when there's no property
-  // to attach it to, since property resolution above is itself best-effort.
-  if (property) {
+  // to attach it to.
+  if (propertyId != null) {
     try {
-      await upsertPropertyContact(property.id, {
+      await upsertPropertyContact(propertyId, {
         first_name: body.contact_first_name ?? null,
         last_name: body.contact_last_name ?? null,
         email: body.contact_email ?? null,

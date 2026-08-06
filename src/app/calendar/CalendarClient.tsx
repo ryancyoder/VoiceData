@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./calendar.module.css";
-import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel } from "@/lib/salesBoard";
+import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, type PropertyOption } from "@/lib/salesBoard";
 import { EVENT_TYPES, type EventType } from "@/lib/events";
 import PhotoUpload from "./PhotoUpload";
 import EventMediaUpload from "./EventMediaUpload";
@@ -51,12 +51,6 @@ export interface DealOption {
   // The deal's own jobsite contact, reached by way of its property — used
   // to suggest a likely-matching deal when an event's property shares the
   // same contact last name.
-  contactLastName: string | null;
-}
-
-export interface PropertyOption {
-  id: number;
-  address: string;
   contactLastName: string | null;
 }
 
@@ -450,11 +444,10 @@ export default function CalendarClient({
   }
 
   // Creates a brand-new deal (stage: Propose) from an event that doesn't
-  // have one yet, using that event's own property (if any) as the deal's
-  // jobsite — findOrCreateProperty resolves back to the exact same property
-  // row since it's matched by address, so the property's existing contact
-  // carries over rather than being duplicated — then attaches the event to
-  // it, the same relationship the Edit form's Deal dropdown sets by hand.
+  // have one yet, pointing it at that event's own property (if any) — the
+  // deal shares the property's existing contact rather than duplicating
+  // it — then attaches the event to it, the same relationship the Edit
+  // form's Deal dropdown sets by hand.
   async function handleCreateDealFromEvent() {
     if (!selectedEvent) return;
     setCreatingDeal(true);
@@ -474,7 +467,7 @@ export default function CalendarClient({
         body: JSON.stringify({
           deal_name: dealName,
           stage: "Propose",
-          jobsite_address: property?.address,
+          property_id: property?.id ?? null,
         }),
       });
       const dealData = await dealRes.json();

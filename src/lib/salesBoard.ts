@@ -73,6 +73,15 @@ export interface Property {
   contact: Contact | null;
 }
 
+// A lightweight property for picker dropdowns (Sales Board's jobsite
+// address field, Calendar's event property field) — just enough to label
+// and identify a property, not the full row.
+export interface PropertyOption {
+  id: number;
+  address: string;
+  contactLastName: string | null;
+}
+
 export interface Deal {
   id: number;
   created_at: string;
@@ -168,7 +177,7 @@ export interface DealInput {
   proposal_description?: string | null;
   next_action?: string | null;
   appointment_date?: string | null;
-  jobsite_address?: string | null;
+  property_id?: number | null;
   value?: number | null;
   stage?: Stage;
   lost_at?: string | null;

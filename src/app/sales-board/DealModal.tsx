@@ -3,22 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./sales-board.module.css";
-import { dealAttachmentUrl, dealDocumentUrl, dealThumbUrl, formatPropertyLabel, type Deal, type DealInput } from "@/lib/salesBoard";
+import PropertyPicker from "./PropertyPicker";
+import { dealAttachmentUrl, dealDocumentUrl, dealThumbUrl, type Deal, type DealInput, type PropertyOption } from "@/lib/salesBoard";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 
 const PARSE_ASPIRE_TIMEOUT_MS = 25000;
-const MATCH_FETCH_TIMEOUT_MS = 8000;
-
-interface AddressMatch {
-  id: number;
-  address: string;
-  contactLastName: string | null;
-  distanceMeters: number;
-}
 
 interface DealModalProps {
   deal: Deal;
   relatedDeals: Deal[];
+  propertyOptions: PropertyOption[];
+  onPropertyCreated: (option: PropertyOption) => void;
   onSelectDeal: (id: number) => void;
   onClose: () => void;
   onSave: (id: number, updates: Partial<DealInput>) => Promise<void>;
@@ -57,16 +52,23 @@ function GeocodeStatus({ deal }: { deal: Deal }) {
   if (property.geocoded_at) {
     return (
       <div className={`${styles["geocode-status"]} ${styles["is-warn"]}`}>
-        ⚠ Couldn&apos;t find this address — check it&apos;s spelled correctly, then save again
+        ⚠ Couldn&apos;t find this address automatically — or{" "}
+        <Link href={`/properties?property=${property.id}`} className={styles["geocode-link"]}>
+          set its location on the map
+        </Link>
       </div>
     );
   }
 
   return (
     <div className={`${styles["geocode-status"]} ${styles["is-muted"]}`}>
-      Not geocoded yet — save this deal, or run the{" "}
+      Not geocoded yet — save this deal, run the{" "}
       <Link href="/admin/geocode-backfill" className={styles["geocode-link"]}>
         geocode backfill
+      </Link>
+      , or{" "}
+      <Link href={`/properties?property=${property.id}`} className={styles["geocode-link"]}>
+        set its location on the map
       </Link>
     </div>
   );
@@ -93,6 +95,8 @@ function RelatedDeals({ deals, onSelectDeal }: { deals: Deal[]; onSelectDeal: (i
 export default function DealModal({
   deal,
   relatedDeals,
+  propertyOptions,
+  onPropertyCreated,
   onSelectDeal,
   onClose,
   onSave,
@@ -127,7 +131,7 @@ export default function DealModal({
     proposal_number: deal.proposal_number || "",
     proposal_date: deal.proposal_date || "",
     appointment_date: deal.appointment_date || "",
-    jobsite_address: deal.property?.address || "",
+    property_id: deal.property_id,
     aspire_link: deal.aspire_link || "",
     next_action: deal.next_action || "",
     proposal_description: deal.proposal_description || "",
@@ -135,8 +139,6 @@ export default function DealModal({
   const [saving, setSaving] = useState(false);
   const [lostBusy, setLostBusy] = useState(false);
   const [error, setError] = useState("");
-  const [addressMatches, setAddressMatches] = useState<AddressMatch[]>([]);
-  const [matchingAddress, setMatchingAddress] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -252,39 +254,6 @@ export default function DealModal({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  // The typed address is free text and may not match how this property is
-  // already stored (abbreviations, punctuation, a missing zip) — geocoding
-  // it and checking nearby properties on file catches a match an exact
-  // string comparison would miss, so this deal reuses that property
-  // instead of quietly spinning up a near-duplicate.
-  async function checkAddressMatch(address: string) {
-    const trimmed = address.trim();
-    if (!trimmed) {
-      setAddressMatches([]);
-      return;
-    }
-    setMatchingAddress(true);
-    try {
-      const res = await fetchWithTimeout(
-        "/api/properties/match-address",
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: trimmed }) },
-        MATCH_FETCH_TIMEOUT_MS
-      );
-      const data = await res.json();
-      setAddressMatches(res.ok ? data.candidates ?? [] : []);
-    } catch {
-      /* match lookup failed or timed out — user can still save as a new property */
-      setAddressMatches([]);
-    } finally {
-      setMatchingAddress(false);
-    }
-  }
-
-  function applyMatchedAddress(match: AddressMatch) {
-    set("jobsite_address", match.address);
-    setAddressMatches([]);
-  }
-
   async function handleParseAspire() {
     const link = form.aspire_link.trim();
     if (!link) return;
@@ -353,7 +322,7 @@ export default function DealModal({
         proposal_number: form.proposal_number.trim() || null,
         proposal_date: form.proposal_date || null,
         appointment_date: form.appointment_date || null,
-        jobsite_address: form.jobsite_address.trim() || null,
+        property_id: form.property_id,
         aspire_link: form.aspire_link.trim() || null,
         next_action: form.next_action.trim() || null,
         proposal_description: form.proposal_description.trim() || null,
@@ -582,32 +551,13 @@ export default function DealModal({
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-jobsite">Jobsite address</label>
-            <input
+            <PropertyPicker
               id="dm-jobsite"
-              autoComplete="off"
-              value={form.jobsite_address}
-              onChange={(e) => set("jobsite_address", e.target.value)}
-              onBlur={(e) => checkAddressMatch(e.target.value)}
+              propertyOptions={propertyOptions}
+              value={form.property_id}
+              onChange={(propertyId) => setForm((f) => ({ ...f, property_id: propertyId }))}
+              onCreated={onPropertyCreated}
             />
-            {matchingAddress && <div className={styles["geocode-status"]}>Checking for a matching property…</div>}
-            {!matchingAddress && addressMatches.length > 0 && (
-              <div className={styles["bulk-match-bar"]}>
-                <span>Matches an existing property on file:</span>
-                <div className={styles["bulk-match-actions"]}>
-                  {addressMatches.map((match) => (
-                    <button
-                      key={match.id}
-                      type="button"
-                      className={styles["bulk-match-btn"]}
-                      onClick={() => applyMatchedAddress(match)}
-                    >
-                      {formatPropertyLabel(match)} ·{" "}
-                      {match.distanceMeters < 1000 ? `${match.distanceMeters}m` : `${(match.distanceMeters / 1000).toFixed(1)}km`} away
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
             <GeocodeStatus deal={deal} />
           </div>
           <RelatedDeals deals={relatedDeals} onSelectDeal={onSelectDeal} />

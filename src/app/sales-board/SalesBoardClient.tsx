@@ -4,21 +4,14 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./sales-board.module.css";
-import { STAGES, formatPropertyLabel, type Deal, type DealInput, type Stage } from "@/lib/salesBoard";
+import { STAGES, type Deal, type DealInput, type PropertyOption, type Stage } from "@/lib/salesBoard";
 import DealCard, { type UiDeal } from "./DealCard";
 import DealModal from "./DealModal";
 import LostModal from "./LostModal";
+import PropertyPicker from "./PropertyPicker";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 
 const PHOTO_UPLOAD_TIMEOUT_MS = 60000;
-const MATCH_FETCH_TIMEOUT_MS = 8000;
-
-interface AddressMatch {
-  id: number;
-  address: string;
-  contactLastName: string | null;
-  distanceMeters: number;
-}
 
 const STAGE_COLORS: Record<Stage, string> = {
   Lead: "var(--c-lead)",
@@ -45,7 +38,7 @@ const EMPTY_ADD_FORM = {
   proposal_number: "",
   proposal_date: "",
   appointment_date: "",
-  jobsite_address: "",
+  property_id: null as number | null,
   next_action: "",
   proposal_description: "",
 };
@@ -82,10 +75,17 @@ interface DragState {
   currentColumn: HTMLElement | null;
 }
 
-export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[] }) {
+export default function SalesBoardClient({
+  initialDeals,
+  initialPropertyOptions,
+}: {
+  initialDeals: Deal[];
+  initialPropertyOptions: PropertyOption[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [deals, setDeals] = useState<UiDeal[]>(initialDeals);
+  const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>(initialPropertyOptions);
   const [activeDealId, setActiveDealId] = useState<number | null>(null);
 
   // Reacts to the URL's ?deal= param rather than only reading it once on
@@ -113,8 +113,6 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState("");
-  const [addAddressMatches, setAddAddressMatches] = useState<AddressMatch[]>([]);
-  const [addMatchingAddress, setAddMatchingAddress] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -424,37 +422,10 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
     setAddFormOpen(false);
     setAddForm(EMPTY_ADD_FORM);
     setAddError("");
-    setAddAddressMatches([]);
   }
 
-  // Same rationale as DealModal's checkAddressMatch: catches a property
-  // already on file under slightly different wording before this deal
-  // spins up a near-duplicate one.
-  async function checkAddAddressMatch(address: string) {
-    const trimmed = address.trim();
-    if (!trimmed) {
-      setAddAddressMatches([]);
-      return;
-    }
-    setAddMatchingAddress(true);
-    try {
-      const res = await fetchWithTimeout(
-        "/api/properties/match-address",
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: trimmed }) },
-        MATCH_FETCH_TIMEOUT_MS
-      );
-      const data = await res.json();
-      setAddAddressMatches(res.ok ? data.candidates ?? [] : []);
-    } catch {
-      setAddAddressMatches([]);
-    } finally {
-      setAddMatchingAddress(false);
-    }
-  }
-
-  function applyAddMatchedAddress(match: AddressMatch) {
-    setAddForm((f) => ({ ...f, jobsite_address: match.address }));
-    setAddAddressMatches([]);
+  function handlePropertyCreated(option: PropertyOption) {
+    setPropertyOptions((opts) => [...opts, option].sort((a, b) => a.address.localeCompare(b.address)));
   }
 
   async function handleCreateDeal(e: React.FormEvent) {
@@ -478,7 +449,7 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
           proposal_number: addForm.proposal_number.trim() || null,
           proposal_date: addForm.proposal_date || null,
           appointment_date: addForm.appointment_date || null,
-          jobsite_address: addForm.jobsite_address.trim() || null,
+          property_id: addForm.property_id,
           next_action: addForm.next_action.trim() || null,
           proposal_description: addForm.proposal_description.trim() || null,
         }),
@@ -693,33 +664,13 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
           </div>
           <div className={`${styles.field} ${styles["is-full"]}`}>
             <label htmlFor="f-jobsite">Jobsite address</label>
-            <input
+            <PropertyPicker
               id="f-jobsite"
-              maxLength={200}
-              autoComplete="off"
-              value={addForm.jobsite_address}
-              onChange={(e) => setAddForm((f) => ({ ...f, jobsite_address: e.target.value }))}
-              onBlur={(e) => checkAddAddressMatch(e.target.value)}
+              propertyOptions={propertyOptions}
+              value={addForm.property_id}
+              onChange={(propertyId) => setAddForm((f) => ({ ...f, property_id: propertyId }))}
+              onCreated={handlePropertyCreated}
             />
-            {addMatchingAddress && <div className={styles["geocode-status"]}>Checking for a matching property…</div>}
-            {!addMatchingAddress && addAddressMatches.length > 0 && (
-              <div className={styles["bulk-match-bar"]}>
-                <span>Matches an existing property on file:</span>
-                <div className={styles["bulk-match-actions"]}>
-                  {addAddressMatches.map((match) => (
-                    <button
-                      key={match.id}
-                      type="button"
-                      className={styles["bulk-match-btn"]}
-                      onClick={() => applyAddMatchedAddress(match)}
-                    >
-                      {formatPropertyLabel(match)} ·{" "}
-                      {match.distanceMeters < 1000 ? `${match.distanceMeters}m` : `${(match.distanceMeters / 1000).toFixed(1)}km`} away
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
           <div className={`${styles.field} ${styles["is-full"]}`}>
             <label htmlFor="f-next-action">Next action</label>
@@ -862,6 +813,8 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
           key={activeDeal.id}
           deal={activeDeal}
           relatedDeals={relatedDeals}
+          propertyOptions={propertyOptions}
+          onPropertyCreated={handlePropertyCreated}
           onSelectDeal={(id) => setActiveDealId(id)}
           onClose={() => setActiveDealId(null)}
           onSave={handleSaveDeal}

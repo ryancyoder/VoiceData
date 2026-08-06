@@ -183,7 +183,7 @@
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field.is-full { grid-column: 1 / -1; }
 .field label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.field input, .field textarea {
+.field input, .field textarea, .field select {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -194,7 +194,21 @@
   color: inherit;
   resize: vertical;
 }
-.field input:focus, .field textarea:focus { border-color: var(--accent); }
+.field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+
+.property-picker-new { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.property-picker-new input {
+  flex: 1;
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+}
+.property-picker-new input:focus { border-color: var(--accent); }
 
 .add-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px; align-items: center; }
 
@@ -383,7 +397,7 @@
 .card-edit-field { display: flex; flex-direction: column; gap: 2px; }
 .card-edit-field.is-full { grid-column: 1 / -1; }
 .card-edit-field label { font-size: 0.64rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
-.card-edit-field input, .card-edit-field textarea {
+.card-edit-field input, .card-edit-field textarea, .card-edit-field select {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -393,7 +407,7 @@
   color: inherit;
   resize: vertical;
 }
-.card-edit-field input:focus, .card-edit-field textarea:focus { border-color: var(--accent); }
+.card-edit-field input:focus, .card-edit-field textarea:focus, .card-edit-field select:focus { border-color: var(--accent); }
 .card-edit-error { grid-column: 1 / -1; font-size: 0.7rem; color: var(--danger); }
 
 .aspire-link-row { display: flex; gap: 6px; }
@@ -506,7 +520,8 @@
 .modal-panel .card-edit-form { gap: 12px 14px; margin-top: 0; }
 .modal-panel .card-edit-field label { font-size: 0.7rem; }
 .modal-panel .card-edit-field input,
-.modal-panel .card-edit-field textarea {
+.modal-panel .card-edit-field textarea,
+.modal-panel .card-edit-field select {
   font-size: 0.85rem;
   padding: 8px 10px;
   background: var(--surface-2);
