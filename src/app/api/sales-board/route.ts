@@ -5,15 +5,24 @@ import { upsertPropertyContact } from "@/lib/contacts";
 import { mapRawDealEvents, DEAL_EVENTS_SELECT } from "@/lib/dealEvents";
 
 export async function GET() {
-  const { data, error } = await supabase
-    .from("Sales Board")
-    .select(DEAL_EVENTS_SELECT)
-    .order("created_at", { ascending: true });
+  const [dealsRes, nextActionsRes] = await Promise.all([
+    supabase.from("Sales Board").select(DEAL_EVENTS_SELECT).order("created_at", { ascending: true }),
+    supabase.from("tasks").select("deal_id, title").eq("is_next_action", true),
+  ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (dealsRes.error) {
+    return NextResponse.json({ error: dealsRes.error.message }, { status: 500 });
   }
-  return NextResponse.json({ deals: mapRawDealEvents(data ?? []) });
+  if (nextActionsRes.error) {
+    return NextResponse.json({ error: nextActionsRes.error.message }, { status: 500 });
+  }
+
+  const nextActionByDeal = new Map<number, string>();
+  for (const row of (nextActionsRes.data ?? []) as { deal_id: number | null; title: string }[]) {
+    if (row.deal_id != null) nextActionByDeal.set(row.deal_id, row.title);
+  }
+
+  return NextResponse.json({ deals: mapRawDealEvents(dealsRes.data ?? [], nextActionByDeal) });
 }
 
 export async function POST(req: NextRequest) {
@@ -36,7 +45,6 @@ export async function POST(req: NextRequest) {
       proposal_number: body.proposal_number ?? null,
       proposal_date: body.proposal_date ?? null,
       proposal_description: body.proposal_description ?? null,
-      next_action: body.next_action ?? null,
       appointment_date: body.appointment_date ?? null,
       aspire_link: body.aspire_link?.trim() || null,
       property_id: propertyId,

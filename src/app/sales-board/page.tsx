@@ -6,9 +6,10 @@ import SalesBoardClient from "./SalesBoardClient";
 export const dynamic = "force-dynamic";
 
 export default async function SalesBoardPage() {
-  const [dealsRes, propertiesRes] = await Promise.all([
+  const [dealsRes, propertiesRes, nextActionsRes] = await Promise.all([
     supabase.from("Sales Board").select(DEAL_EVENTS_SELECT).order("created_at", { ascending: true }),
     supabase.from("properties").select("id, address, contacts(last_name)").order("address", { ascending: true }),
+    supabase.from("tasks").select("deal_id, title").eq("is_next_action", true),
   ]);
 
   if (dealsRes.error) {
@@ -17,8 +18,16 @@ export default async function SalesBoardPage() {
   if (propertiesRes.error) {
     throw new Error(`Failed to load Sales Board: ${propertiesRes.error.message}`);
   }
+  if (nextActionsRes.error) {
+    throw new Error(`Failed to load Sales Board: ${nextActionsRes.error.message}`);
+  }
 
-  const deals: Deal[] = mapRawDealEvents(dealsRes.data ?? []);
+  const nextActionByDeal = new Map<number, string>();
+  for (const row of (nextActionsRes.data ?? []) as { deal_id: number | null; title: string }[]) {
+    if (row.deal_id != null) nextActionByDeal.set(row.deal_id, row.title);
+  }
+
+  const deals: Deal[] = mapRawDealEvents(dealsRes.data ?? [], nextActionByDeal);
   const rawProperties = (propertiesRes.data ?? []) as unknown as {
     id: number;
     address: string;

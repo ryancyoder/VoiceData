@@ -97,6 +97,9 @@ export interface Deal {
   proposal_number: string | null;
   proposal_date: string | null;
   proposal_description: string | null;
+  // Not a deal column — this is the title of whichever task (in the
+  // `tasks` table) is flagged as this deal's next action, joined in at
+  // fetch time. Never set directly; flag a task instead.
   next_action: string | null;
   appointment_date: string | null;
   property_id: number | null;
@@ -175,7 +178,6 @@ export interface DealInput {
   proposal_number?: string | null;
   proposal_date?: string | null;
   proposal_description?: string | null;
-  next_action?: string | null;
   appointment_date?: string | null;
   property_id?: number | null;
   value?: number | null;

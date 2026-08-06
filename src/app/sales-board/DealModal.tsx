@@ -133,7 +133,6 @@ export default function DealModal({
     appointment_date: deal.appointment_date || "",
     property_id: deal.property_id,
     aspire_link: deal.aspire_link || "",
-    next_action: deal.next_action || "",
     proposal_description: deal.proposal_description || "",
   });
   const [saving, setSaving] = useState(false);
@@ -324,7 +323,6 @@ export default function DealModal({
         appointment_date: form.appointment_date || null,
         property_id: form.property_id,
         aspire_link: form.aspire_link.trim() || null,
-        next_action: form.next_action.trim() || null,
         proposal_description: form.proposal_description.trim() || null,
       });
       onClose();
@@ -562,8 +560,15 @@ export default function DealModal({
           </div>
           <RelatedDeals deals={relatedDeals} onSelectDeal={onSelectDeal} />
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
-            <label htmlFor="dm-next-action">Next action</label>
-            <input id="dm-next-action" autoComplete="off" value={form.next_action} onChange={(e) => set("next_action", e.target.value)} />
+            <label>Next action</label>
+            {deal.next_action ? (
+              <div className={styles["next-action-display"]}>{deal.next_action}</div>
+            ) : (
+              <div className={styles["next-action-display-empty"]}>No next action set</div>
+            )}
+            <Link href={`/tasks?deal=${deal.id}`} className={styles["geocode-link"]}>
+              Manage tasks →
+            </Link>
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-description">Proposal description</label>

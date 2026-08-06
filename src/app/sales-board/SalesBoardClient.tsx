@@ -39,7 +39,6 @@ const EMPTY_ADD_FORM = {
   proposal_date: "",
   appointment_date: "",
   property_id: null as number | null,
-  next_action: "",
   proposal_description: "",
 };
 
@@ -450,7 +449,6 @@ export default function SalesBoardClient({
           proposal_date: addForm.proposal_date || null,
           appointment_date: addForm.appointment_date || null,
           property_id: addForm.property_id,
-          next_action: addForm.next_action.trim() || null,
           proposal_description: addForm.proposal_description.trim() || null,
         }),
       });
@@ -670,16 +668,6 @@ export default function SalesBoardClient({
               value={addForm.property_id}
               onChange={(propertyId) => setAddForm((f) => ({ ...f, property_id: propertyId }))}
               onCreated={handlePropertyCreated}
-            />
-          </div>
-          <div className={`${styles.field} ${styles["is-full"]}`}>
-            <label htmlFor="f-next-action">Next action</label>
-            <input
-              id="f-next-action"
-              maxLength={200}
-              autoComplete="off"
-              value={addForm.next_action}
-              onChange={(e) => setAddForm((f) => ({ ...f, next_action: e.target.value }))}
             />
           </div>
           <div className={`${styles.field} ${styles["is-full"]}`}>

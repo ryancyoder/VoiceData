@@ -459,6 +459,9 @@
 .geocode-status.is-muted { color: var(--text-faint); }
 .geocode-link { color: inherit; text-decoration: underline; }
 
+.next-action-display { font-size: 0.85rem; padding: 6px 0 2px; }
+.next-action-display-empty { font-size: 0.85rem; color: var(--text-faint); font-style: italic; padding: 6px 0 2px; }
+
 .bulk-match-bar {
   display: flex;
   align-items: center;

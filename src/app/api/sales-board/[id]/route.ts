@@ -25,7 +25,6 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.proposal_number !== undefined) updates.proposal_number = body.proposal_number;
   if (body.proposal_date !== undefined) updates.proposal_date = body.proposal_date;
   if (body.proposal_description !== undefined) updates.proposal_description = body.proposal_description;
-  if (body.next_action !== undefined) updates.next_action = body.next_action;
   if (body.appointment_date !== undefined) updates.appointment_date = body.appointment_date;
   if (body.aspire_link !== undefined) updates.aspire_link = body.aspire_link?.trim() || null;
   if (body.value !== undefined) updates.value = body.value;
