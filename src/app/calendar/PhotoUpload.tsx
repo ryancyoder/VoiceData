@@ -6,7 +6,7 @@ import type { PropertyOption } from "./CalendarClient";
 import { withTimeout, fetchWithTimeout } from "@/lib/withTimeout";
 import { compressImage } from "@/lib/compressImage";
 import { supabase } from "@/lib/supabaseClient";
-import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
+import { DEAL_PHOTOS_BUCKET, formatPropertyLabel } from "@/lib/salesBoard";
 import { capturePosterFrame } from "@/lib/videoPoster";
 import { compressVideo } from "@/lib/compressVideo";
 import { readClientExif } from "@/lib/clientExif";
@@ -26,6 +26,7 @@ type PropertySelection = number | typeof NEW_PROPERTY | typeof NO_LOCATION | "";
 interface MatchCandidate {
   id: number;
   address: string;
+  contactLastName: string | null;
   distanceMeters: number;
   matchedBy: "address" | "events";
 }
@@ -175,7 +176,8 @@ export default function PhotoUpload({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create property");
       const property = data.property as { id: number; address: string };
-      setPropertyOptions((opts) => (opts.some((o) => o.id === property.id) ? opts : [...opts, property]));
+      const option: PropertyOption = { ...property, contactLastName: null };
+      setPropertyOptions((opts) => (opts.some((o) => o.id === option.id) ? opts : [...opts, option]));
       setPending((p) =>
         p.map((it) => (it.id === item.id ? { ...it, selectedPropertyId: property.id, creatingProperty: false } : it))
       );
@@ -359,11 +361,10 @@ export default function PhotoUpload({
     }
     if (bestId == null) return null;
 
-    const address =
-      pending.flatMap((p) => p.candidates).find((c) => c.id === bestId)?.address ??
-      propertyOptions.find((p) => p.id === bestId)?.address ??
-      `Property #${bestId}`;
-    return { id: bestId, address, count: bestCount };
+    const matched = pending.flatMap((p) => p.candidates).find((c) => c.id === bestId);
+    const option = propertyOptions.find((p) => p.id === bestId);
+    const label = matched ? formatPropertyLabel(matched) : option ? formatPropertyLabel(option) : `Property #${bestId}`;
+    return { id: bestId, label, count: bestCount };
   }, [pending, propertyOptions]);
 
   function setAllToProperty(propertyId: number) {
@@ -411,7 +412,7 @@ export default function PhotoUpload({
               <div className={styles["bulk-match-bar"]}>
                 <span>
                   {dominantMatch.count} of {pending.length} photo{pending.length === 1 ? "" : "s"} best-match{" "}
-                  <strong>{dominantMatch.address}</strong>
+                  <strong>{dominantMatch.label}</strong>
                 </span>
                 <button
                   type="button"
@@ -452,7 +453,7 @@ export default function PhotoUpload({
                         )}
                         {item.mediaType === "photo" && item.gps && item.candidates.length > 0 && (
                           <div className={styles["upload-status"]}>
-                            Best match: {item.candidates[0].address} · {distanceLabel(item.candidates[0].distanceMeters)}
+                            Best match: {formatPropertyLabel(item.candidates[0])} · {distanceLabel(item.candidates[0].distanceMeters)}
                           </div>
                         )}
                         <select
@@ -473,7 +474,7 @@ export default function PhotoUpload({
                             <optgroup label="Nearby matches">
                               {item.candidates.map((c) => (
                                 <option key={c.id} value={c.id}>
-                                  {c.address} — {distanceLabel(c.distanceMeters)}
+                                  {formatPropertyLabel(c)} — {distanceLabel(c.distanceMeters)}
                                 </option>
                               ))}
                             </optgroup>
@@ -481,7 +482,7 @@ export default function PhotoUpload({
                           <optgroup label="All properties">
                             {propertyOptions.map((p) => (
                               <option key={p.id} value={p.id}>
-                                {p.address}
+                                {formatPropertyLabel(p)}
                               </option>
                             ))}
                           </optgroup>

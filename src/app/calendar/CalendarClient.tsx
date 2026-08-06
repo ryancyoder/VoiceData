@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./calendar.module.css";
-import { dealPhotoUrl, dealThumbUrl } from "@/lib/salesBoard";
+import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel } from "@/lib/salesBoard";
 import { EVENT_TYPES, type EventType } from "@/lib/events";
 import PhotoUpload from "./PhotoUpload";
 import EventMediaUpload from "./EventMediaUpload";
@@ -50,6 +50,7 @@ export interface DealOption {
 export interface PropertyOption {
   id: number;
   address: string;
+  contactLastName: string | null;
 }
 
 const HOUR_HEIGHT = 48;
@@ -721,7 +722,7 @@ export default function CalendarClient({
                     <option value="">No property</option>
                     {propertyOptions.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.address}
+                        {formatPropertyLabel(p)}
                       </option>
                     ))}
                   </select>
@@ -936,7 +937,7 @@ export default function CalendarClient({
                   <option value="">No property</option>
                   {propertyOptions.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.address}
+                      {formatPropertyLabel(p)}
                     </option>
                   ))}
                 </select>

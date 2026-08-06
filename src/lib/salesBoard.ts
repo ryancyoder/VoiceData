@@ -90,6 +90,16 @@ export interface Deal {
   events: DealEvent[];
 }
 
+/**
+ * A bare address is hard to recognize at a glance — prepending the primary
+ * contact's last name (e.g. "INGERSOL - 140 Shore drive") makes a property
+ * picker actually recognizable to a human. Falls back to the address alone
+ * when there's no contact yet (e.g. a freshly created property).
+ */
+export function formatPropertyLabel(property: { address: string; contactLastName?: string | null }): string {
+  return property.contactLastName ? `${property.contactLastName.toUpperCase()} - ${property.address}` : property.address;
+}
+
 /** All of a deal's photos across every one of its events, flattened. */
 export function flattenDealPhotos(deal: Pick<Deal, "events">): DealPhoto[] {
   return deal.events.flatMap((e) => e.photos);

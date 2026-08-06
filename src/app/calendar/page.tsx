@@ -32,7 +32,10 @@ export default async function CalendarPage() {
       .from("Sales Board")
       .select("id, deal_name, company, stage, lost_at")
       .order("deal_name", { ascending: true }),
-    supabase.from("properties").select("id, address").order("address", { ascending: true }),
+    supabase
+      .from("properties")
+      .select("id, address, contacts(last_name)")
+      .order("address", { ascending: true }),
     supabase.from("deal_photos").select("id", { count: "exact", head: true }).is("event_id", null),
   ]);
 
@@ -48,7 +51,16 @@ export default async function CalendarPage() {
 
   const rawEvents = (eventsRes.data ?? []) as unknown as RawEvent[];
   const dealOptions = (dealsRes.data ?? []) as DealOption[];
-  const propertyOptions = (propertiesRes.data ?? []) as PropertyOption[];
+  const rawProperties = (propertiesRes.data ?? []) as unknown as {
+    id: number;
+    address: string;
+    contacts: { last_name: string | null } | null;
+  }[];
+  const propertyOptions: PropertyOption[] = rawProperties.map((p) => ({
+    id: p.id,
+    address: p.address,
+    contactLastName: p.contacts?.last_name ?? null,
+  }));
   const ungeotaggedCount = ungroupedRes.count ?? 0;
   const dealOptionsById = new Map(dealOptions.map((d) => [d.id, d]));
 

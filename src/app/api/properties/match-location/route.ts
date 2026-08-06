@@ -10,6 +10,7 @@ interface PropertyRow {
   address: string;
   latitude: number | null;
   longitude: number | null;
+  contacts: { last_name: string | null } | null;
 }
 
 interface EventRow {
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   }
 
   const [propertiesRes, eventsRes] = await Promise.all([
-    supabase.from("properties").select("id, address, latitude, longitude"),
+    supabase.from("properties").select("id, address, latitude, longitude, contacts(last_name)"),
     supabase.from("events").select("property_id, latitude, longitude").not("property_id", "is", null),
   ]);
 
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: eventsRes.error.message }, { status: 500 });
   }
 
-  const properties = (propertiesRes.data ?? []) as PropertyRow[];
+  const properties = (propertiesRes.data ?? []) as unknown as PropertyRow[];
   const events = (eventsRes.data ?? []) as EventRow[];
 
   const eventCentroidByProperty = new Map<number, { latitude: number; longitude: number }>();
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest) {
       return {
         id: property.id,
         address: property.address,
+        contactLastName: property.contacts?.last_name ?? null,
         distanceMeters: Math.round(best.distance),
         matchedBy: best.source,
       };
