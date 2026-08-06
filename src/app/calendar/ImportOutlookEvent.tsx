@@ -5,8 +5,17 @@ import styles from "./calendar.module.css";
 import { parseOutlookInvite } from "@/lib/parseOutlookInvite";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import { EVENT_TYPES, type EventType } from "@/lib/events";
+import { formatPropertyLabel } from "@/lib/salesBoard";
 
 const SUBMIT_TIMEOUT_MS = 20000;
+const MATCH_FETCH_TIMEOUT_MS = 8000;
+
+interface AddressMatch {
+  id: number;
+  address: string;
+  contactLastName: string | null;
+  distanceMeters: number;
+}
 
 interface ImportForm {
   firstName: string;
@@ -45,9 +54,43 @@ export default function ImportOutlookEvent({ onImported }: { onImported: () => v
   const [form, setForm] = useState<ImportForm>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addressMatches, setAddressMatches] = useState<AddressMatch[]>([]);
+  const [matchingAddress, setMatchingAddress] = useState(false);
 
   function set<K extends keyof ImportForm>(key: K, value: ImportForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  // The parsed address is free text and may not match how this property is
+  // already stored (abbreviations, a missing zip/country, punctuation) —
+  // geocoding it and checking nearby properties on file catches a match
+  // that an exact string comparison would miss.
+  async function checkAddressMatch(address: string) {
+    const trimmed = address.trim();
+    if (!trimmed) {
+      setAddressMatches([]);
+      return;
+    }
+    setMatchingAddress(true);
+    try {
+      const res = await fetchWithTimeout(
+        "/api/properties/match-address",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: trimmed }) },
+        MATCH_FETCH_TIMEOUT_MS
+      );
+      const data = await res.json();
+      setAddressMatches(res.ok ? data.candidates ?? [] : []);
+    } catch {
+      /* match lookup failed or timed out — user can still save as a new property */
+      setAddressMatches([]);
+    } finally {
+      setMatchingAddress(false);
+    }
+  }
+
+  function applyMatchedAddress(match: AddressMatch) {
+    set("address", match.address);
+    setAddressMatches([]);
   }
 
   function applyParse(text: string) {
@@ -64,6 +107,8 @@ export default function ImportOutlookEvent({ onImported }: { onImported: () => v
       notes: parsed.notes,
     });
     setError(null);
+    if (parsed.address) checkAddressMatch(parsed.address);
+    else setAddressMatches([]);
   }
 
   function closeModal() {
@@ -71,6 +116,7 @@ export default function ImportOutlookEvent({ onImported }: { onImported: () => v
     setRawText("");
     setForm(EMPTY_FORM);
     setError(null);
+    setAddressMatches([]);
   }
 
   async function handleCreate() {
@@ -186,8 +232,31 @@ export default function ImportOutlookEvent({ onImported }: { onImported: () => v
               </label>
               <label className={styles["event-edit-label"]}>
                 Property address
-                <input type="text" value={form.address} onChange={(e) => set("address", e.target.value)} />
+                <input
+                  type="text"
+                  value={form.address}
+                  onChange={(e) => set("address", e.target.value)}
+                  onBlur={(e) => checkAddressMatch(e.target.value)}
+                />
               </label>
+              {matchingAddress && <div className={styles["paste-error"]}>Checking for a matching property…</div>}
+              {!matchingAddress && addressMatches.length > 0 && (
+                <div className={styles["bulk-match-bar"]}>
+                  <span>Matches an existing property on file:</span>
+                  <div className={styles["bulk-match-actions"]}>
+                    {addressMatches.map((match) => (
+                      <button
+                        key={match.id}
+                        type="button"
+                        className={styles["bulk-match-btn"]}
+                        onClick={() => applyMatchedAddress(match)}
+                      >
+                        {formatPropertyLabel(match)} · {match.distanceMeters < 1000 ? `${match.distanceMeters}m` : `${(match.distanceMeters / 1000).toFixed(1)}km`} away
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <label className={styles["event-edit-label"]}>
                 Start
                 <input type="datetime-local" value={form.start} onChange={(e) => set("start", e.target.value)} />
