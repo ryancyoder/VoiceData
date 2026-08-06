@@ -3,7 +3,7 @@ import { haversineMeters } from "@/lib/geocode";
 import { DEFAULT_MAX_GAP_MS, DEFAULT_MAX_DISTANCE_METERS } from "@/lib/photoEvents";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 
-export const EVENT_TYPES = ["Appointment", "Consultation", "Design", "Estimating", "Meeting", "Job", "Other"] as const;
+export const EVENT_TYPES = ["Appointment", "Consultation", "Design", "Estimating", "Meeting", "Job", "EOM", "Other"] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
