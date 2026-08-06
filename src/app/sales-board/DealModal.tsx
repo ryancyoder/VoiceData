@@ -102,6 +102,7 @@ export default function DealModal({
     proposal_date: deal.proposal_date || "",
     appointment_date: deal.appointment_date || "",
     jobsite_address: deal.jobsite_address || "",
+    aspire_link: deal.aspire_link || "",
     next_action: deal.next_action || "",
     proposal_description: deal.proposal_description || "",
   });
@@ -140,6 +141,7 @@ export default function DealModal({
         proposal_date: form.proposal_date || null,
         appointment_date: form.appointment_date || null,
         jobsite_address: form.jobsite_address.trim() || null,
+        aspire_link: form.aspire_link.trim() || null,
         next_action: form.next_action.trim() || null,
         proposal_description: form.proposal_description.trim() || null,
       });
@@ -246,6 +248,17 @@ export default function DealModal({
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-appointment-date">Appointment date</label>
             <input id="dm-appointment-date" type="date" value={form.appointment_date} onChange={(e) => set("appointment_date", e.target.value)} />
+          </div>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            <label htmlFor="dm-aspire-link">Aspire opportunity link</label>
+            <input
+              id="dm-aspire-link"
+              type="url"
+              autoComplete="off"
+              placeholder="https://cloud.youraspire.com/..."
+              value={form.aspire_link}
+              onChange={(e) => set("aspire_link", e.target.value)}
+            />
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Proposal PDF</label>

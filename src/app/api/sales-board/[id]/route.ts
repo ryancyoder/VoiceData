@@ -29,6 +29,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.next_action !== undefined) updates.next_action = body.next_action;
   if (body.appointment_date !== undefined) updates.appointment_date = body.appointment_date;
   if (body.jobsite_address !== undefined) updates.jobsite_address = body.jobsite_address;
+  if (body.aspire_link !== undefined) updates.aspire_link = body.aspire_link?.trim() || null;
   if (body.value !== undefined) updates.value = body.value;
   if (body.stage !== undefined) updates.stage = body.stage;
   if (body.lost_at !== undefined) updates.lost_at = body.lost_at;

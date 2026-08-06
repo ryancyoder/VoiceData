@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       next_action: body.next_action ?? null,
       appointment_date: body.appointment_date ?? null,
       jobsite_address: jobsiteAddress,
+      aspire_link: body.aspire_link?.trim() || null,
       property_id: property?.id ?? null,
       latitude: property?.latitude ?? null,
       longitude: property?.longitude ?? null,
