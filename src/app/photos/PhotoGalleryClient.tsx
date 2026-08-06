@@ -1,37 +1,125 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
-import { dealPhotoUrl, dealThumbUrl, flattenDealPhotos, type Deal } from "@/lib/salesBoard";
+import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, type DealPhoto } from "@/lib/salesBoard";
+import type { EventType } from "@/lib/events";
 
-type GalleryDeal = Pick<Deal, "id" | "deal_name" | "company" | "stage" | "lost_at" | "events">;
-type GalleryPhoto = GalleryDeal["events"][number]["photos"][number];
+export interface GalleryEvent {
+  id: number;
+  name: string | null;
+  start_time: string;
+  end_time: string;
+  event_type: EventType | null;
+  photos: DealPhoto[];
+  dealId: number | null;
+  dealName: string | null;
+  dealCompany: string | null;
+  dealStage: string | null;
+  propertyId: number | null;
+  propertyAddress: string | null;
+  propertyContactLastName: string | null;
+}
 
-export default function PhotoGalleryClient({ deals: initialDeals }: { deals: GalleryDeal[] }) {
+interface DealGroup {
+  dealId: number | null;
+  dealName: string;
+  dealStage: string | null;
+  events: GalleryEvent[];
+}
+
+interface PropertyGroup {
+  key: string;
+  propertyId: number | null;
+  propertyLabel: string;
+  deals: DealGroup[];
+}
+
+function flattenPropertyPhotos(property: PropertyGroup): DealPhoto[] {
+  return property.deals.flatMap((d) => d.events.flatMap((e) => e.photos));
+}
+
+function propertyKey(propertyId: number | null): string {
+  return propertyId != null ? String(propertyId) : "none";
+}
+
+export default function PhotoGalleryClient({ events: initialEvents }: { events: GalleryEvent[] }) {
   const searchParams = useSearchParams();
-  const [deals, setDeals] = useState<GalleryDeal[]>(initialDeals);
-  const [activeDealId, setActiveDealId] = useState<number | null>(() => {
-    const raw = searchParams.get("deal");
-    const id = raw ? Number(raw) : NaN;
-    if (!Number.isFinite(id)) return null;
-    return initialDeals.some((d) => d.id === id && flattenDealPhotos(d).length > 0) ? id : null;
-  });
+  const [events, setEvents] = useState<GalleryEvent[]>(initialEvents);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const scrollTargetDealId = useRef<number | null>(null);
 
-  const dealsWithPhotos = useMemo(() => deals.filter((d) => flattenDealPhotos(d).length > 0), [deals]);
+  const propertyGroups = useMemo(() => {
+    const propMap = new Map<string, { propertyId: number | null; propertyLabel: string; dealMap: Map<string, DealGroup> }>();
+    for (const event of events) {
+      if (event.photos.length === 0) continue;
+      const pKey = propertyKey(event.propertyId);
+      if (!propMap.has(pKey)) {
+        propMap.set(pKey, {
+          propertyId: event.propertyId,
+          propertyLabel: event.propertyAddress
+            ? formatPropertyLabel({ address: event.propertyAddress, contactLastName: event.propertyContactLastName })
+            : "No property",
+          dealMap: new Map(),
+        });
+      }
+      const propGroup = propMap.get(pKey)!;
+      const dKey = event.dealId != null ? String(event.dealId) : "none";
+      if (!propGroup.dealMap.has(dKey)) {
+        propGroup.dealMap.set(dKey, {
+          dealId: event.dealId,
+          dealName: event.dealName ?? "No deal yet",
+          dealStage: event.dealStage,
+          events: [],
+        });
+      }
+      propGroup.dealMap.get(dKey)!.events.push(event);
+    }
+    return Array.from(propMap.entries())
+      .map(([key, p]) => ({ key, propertyId: p.propertyId, propertyLabel: p.propertyLabel, deals: Array.from(p.dealMap.values()) }))
+      .sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel));
+  }, [events]);
+
   const totalPhotoCount = useMemo(
-    () => dealsWithPhotos.reduce((n, d) => n + flattenDealPhotos(d).length, 0),
-    [dealsWithPhotos]
+    () => propertyGroups.reduce((n, p) => n + flattenPropertyPhotos(p).length, 0),
+    [propertyGroups]
   );
 
-  const activeDeal = activeDealId != null ? dealsWithPhotos.find((d) => d.id === activeDealId) ?? null : null;
-  // Lightbox prev/next navigates this flat, event-ordered list; the grid
-  // below renders the same photos grouped into per-event sections.
-  const activePhotos = useMemo(() => (activeDeal ? flattenDealPhotos(activeDeal) : []), [activeDeal]);
-  const activePhoto: GalleryPhoto | null = activeIndex != null ? activePhotos[activeIndex] ?? null : null;
+  const [activePropertyKey, setActivePropertyKey] = useState<string | null>(() => {
+    const dealParam = searchParams.get("deal");
+    const dealId = dealParam ? Number(dealParam) : NaN;
+    if (!Number.isFinite(dealId)) return null;
+    const match = initialEvents.find((e) => e.dealId === dealId && e.photos.length > 0);
+    return match ? propertyKey(match.propertyId) : null;
+  });
+
+  // Scrolling to the linked-from deal's section is a side effect, not part
+  // of render — done once on mount, after the initial property (if any) is
+  // already open.
+  useEffect(() => {
+    const dealParam = searchParams.get("deal");
+    const dealId = dealParam ? Number(dealParam) : NaN;
+    if (Number.isFinite(dealId)) scrollTargetDealId.current = dealId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const activeProperty = activePropertyKey != null ? propertyGroups.find((p) => p.key === activePropertyKey) ?? null : null;
+  // Lightbox prev/next navigates this flat list, ordered the same way the
+  // grid below renders it: deal by deal, then event by event within a deal.
+  const activePhotos = useMemo(() => (activeProperty ? flattenPropertyPhotos(activeProperty) : []), [activeProperty]);
+  const activePhoto: DealPhoto | null = activeIndex != null ? activePhotos[activeIndex] ?? null : null;
+
+  useEffect(() => {
+    if (!scrollTargetDealId.current || !activeProperty) return;
+    const id = scrollTargetDealId.current;
+    scrollTargetDealId.current = null;
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-deal-group="${id}"]`)?.scrollIntoView({ block: "start" });
+    });
+  }, [activeProperty]);
 
   useEffect(() => {
     if (activeIndex == null) return;
@@ -44,32 +132,26 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [activeIndex, activePhotos.length]);
 
-  function openAlbum(dealId: number) {
-    setActiveDealId(dealId);
+  function openAlbum(key: string) {
+    setActivePropertyKey(key);
     setActiveIndex(null);
   }
 
   function backToAlbums() {
-    setActiveDealId(null);
+    setActivePropertyKey(null);
     setActiveIndex(null);
   }
 
-  async function handleDelete(deal: GalleryDeal, photo: GalleryPhoto) {
+  async function handleDelete(photo: DealPhoto) {
     setDeletingId(photo.id);
     try {
-      const res = await fetch(`/api/sales-board/${deal.id}/photos/${photo.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/photos/${photo.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete photo");
-      setDeals((ds) =>
-        ds.map((d) =>
-          d.id === deal.id
-            ? { ...d, events: d.events.map((e) => ({ ...e, photos: e.photos.filter((p) => p.id !== photo.id) })) }
-            : d
-        )
-      );
+      setEvents((es) => es.map((e) => ({ ...e, photos: e.photos.filter((p) => p.id !== photo.id) })));
       if (activePhoto?.id === photo.id) setActiveIndex(null);
-      if (flattenDealPhotos(deal).length <= 1) {
-        setActiveDealId(null);
+      if (activeProperty && flattenPropertyPhotos(activeProperty).length <= 1) {
+        setActivePropertyKey(null);
         setActiveIndex(null);
       }
     } catch (err) {
@@ -85,16 +167,16 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
         <div className={styles.brand}>
           <h1>Photo Gallery</h1>
           <p>
-            {activeDeal ? (
+            {activeProperty ? (
               <>
                 <button type="button" className={styles["back-link"]} onClick={backToAlbums}>
                   ‹ All albums
                 </button>{" "}
-                · {activeDeal.deal_name}
+                · {activeProperty.propertyLabel}
               </>
             ) : (
               <>
-                {dealsWithPhotos.length} album{dealsWithPhotos.length === 1 ? "" : "s"} · {totalPhotoCount} photo
+                {propertyGroups.length} album{propertyGroups.length === 1 ? "" : "s"} · {totalPhotoCount} photo
                 {totalPhotoCount === 1 ? "" : "s"}
               </>
             )}{" "}
@@ -115,22 +197,23 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
       </div>
 
       <div className={styles.content}>
-        {dealsWithPhotos.length === 0 ? (
+        {propertyGroups.length === 0 ? (
           <div className={styles.empty}>
-            No photos have been uploaded yet. Add photos from a deal&apos;s detail view on the Sales Board.
+            No photos have been uploaded yet. Add photos from the Calendar or a deal&apos;s detail view.
           </div>
-        ) : !activeDeal ? (
+        ) : !activeProperty ? (
           <div className={styles.grid}>
-            {dealsWithPhotos.map((deal) => {
-              const photos = flattenDealPhotos(deal);
+            {propertyGroups.map((property) => {
+              const photos = flattenPropertyPhotos(property);
               const cover = photos[0];
               const coverThumb = dealThumbUrl(cover);
+              const dealCount = property.deals.filter((d) => d.dealId != null).length;
               return (
-                <button key={deal.id} type="button" className={styles.album} onClick={() => openAlbum(deal.id)}>
+                <button key={property.key} type="button" className={styles.album} onClick={() => openAlbum(property.key)}>
                   <span className={styles["thumb-image-wrap"]}>
                     {coverThumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={coverThumb} alt={cover.caption ?? deal.deal_name} loading="lazy" />
+                      <img src={coverThumb} alt={cover.caption ?? property.propertyLabel} loading="lazy" />
                     ) : (
                       <span className={styles["thumb-placeholder"]}>🎬</span>
                     )}
@@ -139,8 +222,10 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
                     </span>
                   </span>
                   <span className={styles["thumb-caption"]}>
-                    <span className={styles["thumb-caption-name"]}>{deal.deal_name}</span>
-                    <span className={styles["thumb-caption-stage"]}>{deal.stage}</span>
+                    <span className={styles["thumb-caption-name"]}>{property.propertyLabel}</span>
+                    <span className={styles["thumb-caption-stage"]}>
+                      {dealCount} deal{dealCount === 1 ? "" : "s"}
+                    </span>
                   </span>
                 </button>
               );
@@ -150,70 +235,83 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
           (() => {
             let runningIndex = -1;
             return (
-              <div className={styles["event-groups"]}>
-                {activeDeal.events
-                  .filter((event) => event.photos.length > 0)
-                  .map((event) => (
-                    <div key={event.id} className={styles["event-group"]}>
-                      <div className={styles["event-group-header"]}>
-                        {event.event_type && <span className={styles["event-type-badge"]}>{event.event_type}</span>}
-                        <span className={styles["event-group-name"]}>{event.name ?? "Site visit"}</span>
-                        <span className={styles["event-group-date"]}>
-                          {new Date(event.start_time).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </span>
-                      </div>
-                      <div className={styles.grid}>
-                        {event.photos.map((photo) => {
-                          runningIndex += 1;
-                          const i = runningIndex;
-                          const thumbUrl = dealThumbUrl(photo);
-                          return (
-                            <div key={photo.id} className={styles.thumb}>
-                              <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
-                                <span className={styles["thumb-image-wrap"]}>
-                                  {thumbUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={thumbUrl} alt={photo.caption ?? activeDeal.deal_name} loading="lazy" />
-                                  ) : (
-                                    <span className={styles["thumb-placeholder"]}>🎬</span>
-                                  )}
-                                  {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
-                                  {photo.is_outlier && (
-                                    <span className={styles["outlier-badge"]} title="Dated differently than the rest of this event">
-                                      ⚠
-                                    </span>
-                                  )}
-                                </span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles["thumb-delete"]}
-                                aria-label="Delete photo"
-                                disabled={deletingId === photo.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDelete(activeDeal, photo);
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
+              <div className={styles["deal-groups"]}>
+                {activeProperty.deals.map((deal) => (
+                  <div key={deal.dealId ?? "none"} className={styles["deal-group"]} data-deal-group={deal.dealId ?? undefined}>
+                    <div className={styles["deal-group-header"]}>
+                      <span className={styles["deal-group-name"]}>{deal.dealName}</span>
+                      {deal.dealStage && <span className={styles["thumb-caption-stage"]}>{deal.dealStage}</span>}
                     </div>
-                  ))}
+                    <div className={styles["event-groups"]}>
+                      {deal.events
+                        .filter((event) => event.photos.length > 0)
+                        .map((event) => (
+                          <div key={event.id} className={styles["event-group"]}>
+                            <div className={styles["event-group-header"]}>
+                              {event.event_type && <span className={styles["event-type-badge"]}>{event.event_type}</span>}
+                              <span className={styles["event-group-name"]}>{event.name ?? "Site visit"}</span>
+                              <span className={styles["event-group-date"]}>
+                                {new Date(event.start_time).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                              </span>
+                            </div>
+                            <div className={styles.grid}>
+                              {event.photos.map((photo) => {
+                                runningIndex += 1;
+                                const i = runningIndex;
+                                const thumbUrl = dealThumbUrl(photo);
+                                return (
+                                  <div key={photo.id} className={styles.thumb}>
+                                    <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
+                                      <span className={styles["thumb-image-wrap"]}>
+                                        {thumbUrl ? (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img src={thumbUrl} alt={photo.caption ?? deal.dealName} loading="lazy" />
+                                        ) : (
+                                          <span className={styles["thumb-placeholder"]}>🎬</span>
+                                        )}
+                                        {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                                        {photo.is_outlier && (
+                                          <span
+                                            className={styles["outlier-badge"]}
+                                            title="Dated differently than the rest of this event"
+                                          >
+                                            ⚠
+                                          </span>
+                                        )}
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={styles["thumb-delete"]}
+                                      aria-label="Delete photo"
+                                      disabled={deletingId === photo.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(photo);
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             );
           })()
         )}
       </div>
 
-      {activeDeal && activePhoto && (
+      {activeProperty && activePhoto && (
         <div
           className={styles["lightbox-overlay"]}
           onClick={(e) => {
@@ -233,15 +331,12 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
                 />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? activeDeal.deal_name} />
+                <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? activeProperty.propertyLabel} />
               )}
             </div>
             <div className={styles["lightbox-head"]}>
               <div className={styles["lightbox-head-main"]}>
-                <div className={styles["lightbox-title"]}>{activeDeal.deal_name}</div>
-                <div className={styles["lightbox-meta"]}>
-                  {[activeDeal.company, activeDeal.stage].filter(Boolean).join(" · ")}
-                </div>
+                <div className={styles["lightbox-title"]}>{activeProperty.propertyLabel}</div>
               </div>
               <div className={styles["lightbox-actions"]}>
                 <button
@@ -264,7 +359,7 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
                   type="button"
                   className={styles["lightbox-delete"]}
                   disabled={deletingId === activePhoto.id}
-                  onClick={() => handleDelete(activeDeal, activePhoto)}
+                  onClick={() => handleDelete(activePhoto)}
                 >
                   {deletingId === activePhoto.id ? "Deleting…" : "Delete"}
                 </button>
