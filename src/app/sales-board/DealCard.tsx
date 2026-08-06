@@ -125,6 +125,11 @@ export default function DealCard({
             📷
           </div>
         )}
+        {deal.stage === "Sent" && deal.proposal_pdf_path && (
+          <div className={styles["card-doc-badge"]} title="Has proposal PDF" aria-hidden="true">
+            📄
+          </div>
+        )}
       </div>
 
       {showNextAction && deal.next_action && (

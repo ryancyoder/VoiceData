@@ -293,6 +293,42 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
     }
   }
 
+  async function handleUploadProposalPdf(dealId: number, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetchWithTimeout(
+        `/api/sales-board/${dealId}/proposal-pdf`,
+        { method: "POST", body: formData },
+        PHOTO_UPLOAD_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload PDF");
+      setDeals((ds) => ds.map((d) => (d.id === dealId ? { ...d, ...data.deal } : d)));
+    } catch (err) {
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Upload timed out — try again"
+          : err instanceof Error
+            ? err.message
+            : "Failed to upload PDF";
+      showToast(message);
+    }
+  }
+
+  async function handleDeleteProposalPdf(dealId: number) {
+    const previous = deals;
+    setDeals((ds) => ds.map((d) => (d.id === dealId ? { ...d, proposal_pdf_path: null } : d)));
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/proposal-pdf`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to remove PDF");
+    } catch (err) {
+      setDeals(previous);
+      showToast(err instanceof Error ? err.message : "Failed to remove PDF");
+    }
+  }
+
   async function handleDeletePhoto(dealId: number, photoId: number) {
     const previous = deals;
     setDeals((ds) =>
@@ -732,6 +768,8 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
           onToggleLost={handleToggleLost}
           onUploadPhoto={handleUploadPhoto}
           onDeletePhoto={handleDeletePhoto}
+          onUploadProposalPdf={handleUploadProposalPdf}
+          onDeleteProposalPdf={handleDeleteProposalPdf}
         />
       )}
 

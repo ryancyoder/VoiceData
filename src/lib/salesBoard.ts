@@ -84,6 +84,7 @@ export interface Deal {
   stage: Stage;
   status: "Open" | "Closed";
   lost_at: string | null;
+  proposal_pdf_path: string | null;
   // A photo/video is attached to an event first — the event is the base
   // unit of truth — and a deal is made up of the events attached to it.
   // There is no direct deal->photo relationship; every photo is reached by
@@ -124,6 +125,13 @@ export function dealThumbUrl(photo: Pick<DealPhoto, "media_type" | "storage_path
     return photo.poster_path ? dealPhotoUrl(photo.poster_path) : null;
   }
   return dealPhotoUrl(photo.storage_path);
+}
+
+export const DEAL_DOCUMENTS_BUCKET = "deal-documents";
+
+export function dealDocumentUrl(storagePath: string): string {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return `${base}/storage/v1/object/public/${DEAL_DOCUMENTS_BUCKET}/${storagePath}`;
 }
 
 export interface DealInput {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./sales-board.module.css";
-import { dealThumbUrl, type Deal, type DealInput } from "@/lib/salesBoard";
+import { dealDocumentUrl, dealThumbUrl, type Deal, type DealInput } from "@/lib/salesBoard";
 
 interface DealModalProps {
   deal: Deal;
@@ -15,6 +15,8 @@ interface DealModalProps {
   onToggleLost: (deal: Deal) => Promise<void>;
   onUploadPhoto: (dealId: number, file: File) => Promise<void>;
   onDeletePhoto: (dealId: number, photoId: number) => Promise<void>;
+  onUploadProposalPdf: (dealId: number, file: File) => Promise<void>;
+  onDeleteProposalPdf: (dealId: number) => Promise<void>;
 }
 
 function formatDateTime(isoStr: string) {
@@ -84,7 +86,10 @@ export default function DealModal({
   onToggleLost,
   onUploadPhoto,
   onDeletePhoto,
+  onUploadProposalPdf,
+  onDeleteProposalPdf,
 }: DealModalProps) {
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [form, setForm] = useState({
     deal_name: deal.deal_name || "",
     company: deal.company || "",
@@ -143,6 +148,24 @@ export default function DealModal({
       setError(err instanceof Error ? err.message : "Couldn't save — try again");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handlePdfUpload(file: File) {
+    setPdfBusy(true);
+    try {
+      await onUploadProposalPdf(deal.id, file);
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  async function handlePdfDelete() {
+    setPdfBusy(true);
+    try {
+      await onDeleteProposalPdf(deal.id);
+    } finally {
+      setPdfBusy(false);
     }
   }
 
@@ -223,6 +246,44 @@ export default function DealModal({
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-appointment-date">Appointment date</label>
             <input id="dm-appointment-date" type="date" value={form.appointment_date} onChange={(e) => set("appointment_date", e.target.value)} />
+          </div>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            <label>Proposal PDF</label>
+            <div className={styles["proposal-pdf"]}>
+              {deal.proposal_pdf_path && (
+                <a
+                  href={dealDocumentUrl(deal.proposal_pdf_path)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={styles["proposal-pdf-link"]}
+                >
+                  📄 View proposal
+                </a>
+              )}
+              {pdfBusy ? (
+                <span className={styles["proposal-pdf-busy"]}>Working…</span>
+              ) : (
+                <>
+                  <label className={styles["proposal-pdf-add"]}>
+                    {deal.proposal_pdf_path ? "Replace" : "+ Upload PDF"}
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handlePdfUpload(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {deal.proposal_pdf_path && (
+                    <button type="button" className={styles["proposal-pdf-remove"]} onClick={handlePdfDelete}>
+                      Remove
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-jobsite">Jobsite address</label>

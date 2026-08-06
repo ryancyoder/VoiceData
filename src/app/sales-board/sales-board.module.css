@@ -361,6 +361,18 @@
   flex-shrink: 0;
   margin-left: auto;
 }
+.card-doc-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 0.65rem;
+  line-height: 1;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: auto;
+}
 .card-error { font-size: 0.7rem; color: var(--danger); margin-top: 6px; }
 .card-desc {
   font-size: 0.74rem;
@@ -667,3 +679,42 @@
 }
 .photo-add:hover { border-color: var(--text-faint); color: var(--text); }
 .photo-add input { display: none; }
+
+.proposal-pdf { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+.proposal-pdf-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.proposal-pdf-link:hover { border-color: var(--accent); }
+.proposal-pdf-remove {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.proposal-pdf-remove:hover { color: var(--danger); border-color: var(--danger); }
+.proposal-pdf-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.proposal-pdf-add:hover { border-color: var(--text-faint); color: var(--text); }
+.proposal-pdf-add input { display: none; }
+.proposal-pdf-busy { font-size: 0.72rem; color: var(--text-muted); }
