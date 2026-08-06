@@ -1,11 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import styles from "./properties.module.css";
 import { fetchWithTimeout } from "@/lib/withTimeout";
+import { STAGES, type Stage } from "@/lib/salesBoard";
 import type { PropertyRow } from "./page";
+
+const STAGE_COLORS: Record<Stage, string> = {
+  Lead: "var(--c-lead)",
+  Propose: "var(--c-propose)",
+  Sent: "var(--c-send)",
+  Sold: "var(--c-sold)",
+  Scheduled: "var(--c-schedule)",
+  "Project Management": "var(--c-pm)",
+  "Job Costing": "var(--c-jobcosting)",
+  Invoiced: "var(--c-invoiced)",
+  "Paid in Full": "var(--c-paid)",
+};
 
 const PropertyMap = dynamic(() => import("./PropertyMap"), {
   ssr: false,
@@ -43,6 +56,25 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // All stages selected is the neutral/unfiltered state — every property
+  // shows, including ones with no deal at all. Deselecting a stage narrows
+  // to properties that have a deal in one of the stages still selected, so
+  // a property with no deals naturally drops out once the filter is
+  // actually doing something.
+  const [selectedStages, setSelectedStages] = useState<Set<Stage>>(() => new Set(STAGES));
+  function toggleStage(stage: Stage) {
+    setSelectedStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  }
+  const visibleProperties = useMemo(() => {
+    if (selectedStages.size === STAGES.length) return properties;
+    return properties.filter((p) => p.dealStages.some((s) => selectedStages.has(s)));
+  }, [properties, selectedStages]);
+
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
   }
@@ -78,7 +110,9 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to add property");
       const created = data.property as PropertyRow;
-      setProperties((ps) => [...ps, { ...created, dealCount: 0, eventCount: 0 }].sort(comparePropertiesByLastName));
+      setProperties((ps) =>
+        [...ps, { ...created, dealCount: 0, eventCount: 0, dealStages: [] }].sort(comparePropertiesByLastName)
+      );
       closeForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add property");
@@ -93,7 +127,10 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
         <div className={styles.brand}>
           <h1>Properties</h1>
           <p>
-            {properties.length} propert{properties.length === 1 ? "y" : "ies"} ·{" "}
+            {visibleProperties.length === properties.length
+              ? `${properties.length} propert${properties.length === 1 ? "y" : "ies"}`
+              : `${visibleProperties.length} of ${properties.length} propert${properties.length === 1 ? "y" : "ies"}`}{" "}
+            ·{" "}
             <Link href="/sales-board" className={styles["brand-back"]}>
               Sales Board
             </Link>{" "}
@@ -130,11 +167,39 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
         </div>
       </div>
 
+      <div className={styles["stage-filter-bar"]}>
+        {STAGES.map((stage) => {
+          const active = selectedStages.has(stage);
+          return (
+            <button
+              key={stage}
+              type="button"
+              className={`${styles["stage-filter-chip"]} ${active ? styles["is-active"] : ""}`}
+              style={{ ["--chip-color" as string]: STAGE_COLORS[stage] }}
+              onClick={() => toggleStage(stage)}
+              aria-pressed={active}
+            >
+              {stage}
+            </button>
+          );
+        })}
+        <span className={styles["stage-filter-actions"]}>
+          <button type="button" className={styles["stage-filter-link"]} onClick={() => setSelectedStages(new Set(STAGES))}>
+            All
+          </button>
+          <button type="button" className={styles["stage-filter-link"]} onClick={() => setSelectedStages(new Set())}>
+            None
+          </button>
+        </span>
+      </div>
+
       <div className={styles.content}>
         {properties.length === 0 ? (
           <div className={styles.empty}>No properties yet. Add one to get started.</div>
+        ) : visibleProperties.length === 0 ? (
+          <div className={styles.empty}>No properties match the selected pipeline stages.</div>
         ) : view === "map" ? (
-          <PropertyMap properties={properties} />
+          <PropertyMap properties={visibleProperties} />
         ) : (
           <div className={styles["table-wrap"]}>
             <table className={styles.table}>
@@ -149,7 +214,7 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
                 </tr>
               </thead>
               <tbody>
-                {properties.map((p) => (
+                {visibleProperties.map((p) => (
                   <tr key={p.id}>
                     <td className={styles["contact-name"]}>{p.contact?.last_name || <span className={styles["no-contact"]}>—</span>}</td>
                     <td className={styles["address-cell"]}>{p.address}</td>
