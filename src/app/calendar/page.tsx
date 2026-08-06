@@ -19,6 +19,7 @@ type RawEvent = {
   event_type: EventType | null;
   latitude: number | null;
   longitude: number | null;
+  notes: string | null;
   deal_photos: RawPhoto[];
 };
 
@@ -88,6 +89,7 @@ export default async function CalendarPage() {
       eventType: event.event_type,
       latitude: event.latitude,
       longitude: event.longitude,
+      notes: event.notes,
       dealIds,
       photos: photos.map((p) => ({
         id: p.id,

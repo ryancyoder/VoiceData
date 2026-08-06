@@ -16,6 +16,7 @@ export interface Event {
   event_type: EventType | null;
   latitude: number | null;
   longitude: number | null;
+  notes: string | null;
   created_at: string;
 }
 
@@ -347,6 +348,7 @@ export async function createEventManually(input: {
   property_id: number | null;
   deal_id: number | null;
   event_type: EventType | null;
+  notes?: string | null;
 }): Promise<Event> {
   let latitude: number | null = null;
   let longitude: number | null = null;
@@ -371,6 +373,7 @@ export async function createEventManually(input: {
       property_id: input.property_id,
       deal_id: input.deal_id,
       event_type: input.event_type,
+      notes: input.notes ?? null,
       latitude,
       longitude,
     })
@@ -389,6 +392,7 @@ export async function updateEvent(
     property_id?: number | null;
     deal_id?: number | null;
     event_type?: EventType | null;
+    notes?: string | null;
   }
 ): Promise<Event> {
   const update: Record<string, unknown> = { ...patch };

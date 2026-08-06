@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
     property_id?: unknown;
     deal_id?: unknown;
     event_type?: unknown;
+    notes?: unknown;
   };
 
   const startTime = typeof body.start_time === "string" ? body.start_time : "";
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
     typeof body.property_id === "number" ? body.property_id : Number(body.property_id) || null;
   const dealId = typeof body.deal_id === "number" ? body.deal_id : Number(body.deal_id) || null;
   const eventType = parseEventType(body.event_type);
+  const notes = typeof body.notes === "string" && body.notes.trim() ? body.notes : null;
 
   try {
     const event = await createEventManually({
@@ -35,6 +37,7 @@ export async function POST(req: NextRequest) {
       property_id: propertyId,
       deal_id: dealId,
       event_type: eventType,
+      notes,
     });
     return NextResponse.json({ event }, { status: 201 });
   } catch (err) {

@@ -9,6 +9,7 @@ import { EVENT_TYPES, type EventType } from "@/lib/events";
 import PhotoUpload from "./PhotoUpload";
 import EventMediaUpload from "./EventMediaUpload";
 import EventPhotoUpload from "./EventPhotoUpload";
+import ImportOutlookEvent from "./ImportOutlookEvent";
 
 export interface GeoPhoto {
   id: number;
@@ -34,6 +35,7 @@ export interface CalendarEvent {
   eventType: EventType | null;
   latitude: number | null;
   longitude: number | null;
+  notes: string | null;
   dealIds: number[];
   photos: GeoPhoto[];
   deals: { id: number; name: string; company: string | null; jobsiteAddress: string | null }[];
@@ -159,11 +161,12 @@ interface EventFormState {
   propertyId: number | "";
   dealId: number | "";
   eventType: EventType | "";
+  notes: string;
 }
 
 function emptyEventForm(): EventFormState {
   const now = toDatetimeLocal(new Date().toISOString());
-  return { name: "", start: now, end: now, propertyId: "", dealId: "", eventType: "" };
+  return { name: "", start: now, end: now, propertyId: "", dealId: "", eventType: "", notes: "" };
 }
 
 function eventToForm(event: CalendarEvent): EventFormState {
@@ -174,6 +177,7 @@ function eventToForm(event: CalendarEvent): EventFormState {
     propertyId: event.propertyId ?? "",
     dealId: event.dealId ?? "",
     eventType: event.eventType ?? "",
+    notes: event.notes ?? "",
   };
 }
 
@@ -316,6 +320,7 @@ export default function CalendarClient({
           property_id: newEventForm.propertyId === "" ? null : newEventForm.propertyId,
           deal_id: newEventForm.dealId === "" ? null : newEventForm.dealId,
           event_type: newEventForm.eventType === "" ? null : newEventForm.eventType,
+          notes: newEventForm.notes.trim() || null,
         }),
       });
       const data = await res.json();
@@ -352,6 +357,7 @@ export default function CalendarClient({
           property_id: editForm.propertyId === "" ? null : editForm.propertyId,
           deal_id: editForm.dealId === "" ? null : editForm.dealId,
           event_type: editForm.eventType === "" ? null : editForm.eventType,
+          notes: editForm.notes.trim() || null,
         }),
       });
       const data = await res.json();
@@ -369,6 +375,7 @@ export default function CalendarClient({
         eventType: data.event.event_type,
         latitude: data.event.latitude,
         longitude: data.event.longitude,
+        notes: data.event.notes,
         dealIds: hasDeal || newDealId == null ? selectedEvent.dealIds : [...selectedEvent.dealIds, newDealId],
         deals:
           hasDeal || newDealId == null
@@ -534,6 +541,7 @@ export default function CalendarClient({
         >
           + New Event
         </button>
+        <ImportOutlookEvent onImported={() => router.refresh()} />
         {ungeotaggedCount > 0 && (
           <span className={styles["ungeotagged-note"]}>
             {ungeotaggedCount} photo{ungeotaggedCount === 1 ? "" : "s"} without location data can&apos;t be placed here.
@@ -760,6 +768,14 @@ export default function CalendarClient({
                     ))}
                   </select>
                 </label>
+                <label className={styles["event-edit-label"]}>
+                  Notes
+                  <textarea
+                    rows={4}
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  />
+                </label>
                 {editError && <div className={styles["upload-error"]}>{editError}</div>}
                 <div className={styles["upload-actions"]}>
                   <button type="button" className={styles["card-edit-cancel"]} onClick={() => setEditingEvent(false)} disabled={savingEdit}>
@@ -792,6 +808,10 @@ export default function CalendarClient({
                   {merging ? "Merging…" : "Merge"}
                 </button>
               </div>
+            )}
+
+            {!editingEvent && selectedEvent.notes && (
+              <div className={styles["event-notes"]}>{selectedEvent.notes}</div>
             )}
 
             <div className={styles["deal-list"]}>
@@ -974,6 +994,14 @@ export default function CalendarClient({
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className={styles["event-edit-label"]}>
+                Notes (optional)
+                <textarea
+                  rows={4}
+                  value={newEventForm.notes}
+                  onChange={(e) => setNewEventForm({ ...newEventForm, notes: e.target.value })}
+                />
               </label>
               {newEventError && <div className={styles["upload-error"]}>{newEventError}</div>}
               <div className={styles["upload-actions"]}>

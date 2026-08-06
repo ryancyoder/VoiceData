@@ -447,16 +447,31 @@
   color: var(--text-muted);
 }
 .event-edit-label input,
-.event-edit-label select {
+.event-edit-label select,
+.event-edit-label textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 7px 9px;
   font-size: 0.85rem;
   color: var(--text);
+  font-family: inherit;
+  resize: vertical;
 }
 .event-edit-label input:focus,
-.event-edit-label select:focus { border-color: var(--accent); outline: none; }
+.event-edit-label select:focus,
+.event-edit-label textarea:focus { border-color: var(--accent); outline: none; }
+
+.event-notes {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
 
 .merge-bar {
   display: flex;

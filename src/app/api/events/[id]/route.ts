@@ -12,6 +12,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     property_id?: unknown;
     deal_id?: unknown;
     event_type?: unknown;
+    notes?: unknown;
   };
 
   const patch: {
@@ -21,6 +22,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     property_id?: number | null;
     deal_id?: number | null;
     event_type?: EventType | null;
+    notes?: string | null;
   } = {};
 
   if ("name" in body) {
@@ -49,6 +51,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       typeof body.event_type === "string" && (EVENT_TYPES as readonly string[]).includes(body.event_type)
         ? (body.event_type as EventType)
         : null;
+  }
+  if ("notes" in body) {
+    patch.notes = typeof body.notes === "string" && body.notes.trim() ? body.notes : null;
   }
 
   try {
