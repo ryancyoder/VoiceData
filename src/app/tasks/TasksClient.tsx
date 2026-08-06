@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import styles from "./tasks.module.css";
 import { fetchWithTimeout } from "@/lib/withTimeout";
@@ -108,6 +108,20 @@ export default function TasksClient({
     const data = await res.json();
     if (res.ok) setTasks(data.tasks);
   }
+
+  // The floating quick-add button (voice dictation, logged from the root
+  // layout so it works on any page) has no way to reach this component's
+  // state directly — it broadcasts this event instead, both right after
+  // logging a task and again once background analysis fills in its
+  // context/dates, so this list picks up either change live if it's the
+  // page currently open.
+  useEffect(() => {
+    function onTasksChanged() {
+      refreshTasks();
+    }
+    window.addEventListener("tasks:changed", onTasksChanged);
+    return () => window.removeEventListener("tasks:changed", onTasksChanged);
+  }, []);
 
   function openAddForm() {
     setEditingTask(null);
