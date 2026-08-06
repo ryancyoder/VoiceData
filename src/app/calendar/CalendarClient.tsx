@@ -48,6 +48,10 @@ export interface DealOption {
   company: string | null;
   stage: string;
   lost_at: string | null;
+  // The deal's own jobsite contact, reached by way of its property — used
+  // to suggest a likely-matching deal when an event's property shares the
+  // same contact last name.
+  contactLastName: string | null;
 }
 
 export interface PropertyOption {
@@ -214,6 +218,8 @@ export default function CalendarClient({
   const [deletingEvent, setDeletingEvent] = useState(false);
 
   const [creatingDeal, setCreatingDeal] = useState(false);
+  const [connectDealId, setConnectDealId] = useState<number | "">("");
+  const [connectingDeal, setConnectingDeal] = useState(false);
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragPreview, setDragPreview] = useState<{ eventId: number; startMs: number; endMs: number } | null>(null);
@@ -464,6 +470,60 @@ export default function CalendarClient({
       setCreatingDeal(false);
     }
   }
+
+  // Attaches an already-existing deal to the event, mirroring what the
+  // Edit form's Deal dropdown does, but surfaced directly alongside
+  // "+ Create New Deal" so connecting to an existing deal doesn't require
+  // opening the edit form and hunting through every deal in the list.
+  async function handleConnectExistingDeal(dealId: number) {
+    if (!selectedEvent) return;
+    setConnectingDeal(true);
+    try {
+      const eventRes = await fetch(`/api/events/${selectedEvent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal_id: dealId }),
+      });
+      const eventData = await eventRes.json();
+      if (!eventRes.ok) throw new Error(eventData.error || "Failed to connect this deal to the event");
+
+      const dealOption = dealOptions.find((d) => d.id === dealId);
+      setSelectedEvent({
+        ...selectedEvent,
+        dealId,
+        dealIds: [...selectedEvent.dealIds, dealId],
+        deals: [
+          ...selectedEvent.deals,
+          {
+            id: dealId,
+            name: dealOption?.deal_name ?? `Deal #${dealId}`,
+            company: dealOption?.company ?? null,
+            jobsiteAddress: null,
+          },
+        ],
+      });
+      setConnectDealId("");
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to connect deal");
+    } finally {
+      setConnectingDeal(false);
+    }
+  }
+
+  // Suggests deals whose own jobsite contact shares a last name with this
+  // event's property — the same person is very likely already in the
+  // pipeline under an existing deal rather than needing a brand-new one.
+  const matchingDeals = useMemo(() => {
+    if (!selectedEvent) return [];
+    const property =
+      selectedEvent.propertyId != null ? propertyOptions.find((p) => p.id === selectedEvent.propertyId) : undefined;
+    const lastName = property?.contactLastName?.trim().toLowerCase();
+    if (!lastName) return [];
+    return dealOptions.filter(
+      (d) => d.contactLastName?.trim().toLowerCase() === lastName && !selectedEvent.dealIds.includes(d.id)
+    );
+  }, [selectedEvent, propertyOptions, dealOptions]);
 
   async function handleMerge() {
     if (!selectedEvent || mergeTargetId === "") return;
@@ -924,12 +984,64 @@ export default function CalendarClient({
               <div className={styles["event-notes"]}>{selectedEvent.notes}</div>
             )}
 
+            {!editingEvent && selectedEvent.deals.length === 0 && (
+              <div className={styles["bulk-match-bar"]}>
+                {matchingDeals.length > 0 ? (
+                  <span>
+                    This property&apos;s contact matches{" "}
+                    {matchingDeals.length === 1 ? "an existing deal" : `${matchingDeals.length} existing deals`}:{" "}
+                    <strong>{matchingDeals.map((d) => d.deal_name).join(", ")}</strong>
+                  </span>
+                ) : (
+                  <span>No deal attached yet</span>
+                )}
+                <div className={styles["bulk-match-actions"]}>
+                  {matchingDeals.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      className={styles["bulk-match-btn"]}
+                      disabled={connectingDeal}
+                      onClick={() => handleConnectExistingDeal(d.id)}
+                    >
+                      Connect to {d.deal_name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={styles["bulk-match-btn"]}
+                    onClick={handleCreateDealFromEvent}
+                    disabled={creatingDeal}
+                  >
+                    {creatingDeal ? "Creating…" : "+ Create New Deal"}
+                  </button>
+                  <select
+                    className={styles["upload-select"]}
+                    value={connectDealId}
+                    disabled={connectingDeal}
+                    onChange={(e) => setConnectDealId(e.target.value ? Number(e.target.value) : "")}
+                  >
+                    <option value="">Choose a deal…</option>
+                    {dealOptions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.deal_name}
+                        {d.company ? ` (${d.company})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className={styles["bulk-match-btn"]}
+                    disabled={connectingDeal || connectDealId === ""}
+                    onClick={() => handleConnectExistingDeal(connectDealId as number)}
+                  >
+                    {connectingDeal ? "Connecting…" : "Connect"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className={styles["deal-list"]}>
-              {!editingEvent && selectedEvent.deals.length === 0 && (
-                <button type="button" className={styles["nav-btn"]} onClick={handleCreateDealFromEvent} disabled={creatingDeal}>
-                  {creatingDeal ? "Creating…" : "+ Create New Deal"}
-                </button>
-              )}
               {selectedEvent.deals.map((deal) => (
                 <div key={deal.id} className={styles["deal-chip"]}>
                   <div className={styles["deal-chip-name"]}>

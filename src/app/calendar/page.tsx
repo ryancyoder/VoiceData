@@ -31,7 +31,7 @@ export default async function CalendarPage() {
       .order("start_time", { ascending: true }),
     supabase
       .from("Sales Board")
-      .select("id, deal_name, company, stage, lost_at")
+      .select("id, deal_name, company, stage, lost_at, properties(contacts(last_name))")
       .order("deal_name", { ascending: true }),
     supabase
       .from("properties")
@@ -51,7 +51,17 @@ export default async function CalendarPage() {
   }
 
   const rawEvents = (eventsRes.data ?? []) as unknown as RawEvent[];
-  const dealOptions = (dealsRes.data ?? []) as DealOption[];
+  const rawDeals = (dealsRes.data ?? []) as unknown as (Omit<DealOption, "contactLastName"> & {
+    properties: { contacts: { last_name: string | null } | null } | null;
+  })[];
+  const dealOptions: DealOption[] = rawDeals.map((d) => ({
+    id: d.id,
+    deal_name: d.deal_name,
+    company: d.company,
+    stage: d.stage,
+    lost_at: d.lost_at,
+    contactLastName: d.properties?.contacts?.last_name ?? null,
+  }));
   const rawProperties = (propertiesRes.data ?? []) as unknown as {
     id: number;
     address: string;
