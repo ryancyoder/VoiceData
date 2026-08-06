@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./calendar.module.css";
 import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel } from "@/lib/salesBoard";
 import { EVENT_TYPES, type EventType } from "@/lib/events";
@@ -198,8 +198,20 @@ export default function CalendarClient({
   propertyOptions: PropertyOption[];
 }) {
   const router = useRouter();
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const searchParams = useSearchParams();
+  // A deep link from elsewhere (e.g. the Sales Board deal modal's photo
+  // groups) can jump straight to a specific event via ?event=<id> — land on
+  // that event's week already open, with its detail modal showing.
+  function findLinkedEvent(): CalendarEvent | null {
+    const eventParam = searchParams.get("event");
+    const eventId = eventParam ? Number(eventParam) : NaN;
+    return Number.isFinite(eventId) ? events.find((e) => e.id === eventId) ?? null : null;
+  }
+  const [weekStart, setWeekStart] = useState(() => {
+    const linked = findLinkedEvent();
+    return startOfWeek(linked ? new Date(linked.start) : new Date());
+  });
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(() => findLinkedEvent());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 

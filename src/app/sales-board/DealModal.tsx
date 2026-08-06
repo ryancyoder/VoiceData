@@ -248,6 +248,9 @@ export default function DealModal({
                     {event.event_type && <span className={styles["event-type-badge"]}>{event.event_type}</span>}
                     <span className={styles["photo-event-name"]}>{event.name ?? "Site visit"}</span>
                     <span className={styles["photo-event-date"]}>{formatDateTime(event.start_time)}</span>
+                    <Link href={`/calendar?event=${event.id}`} className={styles["photo-event-link"]}>
+                      View on Calendar →
+                    </Link>
                   </div>
                   <div className={styles["photo-row"]}>
                     {event.photos.map((photo) => {
