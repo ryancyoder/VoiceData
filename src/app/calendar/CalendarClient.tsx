@@ -213,6 +213,9 @@ export default function CalendarClient({
     const linked = findLinkedEvent();
     return startOfWeek(linked ? new Date(linked.start) : new Date());
   });
+  // Hides Sat/Sun from the grid without changing what a "week" means for
+  // navigation — Prev/Next/swipe still move by the full calendar week.
+  const [workWeek, setWorkWeek] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(() => findLinkedEvent());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -659,7 +662,10 @@ export default function CalendarClient({
     if (bodyRef.current) bodyRef.current.scrollTop = 6 * HOUR_HEIGHT;
   }, []);
 
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  const weekDays = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+    return workWeek ? days.filter((d) => d.getDay() !== 0 && d.getDay() !== 6) : days;
+  }, [weekStart, workWeek]);
   const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
 
   const eventsInWeek = useMemo(
@@ -677,7 +683,7 @@ export default function CalendarClient({
   }, [eventsInWeek, dragPreview]);
 
   const today = new Date();
-  const rangeLabel = `${weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDays[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+  const rangeLabel = `${weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDays[weekDays.length - 1].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
   const activePhoto = selectedEvent && lightboxIndex != null ? selectedEvent.photos[lightboxIndex] ?? null : null;
 
@@ -721,6 +727,14 @@ export default function CalendarClient({
         <button type="button" className={styles["nav-btn"]} onClick={() => setWeekStart((d) => addDays(d, 7))}>
           Next ›
         </button>
+        <button
+          type="button"
+          className={`${styles["nav-btn"]} ${workWeek ? styles["is-active"] : ""}`}
+          onClick={() => setWorkWeek((w) => !w)}
+          aria-pressed={workWeek}
+        >
+          Work Week
+        </button>
         <span className={styles["range-label"]}>{rangeLabel}</span>
         <PhotoUpload
           propertyOptions={propertyOptions}
@@ -753,7 +767,12 @@ export default function CalendarClient({
         )}
       </div>
 
-      <div className={styles["week-wrap"]} onTouchStart={handleWeekSwipeStart} onTouchEnd={handleWeekSwipeEnd}>
+      <div
+        className={styles["week-wrap"]}
+        style={{ ["--day-count" as string]: weekDays.length }}
+        onTouchStart={handleWeekSwipeStart}
+        onTouchEnd={handleWeekSwipeEnd}
+      >
         <div className={styles["week-header"]}>
           <div />
           {weekDays.map((day) => (
