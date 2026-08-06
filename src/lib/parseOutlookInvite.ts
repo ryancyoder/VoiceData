@@ -31,7 +31,7 @@ export interface ParsedInvite {
 
 const PHONE_RE = /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-const LOCATION_RE = /^Location:\s*(.+)$/im;
+const LOCATION_LINE_RE = /^Location:\s*(.*)$/i;
 const SCHEDULED_RE =
   /Scheduled:\s*([A-Za-z]{3,9})\s+(\d{1,2}),?\s*(\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*([AP]M)\s+to\s+(\d{1,2}):(\d{2})\s*([AP]M)(?:,?\s*([A-Za-z]{2,5}))?/i;
 
@@ -77,20 +77,35 @@ function to24Hour(hour: string, ampm: string): number {
   return h;
 }
 
+// Outlook sometimes wraps a location across multiple lines — a street
+// address on the "Location:" line, then "City, State, Country" (or
+// "City, ST ZIP") on the line(s) right after it, with no prefix of its
+// own. A continuation line reads as a short comma-separated list of
+// place names: every segment starts with a capital letter and the line
+// never ends in sentence punctuation — real notes (the freeform text
+// that follows) are ordinary sentences and reliably fail one of those
+// checks (lowercase words, a trailing period, etc).
+function looksLikePlaceLine(line: string): boolean {
+  if (/[.!?]$/.test(line)) return false;
+  const segments = line.split(",").map((s) => s.trim());
+  if (segments.some((s) => s.length === 0)) return false;
+  return segments.every((s) => /^[A-Z][A-Za-z.'-]*(\s+[A-Z][A-Za-z.'-]*){0,3}$/.test(s));
+}
+
 export function parseOutlookInvite(raw: string): ParsedInvite {
   const text = raw.replace(/\r\n/g, "\n").trim();
   const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
 
-  // First non-empty line is conventionally "Name - phone" (the invite's
-  // organizer/contact line) — strip a trailing " - <phone>" if present to
-  // get just the name.
+  // First non-empty line is conventionally the organizer/contact line,
+  // "Name - phone" or just "Name phone" — strip a trailing phone number
+  // (with or without a " - " separator before it) to get just the name.
   let firstName: string | null = null;
   let lastName: string | null = null;
   if (lines.length > 0) {
     let nameLine = lines[0];
-    const dashIdx = nameLine.lastIndexOf(" - ");
-    if (dashIdx !== -1 && PHONE_RE.test(nameLine.slice(dashIdx + 3))) {
-      nameLine = nameLine.slice(0, dashIdx).trim();
+    const trailingPhone = nameLine.match(new RegExp(`[\\s-]+${PHONE_RE.source}\\s*$`));
+    if (trailingPhone && trailingPhone.index !== undefined) {
+      nameLine = nameLine.slice(0, trailingPhone.index).trim();
     }
     const { first, last } = splitName(nameLine);
     firstName = first;
@@ -103,8 +118,24 @@ export function parseOutlookInvite(raw: string): ParsedInvite {
   const emailMatch = text.match(EMAIL_RE);
   const email = emailMatch ? emailMatch[0] : null;
 
-  const locationMatch = text.match(LOCATION_RE);
-  const address = locationMatch ? locationMatch[1].replace(/,\s*$/, "").trim() || null : null;
+  // The street address is on the "Location:" line itself; a wrapped
+  // "City, State[, Country]" (or "City, ST ZIP") continuation, if present,
+  // follows on the next line(s) with no prefix of its own — see
+  // looksLikePlaceLine for how that's told apart from the freeform notes
+  // that come after it.
+  let address: string | null = null;
+  const locationLineIdx = lines.findIndex((l) => LOCATION_LINE_RE.test(l));
+  if (locationLineIdx !== -1) {
+    const addressParts = [lines[locationLineIdx].replace(LOCATION_LINE_RE, "$1").replace(/,\s*$/, "").trim()].filter(
+      Boolean
+    );
+    let i = locationLineIdx + 1;
+    while (i < lines.length && looksLikePlaceLine(lines[i])) {
+      addressParts.push(lines[i].replace(/,\s*$/, "").trim());
+      i++;
+    }
+    address = addressParts.length > 0 ? addressParts.join(", ") : null;
+  }
 
   let startTime: string | null = null;
   let endTime: string | null = null;
