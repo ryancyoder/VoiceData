@@ -216,6 +216,31 @@ export default function CalendarClient({
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(() => findLinkedEvent());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  // A horizontal swipe changes the week, the same as tapping Prev/Next —
+  // tracked passively (no preventDefault anywhere) so it never interferes
+  // with the grid's native vertical scroll or with tapping/dragging an
+  // event. Only the net movement between touchstart and touchend matters;
+  // it must be predominantly horizontal and past a minimum distance so an
+  // ordinary vertical scroll, even one with a little sideways drift, is
+  // never mistaken for a swipe.
+  const SWIPE_MIN_DISTANCE = 60;
+  const SWIPE_DIRECTIONAL_RATIO = 1.5;
+  function handleWeekSwipeStart(e: React.TouchEvent) {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  }
+  function handleWeekSwipeEnd(e: React.TouchEvent) {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < SWIPE_MIN_DISTANCE || Math.abs(dx) < Math.abs(dy) * SWIPE_DIRECTIONAL_RATIO) return;
+    setWeekStart((d) => addDays(d, dx < 0 ? 7 : -7));
+  }
 
   // After creating an event elsewhere (e.g. the Outlook importer), the
   // freshly-created row isn't in `events` yet — router.refresh() re-fetches
@@ -728,7 +753,7 @@ export default function CalendarClient({
         )}
       </div>
 
-      <div className={styles["week-wrap"]}>
+      <div className={styles["week-wrap"]} onTouchStart={handleWeekSwipeStart} onTouchEnd={handleWeekSwipeEnd}>
         <div className={styles["week-header"]}>
           <div />
           {weekDays.map((day) => (
