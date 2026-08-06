@@ -31,7 +31,12 @@ function comparePropertiesByLastName(a: PropertyRow, b: PropertyRow): number {
 }
 
 export default function PropertiesClient({ properties: initialProperties }: { properties: PropertyRow[] }) {
-  const [properties, setProperties] = useState<PropertyRow[]>(initialProperties);
+  // Sorted here rather than trusted from the server response — keeps the
+  // table correctly ordered even if the initial fetch's own ordering
+  // doesn't come back exactly right.
+  const [properties, setProperties] = useState<PropertyRow[]>(() =>
+    [...initialProperties].sort(comparePropertiesByLastName)
+  );
   const [view, setView] = useState<"table" | "map">("table");
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
