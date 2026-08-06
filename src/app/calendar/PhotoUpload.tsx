@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import styles from "./calendar.module.css";
-import type { DealOption } from "./CalendarClient";
+import type { PropertyOption } from "./CalendarClient";
 import { withTimeout, fetchWithTimeout } from "@/lib/withTimeout";
 import { compressImage } from "@/lib/compressImage";
 import { supabase } from "@/lib/supabaseClient";
@@ -16,16 +16,18 @@ const MATCH_FETCH_TIMEOUT_MS = 8000;
 const UPLOAD_TIMEOUT_MS = 60000;
 const VIDEO_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const COMPRESSION_TIMEOUT_MS = 5 * 60 * 1000;
+const HALF_HOUR_MS = 30 * 60 * 1000;
+
+const NEW_PROPERTY = "new" as const;
+const NO_LOCATION = "none" as const;
+
+type PropertySelection = number | typeof NEW_PROPERTY | typeof NO_LOCATION | "";
 
 interface MatchCandidate {
   id: number;
-  deal_name: string;
-  company: string | null;
-  jobsite_address: string | null;
-  stage: string;
-  isLost: boolean;
+  address: string;
   distanceMeters: number;
-  matchedBy: "address" | "photos";
+  matchedBy: "address" | "events";
 }
 
 interface PendingPhoto {
@@ -37,24 +39,35 @@ interface PendingPhoto {
   gps: { latitude: number; longitude: number } | null;
   takenAt: string | null;
   candidates: MatchCandidate[];
-  selectedDealId: number | "";
+  selectedPropertyId: PropertySelection;
+  newPropertyAddress: string;
+  creatingProperty: boolean;
   status: "matching" | "ready" | "uploading" | "done" | "error";
   error?: string;
 }
+
+type UploadTarget = { kind: "property"; propertyId: number | null } | { kind: "event"; eventId: number };
 
 function distanceLabel(meters: number) {
   if (meters < 1000) return `${meters}m away`;
   return `${(meters / 1000).toFixed(1)}km away`;
 }
 
+function roundHalfHourRange(startMs: number, endMs: number): { startMs: number; endMs: number } {
+  const roundedStart = Math.floor(startMs / HALF_HOUR_MS) * HALF_HOUR_MS;
+  const roundedEnd = Math.ceil(endMs / HALF_HOUR_MS) * HALF_HOUR_MS;
+  return { startMs: roundedStart, endMs: roundedEnd <= roundedStart ? roundedStart + HALF_HOUR_MS : roundedEnd };
+}
+
 export default function PhotoUpload({
-  dealOptions,
+  propertyOptions: initialPropertyOptions,
   onUploaded,
 }: {
-  dealOptions: DealOption[];
+  propertyOptions: PropertyOption[];
   onUploaded: () => void;
 }) {
   const [pending, setPending] = useState<PendingPhoto[]>([]);
+  const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>(initialPropertyOptions);
   const [panelOpen, setPanelOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -72,12 +85,11 @@ export default function PhotoUpload({
         previewUrl: mediaType === "photo" ? URL.createObjectURL(file) : "",
         posterBlob: null,
         gps: null,
-        // Real embedded capture time (read below, async) is authoritative;
-        // takenAt starts null and is filled in once that resolves. Videos
-        // have no GPS extraction — the user picks a deal manually for these.
         takenAt: null,
         candidates: [],
-        selectedDealId: "",
+        selectedPropertyId: "",
+        newPropertyAddress: "",
+        creatingProperty: false,
         status: "matching",
       };
     });
@@ -111,7 +123,7 @@ export default function PhotoUpload({
         if (gps) {
           try {
             const res = await fetchWithTimeout(
-              "/api/sales-board/match-location",
+              "/api/properties/match-location",
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -122,14 +134,14 @@ export default function PhotoUpload({
             const data = await res.json();
             if (res.ok) candidates = data.candidates ?? [];
           } catch {
-            /* match lookup failed or timed out — user can still pick a deal manually */
+            /* match lookup failed or timed out — user can still pick a property manually */
           }
         }
         const best = candidates[0];
-        const autoSelected: number | "" = best ? best.id : "";
+        const autoSelected: PropertySelection = best ? best.id : "";
         setPending((p) =>
           p.map((it) =>
-            it.id === item.id ? { ...it, gps, takenAt, candidates, selectedDealId: autoSelected, status: "ready" } : it
+            it.id === item.id ? { ...it, gps, takenAt, candidates, selectedPropertyId: autoSelected, status: "ready" } : it
           )
         );
       })
@@ -150,7 +162,30 @@ export default function PhotoUpload({
     setPanelOpen(false);
   }
 
-  async function uploadPhotoItem(item: PendingPhoto) {
+  async function createProperty(item: PendingPhoto) {
+    const address = item.newPropertyAddress.trim();
+    if (!address) return;
+    setPending((p) => p.map((it) => (it.id === item.id ? { ...it, creatingProperty: true } : it)));
+    try {
+      const res = await fetchWithTimeout(
+        "/api/properties",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address }) },
+        MATCH_FETCH_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create property");
+      const property = data.property as { id: number; address: string };
+      setPropertyOptions((opts) => (opts.some((o) => o.id === property.id) ? opts : [...opts, property]));
+      setPending((p) =>
+        p.map((it) => (it.id === item.id ? { ...it, selectedPropertyId: property.id, creatingProperty: false } : it))
+      );
+    } catch (err) {
+      setPending((p) => p.map((it) => (it.id === item.id ? { ...it, creatingProperty: false } : it)));
+      alert(err instanceof Error ? err.message : "Failed to create property");
+    }
+  }
+
+  async function uploadPhotoItem(item: PendingPhoto, target: UploadTarget) {
     // Compress after EXIF has already been read client-side — canvas
     // re-encoding strips metadata, so GPS/capture-time are carried as
     // separate fields instead of relying on the server re-reading them.
@@ -162,11 +197,13 @@ export default function PhotoUpload({
       formData.append("longitude", String(item.gps.longitude));
     }
     if (item.takenAt) formData.append("takenAt", item.takenAt);
-    const res = await fetchWithTimeout(
-      `/api/sales-board/${item.selectedDealId}/photos`,
-      { method: "POST", body: formData },
-      UPLOAD_TIMEOUT_MS
-    );
+
+    const url = target.kind === "event" ? `/api/events/${target.eventId}/photos` : "/api/photos";
+    if (target.kind === "property" && target.propertyId != null) {
+      formData.append("propertyId", String(target.propertyId));
+    }
+
+    const res = await fetchWithTimeout(url, { method: "POST", body: formData }, UPLOAD_TIMEOUT_MS);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Upload failed");
   }
@@ -177,11 +214,12 @@ export default function PhotoUpload({
   // before client-side compression was added. Supabase Storage itself also
   // caps object size (50MB on the Free plan), so the video is re-encoded
   // client-side first to fit under that regardless of the original size.
-  async function uploadVideoItemRaw(item: PendingPhoto) {
+  async function uploadVideoItemRaw(item: PendingPhoto, target: UploadTarget) {
     const file = await withTimeout(compressVideo(item.file), COMPRESSION_TIMEOUT_MS, "Video compression");
 
+    const uploadUrlPath = target.kind === "event" ? `/api/events/${target.eventId}/videos/upload-url` : "/api/videos/upload-url";
     const urlRes = await fetchWithTimeout(
-      `/api/sales-board/${item.selectedDealId}/videos/upload-url`,
+      uploadUrlPath,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,35 +247,76 @@ export default function PhotoUpload({
       if (!posterUploadError) posterPath = urlData.poster.path;
     }
 
+    const finalizePath = target.kind === "event" ? `/api/events/${target.eventId}/videos` : "/api/videos";
+    const finalizeBody: Record<string, unknown> = { videoPath: urlData.video.path, posterPath, takenAt: item.takenAt };
+    if (target.kind === "property" && target.propertyId != null) finalizeBody.propertyId = target.propertyId;
+
     const finalizeRes = await fetchWithTimeout(
-      `/api/sales-board/${item.selectedDealId}/videos`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoPath: urlData.video.path, posterPath, takenAt: item.takenAt }),
-      },
+      finalizePath,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(finalizeBody) },
       UPLOAD_TIMEOUT_MS
     );
     const finalizeData = await finalizeRes.json();
     if (!finalizeRes.ok) throw new Error(finalizeData.error || "Failed to save video");
   }
 
-  async function uploadVideoItem(item: PendingPhoto) {
-    await withTimeout(uploadVideoItemRaw(item), VIDEO_UPLOAD_TIMEOUT_MS, "Video upload");
+  async function uploadVideoItem(item: PendingPhoto, target: UploadTarget) {
+    await withTimeout(uploadVideoItemRaw(item, target), VIDEO_UPLOAD_TIMEOUT_MS, "Video upload");
+  }
+
+  // Items marked "No Location" have no property or GPS to cluster by, so
+  // instead of reaching for a risky global "merge with any past no-location
+  // event" fallback, the whole batch of them (from this one upload) is
+  // clustered into a single new event up front, sized to span all of their
+  // capture times — then each item attaches directly to that fixed event.
+  async function createNoLocationBatchEvent(items: PendingPhoto[]): Promise<number> {
+    const times = items.map((it) => (it.takenAt ? new Date(it.takenAt).getTime() : Date.now()));
+    const rawStart = Math.min(...times);
+    const rawEnd = Math.max(...times);
+    const { startMs, endMs } = roundHalfHourRange(rawStart, rawEnd);
+
+    const res = await fetchWithTimeout(
+      "/api/events",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start_time: new Date(startMs).toISOString(),
+          end_time: new Date(endMs).toISOString(),
+          property_id: null,
+          deal_id: null,
+          event_type: null,
+        }),
+      },
+      MATCH_FETCH_TIMEOUT_MS
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to create event");
+    return data.event.id as number;
   }
 
   async function handleUploadAll() {
     setUploading(true);
     let anyUploaded = false;
+    let noLocationEventId: number | null = null;
+    const noLocationItems = pending.filter((p) => p.status !== "done" && p.selectedPropertyId === NO_LOCATION);
 
     for (const item of pending) {
-      if (item.status === "done" || item.selectedDealId === "") continue;
+      if (item.status === "done" || item.selectedPropertyId === "" || item.selectedPropertyId === NEW_PROPERTY) continue;
       setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "uploading" } : it)));
       try {
-        if (item.mediaType === "video") {
-          await uploadVideoItem(item);
+        let target: UploadTarget;
+        if (item.selectedPropertyId === NO_LOCATION) {
+          if (noLocationEventId == null) noLocationEventId = await createNoLocationBatchEvent(noLocationItems);
+          target = { kind: "event", eventId: noLocationEventId };
         } else {
-          await uploadPhotoItem(item);
+          target = { kind: "property", propertyId: item.selectedPropertyId };
+        }
+
+        if (item.mediaType === "video") {
+          await uploadVideoItem(item, target);
+        } else {
+          await uploadPhotoItem(item, target);
         }
         anyUploaded = true;
         setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "done" } : it)));
@@ -258,14 +337,16 @@ export default function PhotoUpload({
     if (anyUploaded) onUploaded();
   }
 
-  const readyCount = pending.filter((p) => p.status !== "done" && p.selectedDealId !== "").length;
+  const readyCount = pending.filter(
+    (p) => p.status !== "done" && p.selectedPropertyId !== "" && p.selectedPropertyId !== NEW_PROPERTY
+  ).length;
   const allResolved = pending.every((p) => p.status !== "matching");
 
   const dominantMatch = useMemo(() => {
     const counts = new Map<number, number>();
     for (const item of pending) {
-      if (typeof item.selectedDealId === "number") {
-        counts.set(item.selectedDealId, (counts.get(item.selectedDealId) ?? 0) + 1);
+      if (typeof item.selectedPropertyId === "number") {
+        counts.set(item.selectedPropertyId, (counts.get(item.selectedPropertyId) ?? 0) + 1);
       }
     }
     let bestId: number | null = null;
@@ -278,15 +359,15 @@ export default function PhotoUpload({
     }
     if (bestId == null) return null;
 
-    const name =
-      pending.flatMap((p) => p.candidates).find((c) => c.id === bestId)?.deal_name ??
-      dealOptions.find((d) => d.id === bestId)?.deal_name ??
-      `Deal #${bestId}`;
-    return { id: bestId, name, count: bestCount };
-  }, [pending, dealOptions]);
+    const address =
+      pending.flatMap((p) => p.candidates).find((c) => c.id === bestId)?.address ??
+      propertyOptions.find((p) => p.id === bestId)?.address ??
+      `Property #${bestId}`;
+    return { id: bestId, address, count: bestCount };
+  }, [pending, propertyOptions]);
 
-  function setAllToDeal(dealId: number) {
-    setPending((p) => p.map((it) => (it.status === "done" ? it : { ...it, selectedDealId: dealId })));
+  function setAllToProperty(propertyId: number) {
+    setPending((p) => p.map((it) => (it.status === "done" ? it : { ...it, selectedPropertyId: propertyId })));
   }
 
   return (
@@ -318,7 +399,7 @@ export default function PhotoUpload({
               <div>
                 <h2 className={styles["modal-title"]}>Add photos &amp; videos</h2>
                 <div className={styles["modal-subtitle"]}>
-                  GPS location suggests a matching deal for photos — videos need a deal picked manually.
+                  GPS location suggests a matching property for photos — videos need a property picked manually.
                 </div>
               </div>
               <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={closePanel} disabled={uploading}>
@@ -330,15 +411,15 @@ export default function PhotoUpload({
               <div className={styles["bulk-match-bar"]}>
                 <span>
                   {dominantMatch.count} of {pending.length} photo{pending.length === 1 ? "" : "s"} best-match{" "}
-                  <strong>{dominantMatch.name}</strong>
+                  <strong>{dominantMatch.address}</strong>
                 </span>
                 <button
                   type="button"
                   className={styles["bulk-match-btn"]}
                   disabled={uploading}
-                  onClick={() => setAllToDeal(dominantMatch.id)}
+                  onClick={() => setAllToProperty(dominantMatch.id)}
                 >
-                  Set all {pending.length} to {dominantMatch.name}
+                  Set all {pending.length} to this property
                 </button>
               </div>
             )}
@@ -361,50 +442,74 @@ export default function PhotoUpload({
                     {item.status !== "matching" && (
                       <>
                         {item.mediaType === "video" && (
-                          <div className={styles["upload-status"]}>Video — choose a deal.</div>
+                          <div className={styles["upload-status"]}>Video — choose a property.</div>
                         )}
                         {item.mediaType === "photo" && !item.gps && (
-                          <div className={styles["upload-status"]}>No location data — choose a deal.</div>
+                          <div className={styles["upload-status"]}>No location data — choose a property.</div>
                         )}
                         {item.mediaType === "photo" && item.gps && item.candidates.length === 0 && (
-                          <div className={styles["upload-status"]}>No nearby deal found — choose a deal.</div>
+                          <div className={styles["upload-status"]}>No nearby property found — choose one.</div>
                         )}
                         {item.mediaType === "photo" && item.gps && item.candidates.length > 0 && (
                           <div className={styles["upload-status"]}>
-                            Best match: {item.candidates[0].deal_name} · {distanceLabel(item.candidates[0].distanceMeters)}
+                            Best match: {item.candidates[0].address} · {distanceLabel(item.candidates[0].distanceMeters)}
                           </div>
                         )}
                         <select
                           className={styles["upload-select"]}
-                          value={item.selectedDealId}
+                          value={item.selectedPropertyId}
                           disabled={item.status === "uploading" || item.status === "done"}
-                          onChange={(e) =>
-                            setPending((p) =>
-                              p.map((it) =>
-                                it.id === item.id ? { ...it, selectedDealId: e.target.value ? Number(e.target.value) : "" } : it
-                              )
-                            )
-                          }
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            const next: PropertySelection =
+                              value === NEW_PROPERTY ? NEW_PROPERTY : value === NO_LOCATION ? NO_LOCATION : value ? Number(value) : "";
+                            setPending((p) => p.map((it) => (it.id === item.id ? { ...it, selectedPropertyId: next } : it)));
+                          }}
                         >
-                          <option value="">Select a deal…</option>
+                          <option value="">Select a property…</option>
+                          <option value={NO_LOCATION}>No Location</option>
+                          <option value={NEW_PROPERTY}>+ Add new property…</option>
                           {item.candidates.length > 0 && (
                             <optgroup label="Nearby matches">
                               {item.candidates.map((c) => (
                                 <option key={c.id} value={c.id}>
-                                  {c.deal_name} — {distanceLabel(c.distanceMeters)}
+                                  {c.address} — {distanceLabel(c.distanceMeters)}
                                 </option>
                               ))}
                             </optgroup>
                           )}
-                          <optgroup label="All deals">
-                            {dealOptions.map((d) => (
-                              <option key={d.id} value={d.id}>
-                                {d.deal_name}
-                                {d.company ? ` (${d.company})` : ""}
+                          <optgroup label="All properties">
+                            {propertyOptions.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.address}
                               </option>
                             ))}
                           </optgroup>
                         </select>
+                        {item.selectedPropertyId === NEW_PROPERTY && (
+                          <div className={styles["new-property-row"]}>
+                            <input
+                              type="text"
+                              className={styles["new-property-input"]}
+                              placeholder="New property address"
+                              value={item.newPropertyAddress}
+                              disabled={item.creatingProperty}
+                              onChange={(e) =>
+                                setPending((p) =>
+                                  p.map((it) => (it.id === item.id ? { ...it, newPropertyAddress: e.target.value } : it))
+                                )
+                              }
+                            />
+                            <button
+                              type="button"
+                              className={styles["bulk-match-btn"]}
+                              disabled={item.creatingProperty || !item.newPropertyAddress.trim()}
+                              onClick={() => createProperty(item)}
+                            >
+                              {item.creatingProperty ? "Adding…" : "Add"}
+                            </button>
+                          </div>
+                        )}
                         {item.status === "error" && <div className={styles["upload-error"]}>{item.error}</div>}
                         {item.status === "done" && <div className={styles["upload-done"]}>Uploaded ✓</div>}
                       </>

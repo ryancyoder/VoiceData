@@ -517,7 +517,7 @@ export default function CalendarClient({
           Next ›
         </button>
         <span className={styles["range-label"]}>{rangeLabel}</span>
-        <PhotoUpload dealOptions={dealOptions} onUploaded={() => router.refresh()} />
+        <PhotoUpload propertyOptions={propertyOptions} onUploaded={() => router.refresh()} />
         <button
           type="button"
           className={styles["nav-btn"]}

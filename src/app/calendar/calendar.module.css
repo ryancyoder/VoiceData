@@ -374,6 +374,17 @@
   max-width: 100%;
 }
 .upload-select:focus { border-color: var(--accent); outline: none; }
+.new-property-row { display: flex; gap: 6px; align-items: center; }
+.new-property-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 0.78rem;
+}
+.new-property-input:focus { border-color: var(--accent); outline: none; }
 .upload-error { font-size: 0.72rem; color: var(--danger); }
 .upload-done { font-size: 0.72rem; color: var(--accent); font-weight: 600; }
 .upload-remove {

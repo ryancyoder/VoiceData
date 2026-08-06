@@ -185,6 +185,114 @@ async function findOrCreateEventForDeal(dealId: number, takenAt: string, propert
 }
 
 /**
+ * Groups an event purely by property + time proximity, for when a property
+ * is known but has no geocoded location (e.g. geocoding failed for a
+ * freshly-added address) — mirrors findOrCreateEventForDeal but keyed by
+ * property_id instead of deal_id, and never sets deal_id.
+ */
+async function findOrCreateEventForProperty(propertyId: number, takenAt: string): Promise<Event> {
+  const takenAtMs = new Date(takenAt).getTime();
+
+  const { data: existing, error } = await supabase.from("events").select("*").eq("property_id", propertyId);
+  if (error) throw new Error(error.message);
+
+  for (const event of (existing ?? []) as Event[]) {
+    const startMs = new Date(event.start_time).getTime();
+    const endMs = new Date(event.end_time).getTime();
+    const gapMs = takenAtMs < startMs ? startMs - takenAtMs : takenAtMs > endMs ? takenAtMs - endMs : 0;
+    if (gapMs > DEFAULT_MAX_GAP_MS) continue;
+
+    const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(
+      Math.min(startMs, takenAtMs),
+      Math.max(endMs, takenAtMs)
+    );
+    const { data: updated, error: updateError } = await supabase
+      .from("events")
+      .update({ start_time: new Date(newStartMs).toISOString(), end_time: new Date(newEndMs).toISOString() })
+      .eq("id", event.id)
+      .select()
+      .single();
+    if (updateError) throw new Error(updateError.message);
+    return updated as Event;
+  }
+
+  const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(takenAtMs, takenAtMs);
+  const { data: created, error: insertError } = await supabase
+    .from("events")
+    .insert({
+      start_time: new Date(newStartMs).toISOString(),
+      end_time: new Date(newEndMs).toISOString(),
+      property_id: propertyId,
+    })
+    .select()
+    .single();
+  if (insertError) throw new Error(insertError.message);
+  return created as Event;
+}
+
+/**
+ * Resolves the event a photo/video belongs to when imported against a
+ * property (not a deal) — the base-level attachment for imported media is a
+ * property, which an event may subsequently be attached to a deal
+ * independently (via the event's own edit form). Prefers the photo's own
+ * GPS; falls back to the property's geocoded location when the photo has
+ * none; falls back further to grouping by property + time proximity alone
+ * when the property itself has no geocoded location. When no property is
+ * given at all, a fresh standalone event is created (no matching is
+ * possible without either a location or a property to key off of — this is
+ * a defensive fallback; the normal "no location" path clusters an entire
+ * upload batch into one shared event before ever calling this).
+ */
+export async function linkToPropertyEvent(
+  propertyId: number | null,
+  latitude: number | null,
+  longitude: number | null,
+  takenAt: string | null
+): Promise<{ eventId: number; dealId: number | null }> {
+  const effectiveTakenAt = takenAt ?? new Date().toISOString();
+
+  let effectiveLat = latitude;
+  let effectiveLng = longitude;
+  if ((effectiveLat == null || effectiveLng == null) && propertyId != null) {
+    const { data: property, error: propertyError } = await supabase
+      .from("properties")
+      .select("latitude, longitude")
+      .eq("id", propertyId)
+      .maybeSingle();
+    if (propertyError) throw new Error(propertyError.message);
+    effectiveLat = property?.latitude ?? null;
+    effectiveLng = property?.longitude ?? null;
+  }
+
+  let event: Event;
+  if (effectiveLat != null && effectiveLng != null) {
+    event = await findOrCreateEvent({
+      latitude: effectiveLat,
+      longitude: effectiveLng,
+      takenAt: effectiveTakenAt,
+      propertyId,
+      dealId: null,
+    });
+  } else if (propertyId != null) {
+    event = await findOrCreateEventForProperty(propertyId, effectiveTakenAt);
+  } else {
+    const { startMs, endMs } = roundEventRange(
+      new Date(effectiveTakenAt).getTime(),
+      new Date(effectiveTakenAt).getTime()
+    );
+    const { data: created, error: insertError } = await supabase
+      .from("events")
+      .insert({ start_time: new Date(startMs).toISOString(), end_time: new Date(endMs).toISOString() })
+      .select()
+      .single();
+    if (insertError) throw new Error(insertError.message);
+    event = created as Event;
+  }
+
+  return { eventId: event.id, dealId: event.deal_id };
+}
+
+/**
  * Resolves the event a photo/video belongs to — every piece of media must
  * end up attached to some event, since the event (not the deal) is the base
  * unit of truth; a deal is just what an event may subsequently be attached
