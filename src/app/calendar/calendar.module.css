@@ -78,6 +78,8 @@
   cursor: pointer;
 }
 .nav-btn:hover { color: var(--text); border-color: var(--text-faint); }
+.nav-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.paste-error { font-size: 0.76rem; color: var(--danger); }
 .range-label { font-size: 0.88rem; font-weight: 650; margin: 0 6px; }
 .ungeotagged-note {
   margin-left: auto;

@@ -71,10 +71,11 @@ export default function PhotoUpload({
   const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>(initialPropertyOptions);
   const [panelOpen, setPanelOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasting, setPasting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function handleFilesSelected(fileList: FileList) {
-    const files = Array.from(fileList);
+  async function addFiles(files: File[]) {
     if (files.length === 0) return;
 
     const items: PendingPhoto[] = files.map((file) => {
@@ -147,6 +148,43 @@ export default function PhotoUpload({
         );
       })
     );
+  }
+
+  function handleFilesSelected(fileList: FileList) {
+    return addFiles(Array.from(fileList));
+  }
+
+  async function handlePasteClick() {
+    setPasteError(null);
+    if (!navigator.clipboard?.read) {
+      setPasteError("Clipboard access isn't supported in this browser");
+      return;
+    }
+    setPasting(true);
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const files: File[] = [];
+      for (const clipboardItem of clipboardItems) {
+        const imageType = clipboardItem.types.find((type) => type.startsWith("image/"));
+        if (!imageType) continue;
+        const blob = await clipboardItem.getType(imageType);
+        const ext = imageType.split("/")[1] || "png";
+        files.push(new File([blob], `pasted-${Date.now()}.${ext}`, { type: imageType }));
+      }
+      if (files.length === 0) {
+        setPasteError("No image found on the clipboard");
+        return;
+      }
+      await addFiles(files);
+    } catch (err) {
+      setPasteError(
+        err instanceof Error && err.name === "NotAllowedError"
+          ? "Clipboard access denied — check browser permissions"
+          : "Couldn't read the clipboard"
+      );
+    } finally {
+      setPasting(false);
+    }
   }
 
   function removePending(id: string) {
@@ -387,6 +425,10 @@ export default function PhotoUpload({
       <button type="button" className={styles["nav-btn"]} onClick={() => inputRef.current?.click()}>
         + Add Photo/Video
       </button>
+      <button type="button" className={styles["nav-btn"]} onClick={handlePasteClick} disabled={pasting}>
+        {pasting ? "Pasting…" : "📋 Paste Photo"}
+      </button>
+      {pasteError && <div className={styles["paste-error"]}>{pasteError}</div>}
 
       {panelOpen && (
         <div
