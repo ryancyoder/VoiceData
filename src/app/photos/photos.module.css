@@ -129,6 +129,47 @@
   padding: 1px 6px;
 }
 
+.event-add-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.event-add-btn {
+  display: inline-flex;
+  align-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.event-add-btn:hover { border-color: var(--text-faint); color: var(--text); }
+.event-add-btn input { display: none; }
+.event-paste-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.event-paste-btn:hover { border-color: var(--accent); color: var(--accent); }
+.event-paste-btn:disabled,
+.event-add-btn:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+.event-upload-status { font-size: 0.72rem; color: var(--text-muted); }
+.event-paste-error { font-size: 0.72rem; color: var(--danger); margin-top: 2px; }
+
+.paste-target {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  resize: none;
+}
+
 .thumb {
   position: relative;
   border: 1px solid var(--border);
