@@ -10,6 +10,8 @@
   --accent-soft: #E4F1F0;
   --danger: #B3261E;
   --danger-soft: #FBEAE9;
+  --warn: #A66A00;
+  --warn-soft: #FCF0D9;
   --shadow: 0 1px 2px rgba(20, 24, 30, 0.06), 0 1px 1px rgba(20, 24, 30, 0.04);
   --radius: 10px;
 
@@ -35,6 +37,8 @@
     --accent-soft: #133532;
     --danger: #F87171;
     --danger-soft: #3A1E1E;
+    --warn: #E0A020;
+    --warn-soft: #3A2E10;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 }
@@ -183,6 +187,7 @@
 }
 .event-block:hover { filter: brightness(0.97); }
 .event-block.is-dragging { filter: brightness(0.94); z-index: 5; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+.event-block.no-deal { background: var(--warn-soft); border-left-color: var(--warn); }
 
 .event-resize-handle {
   position: absolute;

@@ -137,11 +137,19 @@ function layoutDay(day: Date, events: CalendarEvent[]): LaidOutEvent[] {
   });
 }
 
-function eventLabel(event: CalendarEvent) {
+// An explicit event name always wins. Otherwise, the property's own
+// contact last name is the default — it's the one thing that's true
+// regardless of whether a deal has been attached yet, unlike a deal name
+// (which may not exist, or may not even name the same person if the deal
+// was renamed). Deal name is only a fallback for the rare case a property
+// has no contact on file at all.
+function eventLabel(event: CalendarEvent, propertyOptions: PropertyOption[]) {
   if (event.name) return event.name;
-  if (event.deals.length === 0) return "Unknown deal";
+  const property = event.propertyId != null ? propertyOptions.find((p) => p.id === event.propertyId) : undefined;
+  if (property?.contactLastName) return property.contactLastName;
   if (event.deals.length === 1) return event.deals[0].name;
-  return `${event.deals[0].name} +${event.deals.length - 1}`;
+  if (event.deals.length > 1) return `${event.deals[0].name} +${event.deals.length - 1}`;
+  return "Untitled event";
 }
 
 // <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in local time.
@@ -752,7 +760,7 @@ export default function CalendarClient({
                     key={event.id}
                     role="button"
                     tabIndex={0}
-                    className={`${styles["event-block"]} ${dragPreview?.eventId === event.id ? styles["is-dragging"] : ""}`}
+                    className={`${styles["event-block"]} ${event.deals.length === 0 ? styles["no-deal"] : ""} ${dragPreview?.eventId === event.id ? styles["is-dragging"] : ""}`}
                     style={{
                       top,
                       height,
@@ -797,7 +805,7 @@ export default function CalendarClient({
                       </div>
                     )}
                     {event.eventType && <div className={styles["event-type-badge"]}>{event.eventType}</div>}
-                    <div className={styles["event-title"]}>{eventLabel(event)}</div>
+                    <div className={styles["event-title"]}>{eventLabel(event, propertyOptions)}</div>
                     <div className={styles["event-meta"]}>
                       {timeRangeLabel(event)} · {event.photos.length} photo{event.photos.length === 1 ? "" : "s"}
                     </div>
@@ -835,7 +843,7 @@ export default function CalendarClient({
                   {selectedEvent.eventType && (
                     <div className={styles["event-type-badge"]}>{selectedEvent.eventType}</div>
                   )}
-                  <h2 className={styles["modal-title"]}>{eventLabel(selectedEvent)}</h2>
+                  <h2 className={styles["modal-title"]}>{eventLabel(selectedEvent, propertyOptions)}</h2>
                   <div className={styles["modal-subtitle"]}>
                     {new Date(selectedEvent.start).toLocaleDateString("en-US", {
                       weekday: "long",
@@ -886,7 +894,7 @@ export default function CalendarClient({
                   Name
                   <input
                     type="text"
-                    placeholder={eventLabel(selectedEvent)}
+                    placeholder={eventLabel(selectedEvent, propertyOptions)}
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                   />
@@ -982,7 +990,7 @@ export default function CalendarClient({
                     .filter((e) => e.id !== selectedEvent.id)
                     .map((e) => (
                       <option key={e.id} value={e.id}>
-                        {eventLabel(e)} · {new Date(e.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {eventLabel(e, propertyOptions)} · {new Date(e.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </option>
                     ))}
                 </select>
@@ -1080,7 +1088,7 @@ export default function CalendarClient({
                   >
                     {thumbUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={thumbUrl} alt={photo.caption ?? eventLabel(selectedEvent)} loading="lazy" />
+                      <img src={thumbUrl} alt={photo.caption ?? eventLabel(selectedEvent, propertyOptions)} loading="lazy" />
                     ) : (
                       <span className={styles["photo-thumb-placeholder"]}>🎬</span>
                     )}
@@ -1118,7 +1126,7 @@ export default function CalendarClient({
                 />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? eventLabel(selectedEvent)} />
+                <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? eventLabel(selectedEvent, propertyOptions)} />
               )}
             </div>
             <div className={styles["lightbox-foot"]}>
