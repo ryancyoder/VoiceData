@@ -322,6 +322,7 @@
 .column-empty { font-size: 0.75rem; color: var(--text-faint); text-align: center; padding: 14px 6px; border: 1px dashed var(--border); border-radius: 8px; }
 
 .card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--col-color);
@@ -392,6 +393,41 @@
   overflow: hidden;
 }
 .card-next-action { font-style: italic; }
+
+.card-hover-tooltip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 8px 10px;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--text);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+  pointer-events: none;
+}
+.card:hover .card-hover-tooltip,
+.card:focus-visible .card-hover-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.card-hover-tooltip-label {
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
 
 .card-edit-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-top: 8px; }
 .card-edit-field { display: flex; flex-direction: column; gap: 2px; }
