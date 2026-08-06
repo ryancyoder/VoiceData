@@ -261,6 +261,11 @@ export default function DealModal({
                             <span className={styles["photo-thumb-placeholder"]}>🎬</span>
                           )}
                           {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                          {photo.is_outlier && (
+                            <span className={styles["outlier-badge"]} title="Dated differently than the rest of this event">
+                              ⚠
+                            </span>
+                          )}
                           <button
                             type="button"
                             className={styles["photo-remove"]}

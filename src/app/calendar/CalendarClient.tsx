@@ -23,6 +23,7 @@ export interface GeoPhoto {
   event_id: number | null;
   media_type: "photo" | "video";
   poster_path: string | null;
+  is_outlier: boolean;
 }
 
 export interface CalendarEvent {
@@ -929,6 +930,11 @@ export default function CalendarClient({
                       <span className={styles["photo-thumb-placeholder"]}>🎬</span>
                     )}
                     {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                    {photo.is_outlier && (
+                      <span className={styles["outlier-badge"]} title="Dated differently than the rest of this event">
+                        ⚠
+                      </span>
+                    )}
                   </button>
                 );
               })}

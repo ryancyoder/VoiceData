@@ -103,6 +103,7 @@ export default async function CalendarPage() {
         event_id: p.event_id,
         media_type: p.media_type,
         poster_path: p.poster_path,
+        is_outlier: p.is_outlier,
       })),
       deals: dealIds.map((id) => {
         const fromPhoto = dealsById.get(id);

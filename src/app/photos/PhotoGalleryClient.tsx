@@ -182,6 +182,11 @@ export default function PhotoGalleryClient({ deals: initialDeals }: { deals: Gal
                                     <span className={styles["thumb-placeholder"]}>🎬</span>
                                   )}
                                   {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                                  {photo.is_outlier && (
+                                    <span className={styles["outlier-badge"]} title="Dated differently than the rest of this event">
+                                      ⚠
+                                    </span>
+                                  )}
                                 </span>
                               </button>
                               <button

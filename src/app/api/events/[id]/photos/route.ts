@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 import { safeExtension } from "@/lib/storagePaths";
 import { resolvePhotoMetadata } from "@/lib/photoMetadata";
+import { isOutlierForEvent } from "@/lib/events";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
     const { data: event, error: eventError } = await supabase
       .from("events")
-      .select("deal_id")
+      .select("deal_id, start_time")
       .eq("id", id)
       .maybeSingle();
     if (eventError || !event) {
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         latitude,
         longitude,
         taken_at: takenAt,
+        is_outlier: isOutlierForEvent(event.start_time, takenAt),
       })
       .select()
       .single();

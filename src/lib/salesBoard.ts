@@ -26,6 +26,7 @@ export interface DealPhoto {
   event_id: number | null;
   media_type: "photo" | "video";
   poster_path: string | null;
+  is_outlier: boolean;
 }
 
 export interface DealEvent {

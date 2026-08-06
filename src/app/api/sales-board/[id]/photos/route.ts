@@ -39,10 +39,12 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     // than leaving an eventless photo behind.
     let eventId: number;
     let resolvedDealId: number | null;
+    let isOutlier: boolean;
     try {
       const linked = await linkToEvent(Number(id), latitude, longitude, takenAt);
       eventId = linked.eventId;
       resolvedDealId = linked.dealId;
+      isOutlier = linked.isOutlier;
     } catch (err) {
       console.error("Event linking failed:", err);
       await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove([path]);
@@ -59,6 +61,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         latitude,
         longitude,
         taken_at: takenAt,
+        is_outlier: isOutlier,
       })
       .select()
       .single();

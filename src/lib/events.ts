@@ -48,6 +48,21 @@ function roundEventRange(startMs: number, endMs: number): { startMs: number; end
   return { startMs: roundedStart, endMs: roundedEnd <= roundedStart ? roundedStart + HALF_HOUR_MS : roundedEnd };
 }
 
+/** UTC calendar date an ISO timestamp falls on — the unit events are never allowed to span across. */
+function dayKey(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
+/**
+ * Whether a photo/video's capture time falls outside the event it's being
+ * attached to directly (no clustering/matching involved, e.g. an upload
+ * targeted at an already-known event). A missing takenAt is never treated
+ * as an outlier — there's no date evidence to flag it by.
+ */
+export function isOutlierForEvent(eventStartTime: string, takenAt: string | null): boolean {
+  return takenAt != null && dayKey(eventStartTime) !== dayKey(takenAt);
+}
+
 async function photoCentroid(eventId: number, extra: EventPhotoPoint[]): Promise<EventPhotoPoint | null> {
   const { data, error } = await supabase
     .from("deal_photos")
@@ -70,6 +85,12 @@ async function photoCentroid(eventId: number, extra: EventPhotoPoint[]): Promise
  * extending it to include the new photo — otherwise creates a new event.
  * Mirrors the same time+distance clustering used by the on-the-fly
  * grouping in photoEvents.ts, but persists the result with a stable ID.
+ *
+ * An event never spans more than one calendar day. A photo that otherwise
+ * matches (same property/deal, close enough in time+space) but lands on a
+ * different day than the event's existing date still joins the cluster —
+ * it's just flagged as an outlier instead of stretching the event's
+ * displayed date across days it didn't actually happen on.
  */
 export async function findOrCreateEvent(input: {
   latitude: number;
@@ -77,7 +98,7 @@ export async function findOrCreateEvent(input: {
   takenAt: string;
   propertyId: number | null;
   dealId?: number | null;
-}): Promise<Event> {
+}): Promise<{ event: Event; isOutlier: boolean }> {
   const { latitude, longitude, takenAt, propertyId, dealId = null } = input;
   const takenAtMs = new Date(takenAt).getTime();
 
@@ -100,9 +121,13 @@ export async function findOrCreateEvent(input: {
 
   if (best) {
     const { event } = best;
-    const rawStartMs = Math.min(new Date(event.start_time).getTime(), takenAtMs);
-    const rawEndMs = Math.max(new Date(event.end_time).getTime(), takenAtMs);
-    const { startMs, endMs } = roundEventRange(rawStartMs, rawEndMs);
+    const isOutlier = dayKey(event.start_time) !== dayKey(takenAt);
+    const { startMs, endMs } = isOutlier
+      ? { startMs: new Date(event.start_time).getTime(), endMs: new Date(event.end_time).getTime() }
+      : roundEventRange(
+          Math.min(new Date(event.start_time).getTime(), takenAtMs),
+          Math.max(new Date(event.end_time).getTime(), takenAtMs)
+        );
     const centroid = await photoCentroid(event.id, [{ latitude, longitude }]);
 
     const { data: updated, error: updateError } = await supabase
@@ -119,7 +144,7 @@ export async function findOrCreateEvent(input: {
       .select()
       .single();
     if (updateError) throw new Error(updateError.message);
-    return updated as Event;
+    return { event: updated as Event, isOutlier };
   }
 
   const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(takenAtMs, takenAtMs);
@@ -136,15 +161,22 @@ export async function findOrCreateEvent(input: {
     .select()
     .single();
   if (insertError) throw new Error(insertError.message);
-  return created as Event;
+  return { event: created as Event, isOutlier: false };
 }
 
 /**
  * Groups an event purely by deal + time proximity, for the rare case where
  * neither the photo itself nor the deal's jobsite has any known location at
  * all — there's nothing to cluster by except "close in time, same deal".
+ * Same single-day-per-event rule as findOrCreateEvent: a match on a
+ * different calendar day joins the cluster but is flagged as an outlier
+ * rather than widening the event's date.
  */
-async function findOrCreateEventForDeal(dealId: number, takenAt: string, propertyId: number | null): Promise<Event> {
+async function findOrCreateEventForDeal(
+  dealId: number,
+  takenAt: string,
+  propertyId: number | null
+): Promise<{ event: Event; isOutlier: boolean }> {
   const takenAtMs = new Date(takenAt).getTime();
 
   const { data: existing, error } = await supabase.from("events").select("*").eq("deal_id", dealId);
@@ -156,10 +188,10 @@ async function findOrCreateEventForDeal(dealId: number, takenAt: string, propert
     const gapMs = takenAtMs < startMs ? startMs - takenAtMs : takenAtMs > endMs ? takenAtMs - endMs : 0;
     if (gapMs > DEFAULT_MAX_GAP_MS) continue;
 
-    const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(
-      Math.min(startMs, takenAtMs),
-      Math.max(endMs, takenAtMs)
-    );
+    const isOutlier = dayKey(event.start_time) !== dayKey(takenAt);
+    const { startMs: newStartMs, endMs: newEndMs } = isOutlier
+      ? { startMs, endMs }
+      : roundEventRange(Math.min(startMs, takenAtMs), Math.max(endMs, takenAtMs));
     const { data: updated, error: updateError } = await supabase
       .from("events")
       .update({ start_time: new Date(newStartMs).toISOString(), end_time: new Date(newEndMs).toISOString() })
@@ -167,7 +199,7 @@ async function findOrCreateEventForDeal(dealId: number, takenAt: string, propert
       .select()
       .single();
     if (updateError) throw new Error(updateError.message);
-    return updated as Event;
+    return { event: updated as Event, isOutlier };
   }
 
   const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(takenAtMs, takenAtMs);
@@ -182,7 +214,7 @@ async function findOrCreateEventForDeal(dealId: number, takenAt: string, propert
     .select()
     .single();
   if (insertError) throw new Error(insertError.message);
-  return created as Event;
+  return { event: created as Event, isOutlier: false };
 }
 
 /**
@@ -191,7 +223,10 @@ async function findOrCreateEventForDeal(dealId: number, takenAt: string, propert
  * freshly-added address) — mirrors findOrCreateEventForDeal but keyed by
  * property_id instead of deal_id, and never sets deal_id.
  */
-async function findOrCreateEventForProperty(propertyId: number, takenAt: string): Promise<Event> {
+async function findOrCreateEventForProperty(
+  propertyId: number,
+  takenAt: string
+): Promise<{ event: Event; isOutlier: boolean }> {
   const takenAtMs = new Date(takenAt).getTime();
 
   const { data: existing, error } = await supabase.from("events").select("*").eq("property_id", propertyId);
@@ -203,10 +238,10 @@ async function findOrCreateEventForProperty(propertyId: number, takenAt: string)
     const gapMs = takenAtMs < startMs ? startMs - takenAtMs : takenAtMs > endMs ? takenAtMs - endMs : 0;
     if (gapMs > DEFAULT_MAX_GAP_MS) continue;
 
-    const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(
-      Math.min(startMs, takenAtMs),
-      Math.max(endMs, takenAtMs)
-    );
+    const isOutlier = dayKey(event.start_time) !== dayKey(takenAt);
+    const { startMs: newStartMs, endMs: newEndMs } = isOutlier
+      ? { startMs, endMs }
+      : roundEventRange(Math.min(startMs, takenAtMs), Math.max(endMs, takenAtMs));
     const { data: updated, error: updateError } = await supabase
       .from("events")
       .update({ start_time: new Date(newStartMs).toISOString(), end_time: new Date(newEndMs).toISOString() })
@@ -214,7 +249,7 @@ async function findOrCreateEventForProperty(propertyId: number, takenAt: string)
       .select()
       .single();
     if (updateError) throw new Error(updateError.message);
-    return updated as Event;
+    return { event: updated as Event, isOutlier };
   }
 
   const { startMs: newStartMs, endMs: newEndMs } = roundEventRange(takenAtMs, takenAtMs);
@@ -228,7 +263,7 @@ async function findOrCreateEventForProperty(propertyId: number, takenAt: string)
     .select()
     .single();
   if (insertError) throw new Error(insertError.message);
-  return created as Event;
+  return { event: created as Event, isOutlier: false };
 }
 
 /**
@@ -249,7 +284,7 @@ export async function linkToPropertyEvent(
   latitude: number | null,
   longitude: number | null,
   takenAt: string | null
-): Promise<{ eventId: number; dealId: number | null }> {
+): Promise<{ eventId: number; dealId: number | null; isOutlier: boolean }> {
   const effectiveTakenAt = takenAt ?? new Date().toISOString();
 
   let effectiveLat = latitude;
@@ -266,16 +301,17 @@ export async function linkToPropertyEvent(
   }
 
   let event: Event;
+  let isOutlier = false;
   if (effectiveLat != null && effectiveLng != null) {
-    event = await findOrCreateEvent({
+    ({ event, isOutlier } = await findOrCreateEvent({
       latitude: effectiveLat,
       longitude: effectiveLng,
       takenAt: effectiveTakenAt,
       propertyId,
       dealId: null,
-    });
+    }));
   } else if (propertyId != null) {
-    event = await findOrCreateEventForProperty(propertyId, effectiveTakenAt);
+    ({ event, isOutlier } = await findOrCreateEventForProperty(propertyId, effectiveTakenAt));
   } else {
     const { startMs, endMs } = roundEventRange(
       new Date(effectiveTakenAt).getTime(),
@@ -290,7 +326,7 @@ export async function linkToPropertyEvent(
     event = created as Event;
   }
 
-  return { eventId: event.id, dealId: event.deal_id };
+  return { eventId: event.id, dealId: event.deal_id, isOutlier };
 }
 
 /**
@@ -309,7 +345,7 @@ export async function linkToEvent(
   latitude: number | null,
   longitude: number | null,
   takenAt: string | null
-): Promise<{ eventId: number; dealId: number | null }> {
+): Promise<{ eventId: number; dealId: number | null; isOutlier: boolean }> {
   const effectiveTakenAt = takenAt ?? new Date().toISOString();
 
   const { data: deal, error: dealError } = await supabase
@@ -333,12 +369,12 @@ export async function linkToEvent(
     effectiveLng = property?.longitude ?? null;
   }
 
-  const event =
+  const { event, isOutlier } =
     effectiveLat != null && effectiveLng != null
       ? await findOrCreateEvent({ latitude: effectiveLat, longitude: effectiveLng, takenAt: effectiveTakenAt, propertyId, dealId })
       : await findOrCreateEventForDeal(dealId, effectiveTakenAt, propertyId);
 
-  return { eventId: event.id, dealId: event.deal_id };
+  return { eventId: event.id, dealId: event.deal_id, isOutlier };
 }
 
 export async function createEventManually(input: {
@@ -423,6 +459,13 @@ export async function updateEvent(
  * reassigned to the target, the target's time range and location are
  * recomputed over the combined photos, and the now-empty source event is
  * deleted.
+ *
+ * The merged event still never spans more than one calendar day. When
+ * source and target land on the same day, their ranges combine normally.
+ * When they don't, the target's own day wins — its range is left alone,
+ * and any (now-reassigned) photo dated outside that day is flagged as an
+ * outlier rather than stretching the merged event across days it didn't
+ * happen on.
  */
 export async function mergeEvents(sourceId: number, targetId: number): Promise<Event> {
   if (sourceId === targetId) throw new Error("Cannot merge an event into itself");
@@ -443,8 +486,31 @@ export async function mergeEvents(sourceId: number, targetId: number): Promise<E
     .eq("event_id", sourceId);
   if (reassignError) throw new Error(reassignError.message);
 
-  const startMs = Math.min(new Date(source.start_time).getTime(), new Date(target.start_time).getTime());
-  const endMs = Math.max(new Date(source.end_time).getTime(), new Date(target.end_time).getTime());
+  const targetDay = dayKey(target.start_time);
+  const sameDay = dayKey(source.start_time) === targetDay;
+
+  const startMs = sameDay
+    ? Math.min(new Date(source.start_time).getTime(), new Date(target.start_time).getTime())
+    : new Date(target.start_time).getTime();
+  const endMs = sameDay
+    ? Math.max(new Date(source.end_time).getTime(), new Date(target.end_time).getTime())
+    : new Date(target.end_time).getTime();
+
+  if (!sameDay) {
+    const { data: combinedPhotos, error: combinedError } = await supabase
+      .from("deal_photos")
+      .select("id, taken_at")
+      .eq("event_id", targetId);
+    if (combinedError) throw new Error(combinedError.message);
+    const outlierIds = (combinedPhotos ?? [])
+      .filter((p) => p.taken_at && dayKey(p.taken_at) !== targetDay)
+      .map((p) => p.id);
+    if (outlierIds.length > 0) {
+      const { error: flagError } = await supabase.from("deal_photos").update({ is_outlier: true }).in("id", outlierIds);
+      if (flagError) throw new Error(flagError.message);
+    }
+  }
+
   const centroid = await photoCentroid(targetId, []);
 
   const { data: updated, error: updateError } = await supabase

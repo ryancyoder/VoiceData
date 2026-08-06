@@ -46,10 +46,12 @@ export async function POST(req: NextRequest) {
   try {
     let eventId: number;
     let resolvedDealId: number | null;
+    let isOutlier: boolean;
     try {
       const linked = await linkToPropertyEvent(propertyId, latitude, longitude, takenAt);
       eventId = linked.eventId;
       resolvedDealId = linked.dealId;
+      isOutlier = linked.isOutlier;
     } catch (err) {
       console.error("Event linking failed:", err);
       await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove(posterPath ? [videoPath, posterPath] : [videoPath]);
@@ -68,6 +70,7 @@ export async function POST(req: NextRequest) {
         latitude,
         longitude,
         taken_at: takenAt,
+        is_outlier: isOutlier,
       })
       .select()
       .single();

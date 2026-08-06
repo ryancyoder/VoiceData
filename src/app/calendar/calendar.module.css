@@ -293,6 +293,22 @@
   line-height: 1;
 }
 
+.outlier-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--warn, #e0a020);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
 .lightbox-overlay {
   position: fixed;
   inset: 0;
