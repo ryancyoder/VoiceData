@@ -78,6 +78,7 @@ export default function PhotoUpload({
   const [uploading, setUploading] = useState(false);
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [pasting, setPasting] = useState(false);
+  const [bulkPropertyId, setBulkPropertyId] = useState<number | "">("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback(async (files: File[]) => {
@@ -560,6 +561,27 @@ export default function PhotoUpload({
                   )}
                   <button type="button" className={styles["bulk-match-btn"]} disabled={uploading} onClick={setAllToNoLocation}>
                     Set all to No Location
+                  </button>
+                  <select
+                    className={styles["upload-select"]}
+                    value={bulkPropertyId}
+                    disabled={uploading}
+                    onChange={(e) => setBulkPropertyId(e.target.value ? Number(e.target.value) : "")}
+                  >
+                    <option value="">Choose a property…</option>
+                    {propertyOptions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {formatPropertyLabel(p)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className={styles["bulk-match-btn"]}
+                    disabled={uploading || bulkPropertyId === ""}
+                    onClick={() => setAllToProperty(bulkPropertyId as number)}
+                  >
+                    Set all to this property
                   </button>
                 </div>
               </div>
