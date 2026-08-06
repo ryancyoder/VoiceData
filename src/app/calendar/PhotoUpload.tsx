@@ -451,6 +451,10 @@ export default function PhotoUpload({
     setPending((p) => p.map((it) => (it.status === "done" ? it : { ...it, selectedPropertyId: propertyId })));
   }
 
+  function setAllToNoLocation() {
+    setPending((p) => p.map((it) => (it.status === "done" ? it : { ...it, selectedPropertyId: NO_LOCATION })));
+  }
+
   return (
     <>
       <input
@@ -492,20 +496,31 @@ export default function PhotoUpload({
               </button>
             </div>
 
-            {dominantMatch && pending.length > 1 && (
+            {pending.length > 1 && (
               <div className={styles["bulk-match-bar"]}>
-                <span>
-                  {dominantMatch.count} of {pending.length} photo{pending.length === 1 ? "" : "s"} best-match{" "}
-                  <strong>{dominantMatch.label}</strong>
-                </span>
-                <button
-                  type="button"
-                  className={styles["bulk-match-btn"]}
-                  disabled={uploading}
-                  onClick={() => setAllToProperty(dominantMatch.id)}
-                >
-                  Set all {pending.length} to this property
-                </button>
+                {dominantMatch ? (
+                  <span>
+                    {dominantMatch.count} of {pending.length} photo{pending.length === 1 ? "" : "s"} best-match{" "}
+                    <strong>{dominantMatch.label}</strong>
+                  </span>
+                ) : (
+                  <span>{pending.length} items pending</span>
+                )}
+                <div className={styles["bulk-match-actions"]}>
+                  {dominantMatch && (
+                    <button
+                      type="button"
+                      className={styles["bulk-match-btn"]}
+                      disabled={uploading}
+                      onClick={() => setAllToProperty(dominantMatch.id)}
+                    >
+                      Set all {pending.length} to this property
+                    </button>
+                  )}
+                  <button type="button" className={styles["bulk-match-btn"]} disabled={uploading} onClick={setAllToNoLocation}>
+                    Set all to No Location
+                  </button>
+                </div>
               </div>
             )}
 
