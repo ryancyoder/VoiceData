@@ -21,6 +21,7 @@ export interface GalleryEvent {
   propertyId: number | null;
   propertyAddress: string | null;
   propertyContactLastName: string | null;
+  propertyCoverPhotoId: number | null;
 }
 
 interface DealGroup {
@@ -34,6 +35,7 @@ interface PropertyGroup {
   key: string;
   propertyId: number | null;
   propertyLabel: string;
+  coverPhotoId: number | null;
   deals: DealGroup[];
 }
 
@@ -50,10 +52,17 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const [events, setEvents] = useState<GalleryEvent[]>(initialEvents);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  // Optimistic overlay on top of the property's stored cover_photo_id —
+  // keyed by property key rather than folded into `events`, since the
+  // cover choice lives on the property row, not any individual event.
+  const [coverOverrides, setCoverOverrides] = useState<Map<string, number | null>>(new Map());
   const scrollTargetDealId = useRef<number | null>(null);
 
   const propertyGroups = useMemo(() => {
-    const propMap = new Map<string, { propertyId: number | null; propertyLabel: string; dealMap: Map<string, DealGroup> }>();
+    const propMap = new Map<
+      string,
+      { propertyId: number | null; propertyLabel: string; coverPhotoId: number | null; dealMap: Map<string, DealGroup> }
+    >();
     for (const event of events) {
       if (event.photos.length === 0) continue;
       const pKey = propertyKey(event.propertyId);
@@ -63,6 +72,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           propertyLabel: event.propertyAddress
             ? formatPropertyLabel({ address: event.propertyAddress, contactLastName: event.propertyContactLastName })
             : "No property",
+          coverPhotoId: event.propertyCoverPhotoId,
           dealMap: new Map(),
         });
       }
@@ -79,9 +89,15 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       propGroup.dealMap.get(dKey)!.events.push(event);
     }
     return Array.from(propMap.entries())
-      .map(([key, p]) => ({ key, propertyId: p.propertyId, propertyLabel: p.propertyLabel, deals: Array.from(p.dealMap.values()) }))
+      .map(([key, p]) => ({
+        key,
+        propertyId: p.propertyId,
+        propertyLabel: p.propertyLabel,
+        coverPhotoId: coverOverrides.has(key) ? coverOverrides.get(key)! : p.coverPhotoId,
+        deals: Array.from(p.dealMap.values()),
+      }))
       .sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel));
-  }, [events]);
+  }, [events, coverOverrides]);
 
   const totalPhotoCount = useMemo(
     () => propertyGroups.reduce((n, p) => n + flattenPropertyPhotos(p).length, 0),
@@ -161,6 +177,25 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     }
   }
 
+  async function handleSetCover(property: PropertyGroup, photoId: number | null) {
+    if (property.propertyId == null) return; // no property row to attach a cover to
+    const propertyId = property.propertyId;
+    const previous = coverOverrides.get(property.key) ?? null;
+    setCoverOverrides((m) => new Map(m).set(property.key, photoId));
+    try {
+      const res = await fetch(`/api/properties/${propertyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cover_photo_id: photoId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to set cover photo");
+    } catch (err) {
+      setCoverOverrides((m) => new Map(m).set(property.key, previous));
+      alert(err instanceof Error ? err.message : "Failed to set cover photo");
+    }
+  }
+
   return (
     <div className={styles.gallery}>
       <div className={styles.topbar}>
@@ -205,7 +240,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           <div className={styles.grid}>
             {propertyGroups.map((property) => {
               const photos = flattenPropertyPhotos(property);
-              const cover = photos[0];
+              const cover = photos.find((p) => p.id === property.coverPhotoId) ?? photos[0];
               const coverThumb = dealThumbUrl(cover);
               const dealCount = property.deals.filter((d) => d.dealId != null).length;
               return (
@@ -284,6 +319,20 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                         )}
                                       </span>
                                     </button>
+                                    {activeProperty.propertyId != null && (
+                                      <button
+                                        type="button"
+                                        className={`${styles["thumb-cover"]} ${photo.id === activeProperty.coverPhotoId ? styles["is-cover"] : ""}`}
+                                        aria-label={photo.id === activeProperty.coverPhotoId ? "Unset as cover photo" : "Set as cover photo"}
+                                        title={photo.id === activeProperty.coverPhotoId ? "Cover photo — click to unset" : "Set as cover photo"}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSetCover(activeProperty, photo.id === activeProperty.coverPhotoId ? null : photo.id);
+                                        }}
+                                      >
+                                        {photo.id === activeProperty.coverPhotoId ? "★" : "☆"}
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       className={styles["thumb-delete"]}
@@ -355,6 +404,17 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                 >
                   Next ›
                 </button>
+                {activeProperty.propertyId != null && (
+                  <button
+                    type="button"
+                    className={`${styles["lightbox-cover"]} ${activePhoto.id === activeProperty.coverPhotoId ? styles["is-cover"] : ""}`}
+                    onClick={() =>
+                      handleSetCover(activeProperty, activePhoto.id === activeProperty.coverPhotoId ? null : activePhoto.id)
+                    }
+                  >
+                    {activePhoto.id === activeProperty.coverPhotoId ? "★ Cover photo" : "☆ Set as cover"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={styles["lightbox-delete"]}

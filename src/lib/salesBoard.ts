@@ -54,6 +54,7 @@ export interface Property {
   longitude: number | null;
   geocoded_at: string | null;
   primary_contact_id: number | null;
+  cover_photo_id: number | null;
   created_at: string;
   // Present when joined — a property's primary contact, the single point of
   // contact every deal at this property shares.

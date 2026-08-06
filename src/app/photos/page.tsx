@@ -15,7 +15,7 @@ type RawEvent = {
   deal_id: number | null;
   deal_photos: DealPhoto[] | null;
   deal: { id: number; deal_name: string; company: string | null; stage: string; lost_at: string | null } | null;
-  properties: { id: number; address: string; contacts: { last_name: string | null } | null } | null;
+  properties: { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null } | null;
 };
 
 export default async function PhotosPage() {
@@ -27,7 +27,7 @@ export default async function PhotosPage() {
   const { data, error } = await supabase
     .from("events")
     .select(
-      'id, name, start_time, end_time, event_type, property_id, deal_id, deal_photos(*), deal:"Sales Board"(id, deal_name, company, stage, lost_at), properties(id, address, contacts(last_name))'
+      'id, name, start_time, end_time, event_type, property_id, deal_id, deal_photos(*), deal:"Sales Board"(id, deal_name, company, stage, lost_at), properties(id, address, cover_photo_id, contacts(last_name))'
     )
     .order("start_time", { ascending: true });
 
@@ -53,6 +53,7 @@ export default async function PhotosPage() {
       propertyId: e.property_id,
       propertyAddress: e.properties?.address ?? null,
       propertyContactLastName: e.properties?.contacts?.last_name ?? null,
+      propertyCoverPhotoId: e.properties?.cover_photo_id ?? null,
     }));
 
   return <PhotoGalleryClient events={events} />;
