@@ -6,7 +6,6 @@ import Link from "next/link";
 interface ProcessedAddress {
   address: string;
   matched: boolean;
-  dealsUpdated: number;
 }
 
 const BATCH_LIMIT = 5;
@@ -25,7 +24,7 @@ export default function GeocodeBackfillClient({ initialRemaining }: { initialRem
 
     try {
       while (!stopRef.current) {
-        const res = await fetch(`/api/sales-board/geocode-backfill?limit=${BATCH_LIMIT}`, { method: "POST" });
+        const res = await fetch(`/api/properties/geocode-backfill?limit=${BATCH_LIMIT}`, { method: "POST" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Backfill request failed");
 
@@ -46,8 +45,8 @@ export default function GeocodeBackfillClient({ initialRemaining }: { initialRem
       <header>
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Geocode backfill</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          One-time utility: geocodes every jobsite address that hasn&apos;t been geocoded yet, so existing
-          deals get GPS coordinates for photo/calendar matching.{" "}
+          One-time utility: geocodes every property that doesn&apos;t have coordinates yet, so existing
+          properties get GPS coordinates for photo/calendar matching.{" "}
           <Link href="/sales-board" className="underline">
             ← Sales Board
           </Link>
@@ -103,7 +102,7 @@ export default function GeocodeBackfillClient({ initialRemaining }: { initialRem
               <div key={i} className="flex items-center justify-between gap-3 font-mono text-xs">
                 <span className="truncate text-zinc-600 dark:text-zinc-400">{item.address}</span>
                 <span className={item.matched ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}>
-                  {item.matched ? `✓ ${item.dealsUpdated} deal${item.dealsUpdated === 1 ? "" : "s"}` : "not found"}
+                  {item.matched ? "✓ geocoded" : "not found"}
                 </span>
               </div>
             ))}

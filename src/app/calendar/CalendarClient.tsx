@@ -499,7 +499,7 @@ export default function CalendarClient({
             id: newDeal.id,
             name: newDeal.deal_name,
             company: newDeal.company ?? null,
-            jobsiteAddress: newDeal.jobsite_address ?? null,
+            jobsiteAddress: property?.address ?? null,
           },
         ],
       });

@@ -4,13 +4,21 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./sales-board.module.css";
-import { STAGES, type Deal, type DealInput, type Stage } from "@/lib/salesBoard";
+import { STAGES, formatPropertyLabel, type Deal, type DealInput, type Stage } from "@/lib/salesBoard";
 import DealCard, { type UiDeal } from "./DealCard";
 import DealModal from "./DealModal";
 import LostModal from "./LostModal";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 
 const PHOTO_UPLOAD_TIMEOUT_MS = 60000;
+const MATCH_FETCH_TIMEOUT_MS = 8000;
+
+interface AddressMatch {
+  id: number;
+  address: string;
+  contactLastName: string | null;
+  distanceMeters: number;
+}
 
 const STAGE_COLORS: Record<Stage, string> = {
   Lead: "var(--c-lead)",
@@ -87,6 +95,8 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState("");
+  const [addAddressMatches, setAddAddressMatches] = useState<AddressMatch[]>([]);
+  const [addMatchingAddress, setAddMatchingAddress] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -356,6 +366,37 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
     setAddFormOpen(false);
     setAddForm(EMPTY_ADD_FORM);
     setAddError("");
+    setAddAddressMatches([]);
+  }
+
+  // Same rationale as DealModal's checkAddressMatch: catches a property
+  // already on file under slightly different wording before this deal
+  // spins up a near-duplicate one.
+  async function checkAddAddressMatch(address: string) {
+    const trimmed = address.trim();
+    if (!trimmed) {
+      setAddAddressMatches([]);
+      return;
+    }
+    setAddMatchingAddress(true);
+    try {
+      const res = await fetchWithTimeout(
+        "/api/properties/match-address",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: trimmed }) },
+        MATCH_FETCH_TIMEOUT_MS
+      );
+      const data = await res.json();
+      setAddAddressMatches(res.ok ? data.candidates ?? [] : []);
+    } catch {
+      setAddAddressMatches([]);
+    } finally {
+      setAddMatchingAddress(false);
+    }
+  }
+
+  function applyAddMatchedAddress(match: AddressMatch) {
+    setAddForm((f) => ({ ...f, jobsite_address: match.address }));
+    setAddAddressMatches([]);
   }
 
   async function handleCreateDeal(e: React.FormEvent) {
@@ -618,7 +659,27 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
               autoComplete="off"
               value={addForm.jobsite_address}
               onChange={(e) => setAddForm((f) => ({ ...f, jobsite_address: e.target.value }))}
+              onBlur={(e) => checkAddAddressMatch(e.target.value)}
             />
+            {addMatchingAddress && <div className={styles["geocode-status"]}>Checking for a matching property…</div>}
+            {!addMatchingAddress && addAddressMatches.length > 0 && (
+              <div className={styles["bulk-match-bar"]}>
+                <span>Matches an existing property on file:</span>
+                <div className={styles["bulk-match-actions"]}>
+                  {addAddressMatches.map((match) => (
+                    <button
+                      key={match.id}
+                      type="button"
+                      className={styles["bulk-match-btn"]}
+                      onClick={() => applyAddMatchedAddress(match)}
+                    >
+                      {formatPropertyLabel(match)} ·{" "}
+                      {match.distanceMeters < 1000 ? `${match.distanceMeters}m` : `${(match.distanceMeters / 1000).toFixed(1)}km`} away
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div className={`${styles.field} ${styles["is-full"]}`}>
             <label htmlFor="f-next-action">Next action</label>

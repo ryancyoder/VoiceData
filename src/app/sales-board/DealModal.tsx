@@ -3,10 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./sales-board.module.css";
-import { dealDocumentUrl, dealThumbUrl, type Deal, type DealInput } from "@/lib/salesBoard";
+import { dealDocumentUrl, dealThumbUrl, formatPropertyLabel, type Deal, type DealInput } from "@/lib/salesBoard";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 
 const PARSE_ASPIRE_TIMEOUT_MS = 25000;
+const MATCH_FETCH_TIMEOUT_MS = 8000;
+
+interface AddressMatch {
+  id: number;
+  address: string;
+  contactLastName: string | null;
+  distanceMeters: number;
+}
 
 interface DealModalProps {
   deal: Deal;
@@ -29,13 +37,14 @@ function formatDateTime(isoStr: string) {
 }
 
 function GeocodeStatus({ deal }: { deal: Deal }) {
-  if (!deal.jobsite_address) return null;
+  const property = deal.property;
+  if (!property) return null;
 
-  if (deal.latitude != null && deal.longitude != null) {
-    const mapUrl = `https://www.google.com/maps?q=${deal.latitude},${deal.longitude}`;
+  if (property.latitude != null && property.longitude != null) {
+    const mapUrl = `https://www.google.com/maps?q=${property.latitude},${property.longitude}`;
     return (
       <div className={styles["geocode-status"]}>
-        📍 Geocoded ({deal.latitude.toFixed(4)}, {deal.longitude.toFixed(4)}){" "}
+        📍 Geocoded ({property.latitude.toFixed(4)}, {property.longitude.toFixed(4)}){" "}
         <a href={mapUrl} target="_blank" rel="noreferrer" className={styles["geocode-link"]}>
           View on map ↗
         </a>
@@ -43,7 +52,7 @@ function GeocodeStatus({ deal }: { deal: Deal }) {
     );
   }
 
-  if (deal.geocoded_at) {
+  if (property.geocoded_at) {
     return (
       <div className={`${styles["geocode-status"]} ${styles["is-warn"]}`}>
         ⚠ Couldn&apos;t find this address — check it&apos;s spelled correctly, then save again
@@ -106,7 +115,7 @@ export default function DealModal({
     proposal_number: deal.proposal_number || "",
     proposal_date: deal.proposal_date || "",
     appointment_date: deal.appointment_date || "",
-    jobsite_address: deal.jobsite_address || "",
+    jobsite_address: deal.property?.address || "",
     aspire_link: deal.aspire_link || "",
     next_action: deal.next_action || "",
     proposal_description: deal.proposal_description || "",
@@ -114,6 +123,8 @@ export default function DealModal({
   const [saving, setSaving] = useState(false);
   const [lostBusy, setLostBusy] = useState(false);
   const [error, setError] = useState("");
+  const [addressMatches, setAddressMatches] = useState<AddressMatch[]>([]);
+  const [matchingAddress, setMatchingAddress] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -125,6 +136,39 @@ export default function DealModal({
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  // The typed address is free text and may not match how this property is
+  // already stored (abbreviations, punctuation, a missing zip) — geocoding
+  // it and checking nearby properties on file catches a match an exact
+  // string comparison would miss, so this deal reuses that property
+  // instead of quietly spinning up a near-duplicate.
+  async function checkAddressMatch(address: string) {
+    const trimmed = address.trim();
+    if (!trimmed) {
+      setAddressMatches([]);
+      return;
+    }
+    setMatchingAddress(true);
+    try {
+      const res = await fetchWithTimeout(
+        "/api/properties/match-address",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: trimmed }) },
+        MATCH_FETCH_TIMEOUT_MS
+      );
+      const data = await res.json();
+      setAddressMatches(res.ok ? data.candidates ?? [] : []);
+    } catch {
+      /* match lookup failed or timed out — user can still save as a new property */
+      setAddressMatches([]);
+    } finally {
+      setMatchingAddress(false);
+    }
+  }
+
+  function applyMatchedAddress(match: AddressMatch) {
+    set("jobsite_address", match.address);
+    setAddressMatches([]);
   }
 
   async function handleParseAspire() {
@@ -366,7 +410,32 @@ export default function DealModal({
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-jobsite">Jobsite address</label>
-            <input id="dm-jobsite" autoComplete="off" value={form.jobsite_address} onChange={(e) => set("jobsite_address", e.target.value)} />
+            <input
+              id="dm-jobsite"
+              autoComplete="off"
+              value={form.jobsite_address}
+              onChange={(e) => set("jobsite_address", e.target.value)}
+              onBlur={(e) => checkAddressMatch(e.target.value)}
+            />
+            {matchingAddress && <div className={styles["geocode-status"]}>Checking for a matching property…</div>}
+            {!matchingAddress && addressMatches.length > 0 && (
+              <div className={styles["bulk-match-bar"]}>
+                <span>Matches an existing property on file:</span>
+                <div className={styles["bulk-match-actions"]}>
+                  {addressMatches.map((match) => (
+                    <button
+                      key={match.id}
+                      type="button"
+                      className={styles["bulk-match-btn"]}
+                      onClick={() => applyMatchedAddress(match)}
+                    >
+                      {formatPropertyLabel(match)} ·{" "}
+                      {match.distanceMeters < 1000 ? `${match.distanceMeters}m` : `${(match.distanceMeters / 1000).toFixed(1)}km`} away
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <GeocodeStatus deal={deal} />
           </div>
           <RelatedDeals deals={relatedDeals} onSelectDeal={onSelectDeal} />

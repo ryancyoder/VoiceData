@@ -28,7 +28,6 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.proposal_description !== undefined) updates.proposal_description = body.proposal_description;
   if (body.next_action !== undefined) updates.next_action = body.next_action;
   if (body.appointment_date !== undefined) updates.appointment_date = body.appointment_date;
-  if (body.jobsite_address !== undefined) updates.jobsite_address = body.jobsite_address;
   if (body.aspire_link !== undefined) updates.aspire_link = body.aspire_link?.trim() || null;
   if (body.value !== undefined) updates.value = body.value;
   if (body.stage !== undefined) updates.stage = body.stage;
@@ -51,11 +50,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     } catch {
       // Property lookup/geocoding is best-effort — never block saving the deal.
     }
-    updates.jobsite_address = property?.address ?? jobsiteAddress;
     updates.property_id = property?.id ?? null;
-    updates.latitude = property?.latitude ?? null;
-    updates.longitude = property?.longitude ?? null;
-    updates.geocoded_at = property?.geocoded_at ?? null;
     resolvedPropertyId = property?.id ?? null;
   }
 

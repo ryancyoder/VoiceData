@@ -6,7 +6,7 @@ import CalendarClient, { type CalendarEvent, type DealOption, type PropertyOptio
 export const dynamic = "force-dynamic";
 
 type RawPhoto = DealPhoto & {
-  deal: Pick<Deal, "deal_name" | "company" | "stage" | "jobsite_address"> | null;
+  deal: (Pick<Deal, "deal_name" | "company" | "stage"> & { properties: { address: string } | null }) | null;
 };
 
 type RawEvent = {
@@ -27,7 +27,7 @@ export default async function CalendarPage() {
   const [eventsRes, dealsRes, propertiesRes, ungroupedRes] = await Promise.all([
     supabase
       .from("events")
-      .select('*, deal_photos(*, deal:"Sales Board"(deal_name, company, stage, jobsite_address))')
+      .select('*, deal_photos(*, deal:"Sales Board"(deal_name, company, stage, properties(address)))')
       .order("start_time", { ascending: true }),
     supabase
       .from("Sales Board")
@@ -122,7 +122,7 @@ export default async function CalendarPage() {
           id,
           name: fromPhoto?.deal_name ?? fromOption?.deal_name ?? `Deal #${id}`,
           company: fromPhoto?.company ?? fromOption?.company ?? null,
-          jobsiteAddress: fromPhoto?.jobsite_address ?? null,
+          jobsiteAddress: fromPhoto?.properties?.address ?? null,
         };
       }),
     };

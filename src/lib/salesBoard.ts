@@ -66,19 +66,17 @@ export interface Deal {
   updated_at: string;
   deal_name: string;
   company: string | null;
-  // A deal's contact is reached only by way of its property — a property
-  // has one primary contact, and a contact may be primary for several
-  // properties, so it's never stored directly on the deal.
+  // A deal's contact, address, and geocoding are all reached only by way
+  // of its property — never stored directly on the deal. A property has
+  // one primary contact (shared by every deal there), one address, and
+  // one set of coordinates; duplicating any of that onto the deal is how
+  // a deal's address used to silently drift from its property's.
   property: Property | null;
   proposal_number: string | null;
   proposal_date: string | null;
   proposal_description: string | null;
   next_action: string | null;
   appointment_date: string | null;
-  jobsite_address: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  geocoded_at: string | null;
   property_id: number | null;
   value: number | null;
   stage: Stage;

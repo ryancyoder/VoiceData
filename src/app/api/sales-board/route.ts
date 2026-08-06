@@ -45,12 +45,8 @@ export async function POST(req: NextRequest) {
       proposal_description: body.proposal_description ?? null,
       next_action: body.next_action ?? null,
       appointment_date: body.appointment_date ?? null,
-      jobsite_address: property?.address ?? jobsiteAddress,
       aspire_link: body.aspire_link?.trim() || null,
       property_id: property?.id ?? null,
-      latitude: property?.latitude ?? null,
-      longitude: property?.longitude ?? null,
-      geocoded_at: property?.geocoded_at ?? null,
       value: body.value ?? null,
       stage: body.stage ?? "Lead",
     })
