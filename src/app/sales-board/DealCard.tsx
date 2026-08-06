@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import styles from "./sales-board.module.css";
-import type { Deal } from "@/lib/salesBoard";
+import { flattenDealPhotos, type Deal } from "@/lib/salesBoard";
 
 export type UiDeal = Deal & { _pending?: boolean; _error?: string };
 
@@ -120,6 +120,11 @@ export default function DealCard({
         </span>
         <div className={styles["card-name"]}>{deal.deal_name}</div>
         {!!deal.value && <div className={styles["card-value"]}>{currency.format(deal.value)}</div>}
+        {deal.stage === "Propose" && flattenDealPhotos(deal).length > 0 && (
+          <div className={styles["card-photo-badge"]} title="Has photos" aria-hidden="true">
+            📷
+          </div>
+        )}
       </div>
 
       {showNextAction && deal.next_action && (
