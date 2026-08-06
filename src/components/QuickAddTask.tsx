@@ -5,30 +5,56 @@ import { useRouter } from "next/navigation";
 
 type Status = "idle" | "listening" | "processing";
 
-// Heuristic voice-activity thresholds — a normalized RMS level (0..1) read
-// off the mic's raw waveform, no calibration against ambient noise. Tuned
-// for a quiet-ish indoor environment; a persistently noisy jobsite may need
-// a higher SILENCE_RMS_THRESHOLD to actually detect a pause.
-const SILENCE_RMS_THRESHOLD = 0.02;
-const SILENCE_DURATION_MS = 1500;
-const MIN_RECORDING_MS = 600;
-const MAX_RECORDING_MS = 30000;
+// The Web Speech API isn't in TypeScript's DOM lib — these are just the
+// bits actually used here, not the full spec.
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  0: { transcript: string };
+}
+interface SpeechRecognitionEventLike extends Event {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+  resultIndex: number;
+}
+interface SpeechRecognitionErrorEventLike extends Event {
+  error: string;
+}
+interface SpeechRecognitionLike extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((e: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+}
+
+// Safeguards a stuck recognizer that never fires onend — shouldn't happen
+// in continuous=false mode, which is supposed to end itself once Safari's
+// own dictation engine detects the pause, but this keeps the button from
+// getting permanently stuck if it does.
+const MAX_LISTEN_MS = 45000;
 
 export default function QuickAddTask() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [liveText, setLiveText] = useState("");
   const messageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastLoudAtRef = useRef(0);
-  const recordingStartedAtRef = useRef(0);
+  const maxListenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const finalTranscriptRef = useRef("");
 
   function showMessage(text: string, ms = 4500) {
     setMessage(text);
@@ -36,108 +62,9 @@ export default function QuickAddTask() {
     messageTimerRef.current = setTimeout(() => setMessage(null), ms);
   }
 
-  // Releases the mic and stops the silence-monitoring loop — called once
-  // recording has actually stopped (or on unmount), never while still
-  // capturing audio.
-  function cleanupAudio() {
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
-    if (maxTimerRef.current) clearTimeout(maxTimerRef.current);
-    maxTimerRef.current = null;
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    audioContextRef.current?.close().catch(() => {});
-    audioContextRef.current = null;
-    analyserRef.current = null;
-  }
-
-  function monitorSilence() {
-    const analyser = analyserRef.current;
-    if (!analyser) return;
-    const data = new Uint8Array(analyser.fftSize);
-    analyser.getByteTimeDomainData(data);
-    let sumSquares = 0;
-    for (let i = 0; i < data.length; i++) {
-      const v = (data[i] - 128) / 128;
-      sumSquares += v * v;
-    }
-    const rms = Math.sqrt(sumSquares / data.length);
-    if (rms > SILENCE_RMS_THRESHOLD) lastLoudAtRef.current = Date.now();
-
-    const elapsedSinceStart = Date.now() - recordingStartedAtRef.current;
-    const silentFor = Date.now() - lastLoudAtRef.current;
-    if (elapsedSinceStart > MIN_RECORDING_MS && silentFor > SILENCE_DURATION_MS) {
-      stopRecording();
-      return;
-    }
-    rafRef.current = requestAnimationFrame(monitorSilence);
-  }
-
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-
-      const AudioContextCtor =
-        window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const audioContext = new AudioContextCtor();
-      audioContextRef.current = audioContext;
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 2048;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      recorder.onstop = handleRecordingStopped;
-      recorderRef.current = recorder;
-      recorder.start();
-
-      recordingStartedAtRef.current = Date.now();
-      lastLoudAtRef.current = Date.now();
-      setStatus("listening");
-      rafRef.current = requestAnimationFrame(monitorSilence);
-      // A hard cap so a mic that never reads as silent (background noise,
-      // a stuck browser tab) doesn't record indefinitely.
-      maxTimerRef.current = setTimeout(() => stopRecording(), MAX_RECORDING_MS);
-    } catch {
-      showMessage("Couldn't access the microphone — check your browser permissions.");
-    }
-  }
-
-  // Only stops the recorder — actual teardown happens in
-  // handleRecordingStopped once it has genuinely finished.
-  function stopRecording() {
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      recorderRef.current.stop();
-    }
-  }
-
-  async function handleRecordingStopped() {
-    cleanupAudio();
+  async function logTask(text: string) {
     setStatus("processing");
     try {
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-      if (blob.size === 0) {
-        setStatus("idle");
-        return;
-      }
-      const formData = new FormData();
-      formData.append("audio", blob, "task.webm");
-      const transcribeRes = await fetch("/api/transcribe", { method: "POST", body: formData });
-      const transcribeData = await transcribeRes.json();
-      if (!transcribeRes.ok) throw new Error(transcribeData.error || "Transcription failed");
-      const text = (transcribeData.text || "").trim();
-      if (!text) {
-        showMessage("Didn't catch that — try again.");
-        setStatus("idle");
-        return;
-      }
-
       // Logged immediately with the raw dictated text — context/dates get
       // filled in afterward (below) without holding up this confirmation.
       const createRes = await fetch("/api/tasks", {
@@ -164,20 +91,81 @@ export default function QuickAddTask() {
     }
   }
 
+  function startListening() {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) {
+      showMessage("Voice dictation isn't supported in this browser — try Safari on iOS or Mac.");
+      return;
+    }
+
+    const recognition = new Ctor();
+    recognition.lang = "en-US";
+    // False rather than true — this is what makes Safari's dictation
+    // engine stop on its own once it detects the pause, the same signal
+    // "click to finish" triggers manually via stop().
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    finalTranscriptRef.current = "";
+    setLiveText("");
+
+    recognition.onstart = () => setStatus("listening");
+
+    recognition.onresult = (e) => {
+      let finalChunk = "";
+      let interimChunk = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const result = e.results[i];
+        if (result.isFinal) finalChunk += result[0].transcript;
+        else interimChunk += result[0].transcript;
+      }
+      if (finalChunk) finalTranscriptRef.current += finalChunk;
+      setLiveText((finalTranscriptRef.current + " " + interimChunk).trim());
+    };
+
+    recognition.onerror = (e) => {
+      // Nothing said before the mic timed out, or a stop()/abort() we
+      // triggered ourselves — neither is a real failure worth surfacing.
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      const messages: Record<string, string> = {
+        "not-allowed": "Microphone access was denied — check Settings > Safari > Microphone.",
+        network: "Dictation needs an internet connection.",
+      };
+      showMessage(messages[e.error] || "Voice dictation failed — try again.");
+    };
+
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      if (maxListenTimerRef.current) clearTimeout(maxListenTimerRef.current);
+      maxListenTimerRef.current = null;
+      const text = finalTranscriptRef.current.trim();
+      setLiveText("");
+      if (!text) {
+        setStatus("idle");
+        return;
+      }
+      logTask(text);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    maxListenTimerRef.current = setTimeout(() => stopListening(), MAX_LISTEN_MS);
+  }
+
+  function stopListening() {
+    recognitionRef.current?.stop();
+  }
+
   function handleClick() {
     if (status === "processing") return;
-    if (status === "idle") startRecording();
-    else stopRecording();
+    if (status === "idle") startListening();
+    else stopListening();
   }
 
   useEffect(() => {
     return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-      if (maxTimerRef.current) clearTimeout(maxTimerRef.current);
       if (messageTimerRef.current) clearTimeout(messageTimerRef.current);
-      if (recorderRef.current) recorderRef.current.onstop = null;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      audioContextRef.current?.close().catch(() => {});
+      if (maxListenTimerRef.current) clearTimeout(maxListenTimerRef.current);
+      recognitionRef.current?.abort();
     };
   }, []);
 
@@ -205,9 +193,9 @@ export default function QuickAddTask() {
         )}
       </button>
 
-      {message && (
+      {(message || liveText) && (
         <div className="fixed bottom-[7.75rem] right-5 z-40 max-w-[min(320px,80vw)] rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
-          {message}
+          {message || liveText}
         </div>
       )}
     </>
