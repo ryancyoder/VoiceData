@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./sales-board.module.css";
 import { dealDocumentUrl, dealThumbUrl, type Deal, type DealInput } from "@/lib/salesBoard";
+import { fetchWithTimeout } from "@/lib/withTimeout";
+
+const PARSE_ASPIRE_TIMEOUT_MS = 25000;
 
 interface DealModalProps {
   deal: Deal;
@@ -90,6 +93,8 @@ export default function DealModal({
   onDeleteProposalPdf,
 }: DealModalProps) {
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [parsingAspire, setParsingAspire] = useState(false);
+  const [aspireParseError, setAspireParseError] = useState("");
   const [form, setForm] = useState({
     deal_name: deal.deal_name || "",
     company: deal.company || "",
@@ -120,6 +125,56 @@ export default function DealModal({
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleParseAspire() {
+    const link = form.aspire_link.trim();
+    if (!link) return;
+    setParsingAspire(true);
+    setAspireParseError("");
+    try {
+      const res = await fetchWithTimeout(
+        "/api/sales-board/parse-aspire-proposal",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ link }),
+        },
+        PARSE_ASPIRE_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to parse proposal");
+
+      // Only overwrite fields the parse actually found — this deal may
+      // already have good data in fields the parse came up empty on, and a
+      // partial miss shouldn't blank those out.
+      setForm((f) => ({
+        ...f,
+        proposal_description: data.title ?? f.proposal_description,
+        proposal_number: data.proposalNumber ?? f.proposal_number,
+        proposal_date: data.proposalDate ?? f.proposal_date,
+        value: data.value != null ? String(data.value) : f.value,
+      }));
+
+      const missing: string[] = [];
+      if (!data.title) missing.push("title");
+      if (!data.proposalNumber) missing.push("proposal #");
+      if (!data.proposalDate) missing.push("date");
+      if (data.value == null) missing.push("total");
+      if (missing.length > 0) {
+        setAspireParseError(`Couldn't find ${missing.join(", ")} in that PDF — check those fields`);
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Timed out parsing that proposal — try again"
+          : err instanceof Error
+            ? err.message
+            : "Failed to parse proposal";
+      setAspireParseError(message);
+    } finally {
+      setParsingAspire(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -251,14 +306,25 @@ export default function DealModal({
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-aspire-link">Aspire opportunity link</label>
-            <input
-              id="dm-aspire-link"
-              type="url"
-              autoComplete="off"
-              placeholder="https://cloud.youraspire.com/..."
-              value={form.aspire_link}
-              onChange={(e) => set("aspire_link", e.target.value)}
-            />
+            <div className={styles["aspire-link-row"]}>
+              <input
+                id="dm-aspire-link"
+                type="url"
+                autoComplete="off"
+                placeholder="https://cloud.youraspire.com/..."
+                value={form.aspire_link}
+                onChange={(e) => set("aspire_link", e.target.value)}
+              />
+              <button
+                type="button"
+                className={styles["aspire-parse-btn"]}
+                disabled={!form.aspire_link.trim() || parsingAspire}
+                onClick={handleParseAspire}
+              >
+                {parsingAspire ? "Parsing…" : "Parse from Aspire"}
+              </button>
+            </div>
+            {aspireParseError && <div className={styles["card-edit-error"]}>{aspireParseError}</div>}
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Proposal PDF</label>
