@@ -622,6 +622,14 @@ export default function CalendarClient({
                         beginDrag(event, "resize-start", e.clientY);
                       }}
                     />
+                    {event.photos.length > 0 && (
+                      <div
+                        className={styles["event-photo-badge"]}
+                        title={`${event.photos.length} photo${event.photos.length === 1 ? "" : "s"}`}
+                      >
+                        📷 {event.photos.length}
+                      </div>
+                    )}
                     {event.eventType && <div className={styles["event-type-badge"]}>{event.eventType}</div>}
                     <div className={styles["event-title"]}>{eventLabel(event)}</div>
                     <div className={styles["event-meta"]}>
