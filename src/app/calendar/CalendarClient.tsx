@@ -413,7 +413,12 @@ export default function CalendarClient({
     try {
       const property =
         selectedEvent.propertyId != null ? propertyOptions.find((p) => p.id === selectedEvent.propertyId) : undefined;
-      const dealName = selectedEvent.name?.trim() || property?.address || "New Deal";
+      // Named by last name only, per how deals are meant to read at a
+      // glance — prefer the property's actual contact; when there's no
+      // property/contact yet, fall back to the last word of the event's own
+      // name as a best-effort last name.
+      const lastNameFromEventName = selectedEvent.name?.trim().split(/\s+/).pop();
+      const dealName = property?.contactLastName || lastNameFromEventName || property?.address || "New Deal";
 
       const dealRes = await fetch("/api/sales-board", {
         method: "POST",
