@@ -223,6 +223,26 @@ export default function CalendarClient({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  // After creating an event elsewhere (e.g. the Outlook importer), the
+  // freshly-created row isn't in `events` yet — router.refresh() re-fetches
+  // it from the server, and once it shows up here (a new `events` prop),
+  // jump straight to it. Adjusting state during render like this — rather
+  // than in an effect — is the pattern React itself recommends for
+  // reacting to a prop change: it bails out and re-renders immediately
+  // with the update, guarded by processedPendingEventId so it only fires
+  // once per id.
+  const [pendingOpenEventId, setPendingOpenEventId] = useState<number | null>(null);
+  const [processedPendingEventId, setProcessedPendingEventId] = useState<number | null>(null);
+  if (pendingOpenEventId != null && processedPendingEventId !== pendingOpenEventId) {
+    const match = events.find((e) => e.id === pendingOpenEventId);
+    if (match) {
+      setProcessedPendingEventId(pendingOpenEventId);
+      setWeekStart(startOfWeek(new Date(match.start)));
+      setSelectedEvent(match);
+      setPendingOpenEventId(null);
+    }
+  }
+
   const [newEventOpen, setNewEventOpen] = useState(false);
   const [newEventForm, setNewEventForm] = useState<EventFormState>(emptyEventForm);
   const [creatingEvent, setCreatingEvent] = useState(false);
@@ -715,7 +735,12 @@ export default function CalendarClient({
         >
           + New Event
         </button>
-        <ImportOutlookEvent onImported={() => router.refresh()} />
+        <ImportOutlookEvent
+          onImported={(eventId) => {
+            setPendingOpenEventId(eventId);
+            router.refresh();
+          }}
+        />
         {ungeotaggedCount > 0 && (
           <span className={styles["ungeotagged-note"]}>
             {ungeotaggedCount} photo{ungeotaggedCount === 1 ? "" : "s"} without location data can&apos;t be placed here.

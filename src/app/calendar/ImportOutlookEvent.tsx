@@ -48,7 +48,7 @@ function toDatetimeLocal(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function ImportOutlookEvent({ onImported }: { onImported: () => void }) {
+export default function ImportOutlookEvent({ onImported }: { onImported: (eventId: number) => void }) {
   const [open, setOpen] = useState(false);
   const [rawText, setRawText] = useState("");
   const [form, setForm] = useState<ImportForm>(EMPTY_FORM);
@@ -171,7 +171,7 @@ export default function ImportOutlookEvent({ onImported }: { onImported: () => v
       if (!eventRes.ok) throw new Error(eventData.error || "Failed to create event");
 
       closeModal();
-      onImported();
+      onImported(eventData.event.id as number);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to import event");
     } finally {
