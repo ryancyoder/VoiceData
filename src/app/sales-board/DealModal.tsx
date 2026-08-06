@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./sales-board.module.css";
-import { dealDocumentUrl, dealThumbUrl, formatPropertyLabel, type Deal, type DealInput } from "@/lib/salesBoard";
+import { dealAttachmentUrl, dealDocumentUrl, dealThumbUrl, formatPropertyLabel, type Deal, type DealInput } from "@/lib/salesBoard";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 
 const PARSE_ASPIRE_TIMEOUT_MS = 25000;
@@ -28,6 +28,8 @@ interface DealModalProps {
   onDeletePhoto: (dealId: number, photoId: number) => Promise<void>;
   onUploadProposalPdf: (dealId: number, file: File) => Promise<void>;
   onDeleteProposalPdf: (dealId: number) => Promise<void>;
+  onUploadAttachment: (dealId: number, file: File) => Promise<void>;
+  onDeleteAttachment: (dealId: number, attachmentId: number) => Promise<void>;
 }
 
 function formatDateTime(isoStr: string) {
@@ -100,10 +102,20 @@ export default function DealModal({
   onDeletePhoto,
   onUploadProposalPdf,
   onDeleteProposalPdf,
+  onUploadAttachment,
+  onDeleteAttachment,
 }: DealModalProps) {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [parsingAspire, setParsingAspire] = useState(false);
   const [aspireParseError, setAspireParseError] = useState("");
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<number | null>(null);
+  const [attachmentPasteError, setAttachmentPasteError] = useState("");
+  const attachmentPasteTargetRef = useRef<HTMLTextAreaElement>(null);
+  // Whether ⌘V should be treated as an intentional "paste an attachment"
+  // attempt right now — a ref, not state, since it's only ever read inside
+  // event handlers and never drives a render.
+  const attachmentPasteArmedRef = useRef(false);
   const [form, setForm] = useState({
     deal_name: deal.deal_name || "",
     company: deal.company || "",
@@ -133,6 +145,108 @@ export default function DealModal({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+
+  const uploadAttachmentFile = useCallback(
+    async (file: File) => {
+      setUploadingAttachment(true);
+      setAttachmentPasteError("");
+      try {
+        await onUploadAttachment(deal.id, file);
+      } finally {
+        setUploadingAttachment(false);
+      }
+    },
+    [deal.id, onUploadAttachment]
+  );
+
+  function armAttachmentPasteTarget() {
+    attachmentPasteArmedRef.current = true;
+    attachmentPasteTargetRef.current?.focus();
+  }
+
+  async function handlePasteAttachmentClick() {
+    setAttachmentPasteError("");
+    if (!navigator.clipboard?.read) {
+      setAttachmentPasteError("Press ⌘V / Ctrl+V now to paste");
+      armAttachmentPasteTarget();
+      return;
+    }
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const files: File[] = [];
+      const typesSeen: string[] = [];
+      for (const clipboardItem of clipboardItems) {
+        typesSeen.push(...clipboardItem.types);
+        const usableType = clipboardItem.types.find((type) => type.startsWith("image/") || type === "application/pdf");
+        if (!usableType) continue;
+        const blob = await clipboardItem.getType(usableType);
+        const ext = usableType === "application/pdf" ? "pdf" : usableType.split("/")[1] || "png";
+        files.push(new File([blob], `pasted-${Date.now()}.${ext}`, { type: usableType }));
+      }
+      if (files.length === 0) {
+        // navigator.clipboard.read() only exposes a narrow, browser-defined
+        // allowlist of MIME types — an image or PDF the OS clipboard holds
+        // in a format outside that allowlist never shows up here at all.
+        // Arming the hidden paste target and prompting a real ⌘V is the
+        // reliable fallback: it triggers the browser's native paste event,
+        // which isn't bound by that allowlist.
+        setAttachmentPasteError(
+          typesSeen.length > 0
+            ? `Press ⌘V / Ctrl+V now to paste (clipboard.read() only saw: ${typesSeen.join(", ")})`
+            : "Press ⌘V / Ctrl+V now to paste"
+        );
+        armAttachmentPasteTarget();
+        return;
+      }
+      for (const file of files) await uploadAttachmentFile(file);
+    } catch {
+      setAttachmentPasteError("Press ⌘V / Ctrl+V now to paste");
+      armAttachmentPasteTarget();
+    }
+  }
+
+  // Listens for a real ⌘V anywhere in the modal, not just while the hidden
+  // paste target has focus — an image or PDF on the clipboard is
+  // unambiguously meant for the attachments list, so it's picked up
+  // without requiring the Paste button first. A paste that turns out to
+  // hold neither only surfaces an error when the user actually asked to
+  // paste an attachment (armed); otherwise it's silently left alone, since
+  // this modal has plenty of ordinary text fields a routine paste could
+  // just as easily be headed for.
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+      const files: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.kind !== "file") continue;
+        if (!item.type.startsWith("image/") && item.type !== "application/pdf") continue;
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+      if (files.length === 0) {
+        if (!attachmentPasteArmedRef.current) return;
+        const seen = Array.from(items).map((item) => `${item.kind}:${item.type || "(no type)"}`).join(", ");
+        setAttachmentPasteError(`No image or PDF found in what was pasted (found: ${seen})`);
+        return;
+      }
+      e.preventDefault();
+      attachmentPasteArmedRef.current = false;
+      setAttachmentPasteError("");
+      files.forEach((file) => uploadAttachmentFile(file));
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [uploadAttachmentFile]);
+
+  async function handleDeleteAttachmentClick(attachmentId: number) {
+    setDeletingAttachmentId(attachmentId);
+    try {
+      await onDeleteAttachment(deal.id, attachmentId);
+    } finally {
+      setDeletingAttachmentId(null);
+    }
+  }
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -407,6 +521,64 @@ export default function DealModal({
                 </>
               )}
             </div>
+          </div>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            <label>Attachments (POs, receipts)</label>
+            {deal.attachments.length > 0 && (
+              <div className={styles["attachments-list"]}>
+                {deal.attachments.map((attachment) => (
+                  <div key={attachment.id} className={styles["attachment-row"]}>
+                    <a
+                      href={dealAttachmentUrl(attachment.storage_path)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={styles["attachment-link"]}
+                    >
+                      <span className={styles["attachment-icon"]}>{attachment.kind === "pdf" ? "📄" : "🖼️"}</span>
+                      <span className={styles["attachment-name"]}>{attachment.file_name}</span>
+                      <span className={styles["attachment-date"]}>{formatDateTime(attachment.created_at)}</span>
+                    </a>
+                    <button
+                      type="button"
+                      className={styles["attachment-remove"]}
+                      aria-label="Delete attachment"
+                      disabled={deletingAttachmentId === attachment.id}
+                      onClick={() => handleDeleteAttachmentClick(attachment.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className={styles["attachment-actions"]}>
+              <label className={styles["attachment-add"]}>
+                + Add file
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files) Array.from(files).forEach((file) => uploadAttachmentFile(file));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button type="button" className={styles["attachment-paste-btn"]} onClick={handlePasteAttachmentClick}>
+                📋 Paste from clipboard
+              </button>
+              {uploadingAttachment && <span className={styles["proposal-pdf-busy"]}>Uploading…</span>}
+            </div>
+            {attachmentPasteError && <div className={styles["card-edit-error"]}>{attachmentPasteError}</div>}
+            <textarea
+              ref={attachmentPasteTargetRef}
+              className={styles["paste-target"]}
+              aria-hidden="true"
+              tabIndex={-1}
+              value=""
+              onChange={() => {}}
+            />
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-jobsite">Jobsite address</label>

@@ -764,3 +764,84 @@
 .proposal-pdf-add:hover { border-color: var(--text-faint); color: var(--text); }
 .proposal-pdf-add input { display: none; }
 .proposal-pdf-busy { font-size: 0.72rem; color: var(--text-muted); }
+
+.attachments-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 6px 5px 9px;
+}
+.attachment-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+.attachment-icon { flex-shrink: 0; font-size: 0.9rem; }
+.attachment-name {
+  font-size: 0.78rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-link:hover .attachment-name { text-decoration: underline; }
+.attachment-date { flex-shrink: 0; font-size: 0.68rem; color: var(--text-faint); margin-left: auto; }
+.attachment-remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.attachment-remove:hover { color: var(--danger); background: var(--danger-soft); }
+.attachment-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.attachment-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.attachment-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.attachment-add:hover { border-color: var(--text-faint); color: var(--text); }
+.attachment-add input { display: none; }
+.attachment-paste-btn {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.attachment-paste-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.paste-target {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  resize: none;
+}

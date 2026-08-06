@@ -1,12 +1,15 @@
-import type { Contact, Deal, DealPhoto, Property } from "@/lib/salesBoard";
+import type { Contact, Deal, DealAttachment, DealPhoto, Property } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 
 // Shared between every query that needs a deal's events+photos nested
 // (Sales Board list, single-deal fetch) — a photo is reached only by way
 // of its event, never directly off the deal. A deal's contact is likewise
 // reached only by way of its property, never a direct deal column.
+// Attachments (POs/receipts) are the one exception to "reached by way of
+// an event" — they hang directly off the deal, so deal_attachments joins
+// straight onto it rather than nesting under events.
 export const DEAL_EVENTS_SELECT =
-  "*, events(id, name, start_time, end_time, event_type, deal_photos(*)), properties(id, address, latitude, longitude, geocoded_at, primary_contact_id, created_at, contacts(id, first_name, last_name, email, phone, created_at))";
+  "*, events(id, name, start_time, end_time, event_type, deal_photos(*)), properties(id, address, latitude, longitude, geocoded_at, primary_contact_id, created_at, contacts(id, first_name, last_name, email, phone, created_at)), deal_attachments(*)";
 
 type RawEvent = {
   id: number;
@@ -19,11 +22,15 @@ type RawEvent = {
 
 type RawProperty = Omit<Property, "contact"> & { contacts: Contact | null };
 
-type RawDeal = Omit<Deal, "events" | "property"> & { events: RawEvent[] | null; properties: RawProperty | null };
+type RawDeal = Omit<Deal, "events" | "property" | "attachments"> & {
+  events: RawEvent[] | null;
+  properties: RawProperty | null;
+  deal_attachments: DealAttachment[] | null;
+};
 
 export function mapRawDealEvents(rawDeals: unknown[]): Deal[] {
   return (rawDeals as RawDeal[]).map((d) => {
-    const { properties, events, ...rest } = d;
+    const { properties, events, deal_attachments, ...rest } = d;
     return {
       ...rest,
       property: properties ? { ...properties, contact: properties.contacts ?? null } : null,
@@ -37,6 +44,9 @@ export function mapRawDealEvents(rawDeals: unknown[]): Deal[] {
           photos: e.deal_photos ?? [],
         }))
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()),
+      attachments: (deal_attachments ?? []).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
     };
   });
 }

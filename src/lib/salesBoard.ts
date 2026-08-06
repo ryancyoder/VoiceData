@@ -29,6 +29,18 @@ export interface DealPhoto {
   is_outlier: boolean;
 }
 
+// A PO or receipt attached directly to a deal — unlike DealPhoto, never
+// reached by way of an event, since these are business records rather
+// than something photographed at a jobsite.
+export interface DealAttachment {
+  id: number;
+  deal_id: number;
+  storage_path: string;
+  file_name: string;
+  kind: "image" | "pdf";
+  created_at: string;
+}
+
 export interface DealEvent {
   id: number;
   name: string | null;
@@ -90,6 +102,9 @@ export interface Deal {
   // There is no direct deal->photo relationship; every photo is reached by
   // way of its event.
   events: DealEvent[];
+  // POs, receipts, and other business documents — attached directly to
+  // the deal, not by way of an event.
+  attachments: DealAttachment[];
 }
 
 /**
@@ -132,6 +147,13 @@ export const DEAL_DOCUMENTS_BUCKET = "deal-documents";
 export function dealDocumentUrl(storagePath: string): string {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   return `${base}/storage/v1/object/public/${DEAL_DOCUMENTS_BUCKET}/${storagePath}`;
+}
+
+export const DEAL_ATTACHMENTS_BUCKET = "deal-attachments";
+
+export function dealAttachmentUrl(storagePath: string): string {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return `${base}/storage/v1/object/public/${DEAL_ATTACHMENTS_BUCKET}/${storagePath}`;
 }
 
 export interface DealInput {

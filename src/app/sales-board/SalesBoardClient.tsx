@@ -339,6 +339,46 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
     }
   }
 
+  async function handleUploadAttachment(dealId: number, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetchWithTimeout(
+        `/api/sales-board/${dealId}/attachments`,
+        { method: "POST", body: formData },
+        PHOTO_UPLOAD_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload attachment");
+      setDeals((ds) =>
+        ds.map((d) => (d.id === dealId ? { ...d, attachments: [data.attachment, ...d.attachments] } : d))
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Upload timed out — try again"
+          : err instanceof Error
+            ? err.message
+            : "Failed to upload attachment";
+      showToast(message);
+    }
+  }
+
+  async function handleDeleteAttachment(dealId: number, attachmentId: number) {
+    const previous = deals;
+    setDeals((ds) =>
+      ds.map((d) => (d.id === dealId ? { ...d, attachments: d.attachments.filter((a) => a.id !== attachmentId) } : d))
+    );
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/attachments/${attachmentId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete attachment");
+    } catch (err) {
+      setDeals(previous);
+      showToast(err instanceof Error ? err.message : "Failed to delete attachment");
+    }
+  }
+
   async function handleDeletePhoto(dealId: number, photoId: number) {
     const previous = deals;
     setDeals((ds) =>
@@ -831,6 +871,8 @@ export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[
           onDeletePhoto={handleDeletePhoto}
           onUploadProposalPdf={handleUploadProposalPdf}
           onDeleteProposalPdf={handleDeleteProposalPdf}
+          onUploadAttachment={handleUploadAttachment}
+          onDeleteAttachment={handleDeleteAttachment}
         />
       )}
 
