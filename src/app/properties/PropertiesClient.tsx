@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import styles from "./properties.module.css";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import { STAGES, type Stage } from "@/lib/salesBoard";
@@ -44,6 +45,7 @@ function comparePropertiesByLastName(a: PropertyRow, b: PropertyRow): number {
 }
 
 export default function PropertiesClient({ properties: initialProperties }: { properties: PropertyRow[] }) {
+  const searchParams = useSearchParams();
   // Sorted here rather than trusted from the server response — keeps the
   // table correctly ordered even if the initial fetch's own ordering
   // doesn't come back exactly right.
@@ -55,6 +57,7 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [highlightedPropertyId, setHighlightedPropertyId] = useState<number | null>(null);
 
   // All stages selected is the neutral/unfiltered state — every property
   // shows, including ones with no deal at all. Deselecting a stage narrows
@@ -74,6 +77,37 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
     if (selectedStages.size === STAGES.length) return properties;
     return properties.filter((p) => p.dealStages.some((s) => selectedStages.has(s)));
   }, [properties, selectedStages]);
+
+  // Reacts to the URL's ?property= param (the command palette navigates
+  // here this way) rather than only reading it once on mount, so it also
+  // fires for a second search while this page is already open. Clearing
+  // the stage filter guarantees the target row is actually in
+  // visibleProperties — a search result that silently failed to scroll
+  // anywhere because of a filter the user forgot was on would be worse
+  // than just resetting it. The state resets are plain render-time
+  // adjustments (tracked via lastSearchParams, compared by reference since
+  // useSearchParams() returns a new object on every navigation); only the
+  // actual scroll/timer side effects below need a real useEffect.
+  const [lastSearchParams, setLastSearchParams] = useState<typeof searchParams | null>(null);
+  if (searchParams !== lastSearchParams) {
+    setLastSearchParams(searchParams);
+    const propertyParam = searchParams.get("property");
+    const propertyId = propertyParam ? Number(propertyParam) : NaN;
+    if (Number.isFinite(propertyId)) {
+      setView("table");
+      setSelectedStages(new Set(STAGES));
+      setHighlightedPropertyId(propertyId);
+    }
+  }
+
+  useEffect(() => {
+    if (highlightedPropertyId == null) return;
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-property-row="${highlightedPropertyId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    const timer = setTimeout(() => setHighlightedPropertyId(null), 2500);
+    return () => clearTimeout(timer);
+  }, [highlightedPropertyId]);
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -215,7 +249,11 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
               </thead>
               <tbody>
                 {visibleProperties.map((p) => (
-                  <tr key={p.id}>
+                  <tr
+                    key={p.id}
+                    data-property-row={p.id}
+                    className={p.id === highlightedPropertyId ? styles["is-highlighted"] : ""}
+                  >
                     <td className={styles["contact-name"]}>{p.contact?.last_name || <span className={styles["no-contact"]}>—</span>}</td>
                     <td className={styles["address-cell"]}>{p.address}</td>
                     <td>

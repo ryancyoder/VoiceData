@@ -192,6 +192,7 @@
 }
 .table tr:last-child td { border-bottom: none; }
 .table tr:hover td { background: var(--surface-2); }
+.is-highlighted td { background: var(--accent-soft); transition: background 0.3s ease; }
 
 .address-cell { font-weight: 600; }
 .contact-name { font-weight: 600; }

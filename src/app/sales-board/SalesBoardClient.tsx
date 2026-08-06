@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./sales-board.module.css";
 import { STAGES, formatPropertyLabel, type Deal, type DealInput, type Stage } from "@/lib/salesBoard";
 import DealCard, { type UiDeal } from "./DealCard";
@@ -84,8 +84,26 @@ interface DragState {
 
 export default function SalesBoardClient({ initialDeals }: { initialDeals: Deal[] }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [deals, setDeals] = useState<UiDeal[]>(initialDeals);
   const [activeDealId, setActiveDealId] = useState<number | null>(null);
+
+  // Reacts to the URL's ?deal= param rather than only reading it once on
+  // mount — the command palette navigates here with a new ?deal= while
+  // this page may already be mounted, which a mount-only read would miss.
+  // Handled as a render-time state adjustment (tracked via lastSearchParams,
+  // compared by reference since useSearchParams() returns a new object on
+  // every navigation) rather than a useEffect, since it's a synchronous
+  // setState with no actual side effect to perform.
+  const [lastSearchParams, setLastSearchParams] = useState<typeof searchParams | null>(null);
+  if (searchParams !== lastSearchParams) {
+    setLastSearchParams(searchParams);
+    const dealParam = searchParams.get("deal");
+    const dealId = dealParam ? Number(dealParam) : NaN;
+    if (Number.isFinite(dealId) && deals.some((d) => d.id === dealId)) {
+      setActiveDealId(dealId);
+    }
+  }
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
