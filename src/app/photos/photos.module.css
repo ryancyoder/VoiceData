@@ -170,6 +170,8 @@
 .event-group-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .event-group-name { font-size: 0.9rem; font-weight: 650; }
 .event-group-date { font-size: 0.78rem; color: var(--text-muted); }
+.event-group-link { font-size: 0.78rem; color: var(--accent); text-decoration: none; }
+.event-group-link:hover { text-decoration: underline; }
 .event-type-badge {
   display: inline-block;
   font-size: 0.62rem;

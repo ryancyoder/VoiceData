@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
 import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, type DealPhoto, type Stage } from "@/lib/salesBoard";
@@ -473,6 +474,9 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                   year: "numeric",
                                 })}
                               </span>
+                              <Link href={`/calendar?event=${event.id}`} className={styles["event-group-link"]}>
+                                View on Calendar →
+                              </Link>
                               <span className={styles["event-add-actions"]}>
                                 <label className={styles["event-add-btn"]}>
                                   + Add
