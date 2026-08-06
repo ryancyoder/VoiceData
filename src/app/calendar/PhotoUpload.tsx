@@ -272,6 +272,21 @@ export default function PhotoUpload({
     }
   }
 
+  // A photo/video with no EXIF capture time at all (common for screenshots
+  // or images re-saved/exported by another app) would otherwise default to
+  // "now" once it reaches the server, splitting it into its own event dated
+  // today instead of joining the rest of the batch. Borrowing the earliest
+  // known time from a sibling item bound for the same property keeps the
+  // whole batch clustered into one event.
+  function withBatchFallbackTakenAt(item: PendingPhoto, batch: PendingPhoto[]): PendingPhoto {
+    if (item.takenAt || typeof item.selectedPropertyId !== "number") return item;
+    const known = batch
+      .filter((it) => it.selectedPropertyId === item.selectedPropertyId && it.takenAt)
+      .map((it) => new Date(it.takenAt as string).getTime());
+    if (known.length === 0) return item;
+    return { ...item, takenAt: new Date(Math.min(...known)).toISOString() };
+  }
+
   async function uploadPhotoItem(item: PendingPhoto, target: UploadTarget) {
     // Compress after EXIF has already been read client-side — canvas
     // re-encoding strips metadata, so GPS/capture-time are carried as
@@ -401,10 +416,11 @@ export default function PhotoUpload({
           target = { kind: "property", propertyId: item.selectedPropertyId };
         }
 
+        const effectiveItem = withBatchFallbackTakenAt(item, pending);
         if (item.mediaType === "video") {
-          await uploadVideoItem(item, target);
+          await uploadVideoItem(effectiveItem, target);
         } else {
-          await uploadPhotoItem(item, target);
+          await uploadPhotoItem(effectiveItem, target);
         }
         anyUploaded = true;
         setPending((p) => p.map((it) => (it.id === item.id ? { ...it, status: "done" } : it)));
