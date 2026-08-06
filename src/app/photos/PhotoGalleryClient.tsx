@@ -4,13 +4,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
-import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, type DealPhoto } from "@/lib/salesBoard";
+import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, type DealPhoto, type Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import { readClientExif } from "@/lib/clientExif";
 import { compressImage } from "@/lib/compressImage";
 
 const UPLOAD_TIMEOUT_MS = 60000;
+
+const STAGE_COLORS: Record<Stage, string> = {
+  Lead: "var(--c-lead)",
+  Propose: "var(--c-propose)",
+  Sent: "var(--c-send)",
+  Sold: "var(--c-sold)",
+  Scheduled: "var(--c-schedule)",
+  "Project Management": "var(--c-pm)",
+  "Job Costing": "var(--c-jobcosting)",
+  Invoiced: "var(--c-invoiced)",
+  "Paid in Full": "var(--c-paid)",
+};
 
 export interface GalleryEvent {
   id: number;
@@ -116,6 +128,26 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     () => propertyGroups.reduce((n, p) => n + flattenPropertyPhotos(p).length, 0),
     [propertyGroups]
   );
+
+  // Same model as the Properties page filter: all stages selected is the
+  // neutral/unfiltered state (every album shows, including ones with no
+  // deal at all yet); deselecting a stage narrows to albums that have a
+  // deal in one of the stages still selected.
+  const [selectedStages, setSelectedStages] = useState<Set<Stage>>(() => new Set(STAGES));
+  function toggleStage(stage: Stage) {
+    setSelectedStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  }
+  const visiblePropertyGroups = useMemo(() => {
+    if (selectedStages.size === STAGES.length) return propertyGroups;
+    return propertyGroups.filter((p) =>
+      p.deals.some((d) => d.dealStage != null && selectedStages.has(d.dealStage as Stage))
+    );
+  }, [propertyGroups, selectedStages]);
 
   const [activePropertyKey, setActivePropertyKey] = useState<string | null>(() => {
     const dealParam = searchParams.get("deal");
@@ -329,10 +361,14 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                 </button>{" "}
                 · {activeProperty.propertyLabel}
               </>
-            ) : (
+            ) : visiblePropertyGroups.length === propertyGroups.length ? (
               <>
                 {propertyGroups.length} album{propertyGroups.length === 1 ? "" : "s"} · {totalPhotoCount} photo
                 {totalPhotoCount === 1 ? "" : "s"}
+              </>
+            ) : (
+              <>
+                {visiblePropertyGroups.length} of {propertyGroups.length} album{propertyGroups.length === 1 ? "" : "s"}
               </>
             )}{" "}
             ·{" "}
@@ -351,14 +387,44 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
         </div>
       </div>
 
+      {!activeProperty && propertyGroups.length > 0 && (
+        <div className={styles["stage-filter-bar"]}>
+          {STAGES.map((stage) => {
+            const active = selectedStages.has(stage);
+            return (
+              <button
+                key={stage}
+                type="button"
+                className={`${styles["stage-filter-chip"]} ${active ? styles["is-active"] : ""}`}
+                style={{ ["--chip-color" as string]: STAGE_COLORS[stage] }}
+                onClick={() => toggleStage(stage)}
+                aria-pressed={active}
+              >
+                {stage}
+              </button>
+            );
+          })}
+          <span className={styles["stage-filter-actions"]}>
+            <button type="button" className={styles["stage-filter-link"]} onClick={() => setSelectedStages(new Set(STAGES))}>
+              All
+            </button>
+            <button type="button" className={styles["stage-filter-link"]} onClick={() => setSelectedStages(new Set())}>
+              None
+            </button>
+          </span>
+        </div>
+      )}
+
       <div className={styles.content}>
         {propertyGroups.length === 0 ? (
           <div className={styles.empty}>
             No photos have been uploaded yet. Add photos from the Calendar or a deal&apos;s detail view.
           </div>
+        ) : !activeProperty && visiblePropertyGroups.length === 0 ? (
+          <div className={styles.empty}>No albums match the selected pipeline stages.</div>
         ) : !activeProperty ? (
           <div className={styles.grid}>
-            {propertyGroups.map((property) => {
+            {visiblePropertyGroups.map((property) => {
               const photos = flattenPropertyPhotos(property);
               const cover = photos.find((p) => p.id === property.coverPhotoId) ?? photos[0];
               const coverThumb = dealThumbUrl(cover);
