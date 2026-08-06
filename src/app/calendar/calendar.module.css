@@ -91,6 +91,18 @@
 .delete-btn:hover { border-color: var(--danger); }
 .delete-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .paste-error { font-size: 0.76rem; color: var(--danger); }
+.paste-target {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  resize: none;
+}
 .range-label { font-size: 0.88rem; font-weight: 650; margin: 0 6px; }
 .ungeotagged-note {
   margin-left: auto;

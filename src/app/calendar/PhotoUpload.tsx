@@ -80,6 +80,22 @@ export default function PhotoUpload({
   const [pasting, setPasting] = useState(false);
   const [bulkPropertyId, setBulkPropertyId] = useState<number | "">("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const pasteTargetRef = useRef<HTMLTextAreaElement>(null);
+  // Whether ⌘V should currently be treated as "paste a photo" — a ref, not
+  // state, since nothing needs to re-render off it; it's read only inside
+  // event handlers.
+  const pasteArmedRef = useRef(false);
+
+  // Browsers only ever dispatch a native "paste" event when an *editable*
+  // element has focus — pressing ⌘V while a button or nothing at all is
+  // focused does nothing, no event fires at all (Safari enforces this
+  // strictly; other browsers are similarly inconsistent once focus is on a
+  // non-editable element). This hidden textarea exists purely to be that
+  // editable focus target, so ⌘V has something real to land on.
+  const armPasteTarget = useCallback(() => {
+    pasteArmedRef.current = true;
+    pasteTargetRef.current?.focus();
+  }, []);
 
   const addFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -163,7 +179,8 @@ export default function PhotoUpload({
   async function handlePasteClick() {
     setPasteError(null);
     if (!navigator.clipboard?.read) {
-      setPasteError("Clipboard access isn't supported in this browser — try ⌘V / Ctrl+V instead");
+      setPasteError("Press ⌘V / Ctrl+V now to paste");
+      armPasteTarget();
       return;
     }
     setPasting(true);
@@ -185,37 +202,27 @@ export default function PhotoUpload({
         // text/html, image/png) — an image copied from a native app (e.g.
         // Apple Notes) that the OS clipboard holds as TIFF or another
         // format never shows up here at all, even though it's genuinely on
-        // the clipboard. ⌘V falls back to the browser's native paste
-        // event, which isn't bound by that same allowlist and is the more
-        // reliable path for this exact case.
-        setPasteError(
-          typesSeen.length > 0
-            ? `No image found on the clipboard (found: ${typesSeen.join(", ")}) — try ⌘V / Ctrl+V instead`
-            : "No image found on the clipboard — try ⌘V / Ctrl+V instead"
-        );
+        // the clipboard. Arming the hidden paste target and prompting a
+        // real ⌘V is the reliable fallback: it triggers the browser's own
+        // native paste event, which isn't bound by that allowlist.
+        setPasteError("Press ⌘V / Ctrl+V now to paste");
+        armPasteTarget();
         return;
       }
       await addFiles(files);
-    } catch (err) {
-      setPasteError(
-        err instanceof Error && err.name === "NotAllowedError"
-          ? "Clipboard access denied — check browser permissions, or try ⌘V / Ctrl+V instead"
-          : "Couldn't read the clipboard — try ⌘V / Ctrl+V instead"
-      );
+    } catch {
+      setPasteError("Press ⌘V / Ctrl+V now to paste");
+      armPasteTarget();
     } finally {
       setPasting(false);
     }
   }
 
-  // The button above (navigator.clipboard.read()) only ever sees a narrow,
-  // browser-defined allowlist of clipboard MIME types — in practice just
-  // text/plain, text/html, and image/png — so an image copied from a
-  // native app (e.g. Apple Notes on macOS) that the OS clipboard holds in
-  // another format (TIFF, etc.) is invisible to it even though it's
-  // genuinely on the clipboard. The native browser paste event isn't bound
-  // by that same allowlist, so listening for ⌘V/Ctrl+V here is the more
-  // reliable path — this fires from anywhere on the page, no button click
-  // needed, mirroring how paste-an-image works in most other web apps.
+  // Browsers only dispatch a native "paste" event when it bubbles up from
+  // an editable element that actually has focus — with focus on the hidden
+  // textarea (see armPasteTarget), ⌘V/Ctrl+V now reliably fires this,
+  // regardless of the clipboard MIME-type restrictions that limit the
+  // button's navigator.clipboard.read() path above.
   useEffect(() => {
     function onPaste(e: ClipboardEvent) {
       const items = e.clipboardData?.items;
@@ -229,11 +236,20 @@ export default function PhotoUpload({
       if (files.length === 0) return;
       e.preventDefault();
       setPasteError(null);
+      pasteArmedRef.current = false;
       addFiles(files);
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
   }, [addFiles]);
+
+  // Once armed, reclaim focus for the hidden paste target whenever it's
+  // relinquished to nothing in particular (document.body) — but never when
+  // focus has moved to a real control the user is actively using.
+  useEffect(() => {
+    if (panelOpen) armPasteTarget();
+    else pasteArmedRef.current = false;
+  }, [panelOpen, armPasteTarget]);
 
   function removePending(id: string) {
     setPending((p) => {
@@ -508,6 +524,19 @@ export default function PhotoUpload({
         onChange={(e) => {
           if (e.target.files) handleFilesSelected(e.target.files);
           e.target.value = "";
+        }}
+      />
+      {/* Invisible but genuinely focusable/editable — see armPasteTarget's
+          comment for why this needs to exist at all. */}
+      <textarea
+        ref={pasteTargetRef}
+        className={styles["paste-target"]}
+        tabIndex={-1}
+        onBlur={() => {
+          if (!pasteArmedRef.current) return;
+          requestAnimationFrame(() => {
+            if (document.activeElement === document.body) pasteTargetRef.current?.focus();
+          });
         }}
       />
       <button type="button" className={styles["nav-btn"]} onClick={() => inputRef.current?.click()}>
