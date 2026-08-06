@@ -760,7 +760,13 @@ export default function CalendarClient({
                     key={event.id}
                     role="button"
                     tabIndex={0}
-                    className={`${styles["event-block"]} ${event.deals.length === 0 ? styles["no-deal"] : ""} ${dragPreview?.eventId === event.id ? styles["is-dragging"] : ""}`}
+                    className={`${styles["event-block"]} ${
+                      event.latitude == null || event.longitude == null
+                        ? styles["no-location"]
+                        : event.deals.length === 0
+                          ? styles["no-deal"]
+                          : ""
+                    } ${dragPreview?.eventId === event.id ? styles["is-dragging"] : ""}`}
                     style={{
                       top,
                       height,
