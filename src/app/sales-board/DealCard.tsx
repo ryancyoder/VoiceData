@@ -145,12 +145,7 @@ export default function DealCard({
       {/* Only when the "Next Action" toggle is off — with it on, the same
           text is already showing inline above, so a hover copy would just
           be redundant. */}
-      {!showNextAction && deal.next_action && (
-        <div className={styles["card-hover-tooltip"]}>
-          <div className={styles["card-hover-tooltip-label"]}>Next action</div>
-          {deal.next_action}
-        </div>
-      )}
+      {!showNextAction && deal.next_action && <div className={styles["card-hover-tooltip"]}>{deal.next_action}</div>}
     </div>
   );
 }
