@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./calendar.module.css";
 import type { PropertyOption } from "./CalendarClient";
 import { withTimeout, fetchWithTimeout } from "@/lib/withTimeout";
@@ -75,7 +75,7 @@ export default function PhotoUpload({
   const [pasting, setPasting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function addFiles(files: File[]) {
+  const addFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
 
     const items: PendingPhoto[] = files.map((file) => {
@@ -148,7 +148,7 @@ export default function PhotoUpload({
         );
       })
     );
-  }
+  }, []);
 
   function handleFilesSelected(fileList: FileList) {
     return addFiles(Array.from(fileList));
@@ -157,14 +157,16 @@ export default function PhotoUpload({
   async function handlePasteClick() {
     setPasteError(null);
     if (!navigator.clipboard?.read) {
-      setPasteError("Clipboard access isn't supported in this browser");
+      setPasteError("Clipboard access isn't supported in this browser — try ⌘V / Ctrl+V instead");
       return;
     }
     setPasting(true);
     try {
       const clipboardItems = await navigator.clipboard.read();
       const files: File[] = [];
+      const typesSeen: string[] = [];
       for (const clipboardItem of clipboardItems) {
+        typesSeen.push(...clipboardItem.types);
         const imageType = clipboardItem.types.find((type) => type.startsWith("image/"));
         if (!imageType) continue;
         const blob = await clipboardItem.getType(imageType);
@@ -172,20 +174,60 @@ export default function PhotoUpload({
         files.push(new File([blob], `pasted-${Date.now()}.${ext}`, { type: imageType }));
       }
       if (files.length === 0) {
-        setPasteError("No image found on the clipboard");
+        // navigator.clipboard.read() only ever exposes a narrow, browser-
+        // defined allowlist of MIME types (typically just text/plain,
+        // text/html, image/png) — an image copied from a native app (e.g.
+        // Apple Notes) that the OS clipboard holds as TIFF or another
+        // format never shows up here at all, even though it's genuinely on
+        // the clipboard. ⌘V falls back to the browser's native paste
+        // event, which isn't bound by that same allowlist and is the more
+        // reliable path for this exact case.
+        setPasteError(
+          typesSeen.length > 0
+            ? `No image found on the clipboard (found: ${typesSeen.join(", ")}) — try ⌘V / Ctrl+V instead`
+            : "No image found on the clipboard — try ⌘V / Ctrl+V instead"
+        );
         return;
       }
       await addFiles(files);
     } catch (err) {
       setPasteError(
         err instanceof Error && err.name === "NotAllowedError"
-          ? "Clipboard access denied — check browser permissions"
-          : "Couldn't read the clipboard"
+          ? "Clipboard access denied — check browser permissions, or try ⌘V / Ctrl+V instead"
+          : "Couldn't read the clipboard — try ⌘V / Ctrl+V instead"
       );
     } finally {
       setPasting(false);
     }
   }
+
+  // The button above (navigator.clipboard.read()) only ever sees a narrow,
+  // browser-defined allowlist of clipboard MIME types — in practice just
+  // text/plain, text/html, and image/png — so an image copied from a
+  // native app (e.g. Apple Notes on macOS) that the OS clipboard holds in
+  // another format (TIFF, etc.) is invisible to it even though it's
+  // genuinely on the clipboard. The native browser paste event isn't bound
+  // by that same allowlist, so listening for ⌘V/Ctrl+V here is the more
+  // reliable path — this fires from anywhere on the page, no button click
+  // needed, mirroring how paste-an-image works in most other web apps.
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+      if (files.length === 0) return;
+      e.preventDefault();
+      setPasteError(null);
+      addFiles(files);
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [addFiles]);
 
   function removePending(id: string) {
     setPending((p) => {
@@ -425,8 +467,8 @@ export default function PhotoUpload({
       <button type="button" className={styles["nav-btn"]} onClick={() => inputRef.current?.click()}>
         + Add Photo/Video
       </button>
-      <button type="button" className={styles["nav-btn"]} onClick={handlePasteClick} disabled={pasting}>
-        {pasting ? "Pasting…" : "📋 Paste Photo"}
+      <button type="button" className={styles["nav-btn"]} onClick={handlePasteClick} disabled={pasting} title="Or press ⌘V / Ctrl+V anywhere on this page">
+        {pasting ? "Pasting…" : "📋 Paste Photo (⌘V)"}
       </button>
       {pasteError && <div className={styles["paste-error"]}>{pasteError}</div>}
 
