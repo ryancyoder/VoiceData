@@ -289,6 +289,42 @@
   display: none;
 }
 
+.photo-paste {
+  width: 28px;
+  height: 28px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.photo-paste:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.photo-paste:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.photo-paste-target {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  resize: none;
+}
+
 .lightbox {
   position: fixed;
   inset: 0;

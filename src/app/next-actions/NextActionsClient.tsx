@@ -48,6 +48,13 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const pasteTargetRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
+  // Which row's photo cell should claim the next raw ⌘V — a ref, not state,
+  // since it's only ever read inside the paste listener and never drives a
+  // render. Only one row can be armed at a time: clicking a different row's
+  // Paste button just overwrites this rather than needing to disarm the
+  // previous one first.
+  const armedPasteRowIdRef = useRef<number | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const [lightbox, setLightbox] = useState<{ rowId: number; taskId: number; photoId: number; url: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -222,6 +229,10 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     }
   }
 
+  // Deliberately left unmemoized, matching every other handler in this file
+  // (commit, deletePhoto, handlePasteClick) — the paste-listener effect
+  // below re-subscribing whenever this identity changes is harmless.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   async function attachPhoto(rowId: number, file: File) {
     // commit() first — if there's unsaved text this creates the task from
     // it, and if the row already has a saved next action it's a no-op that
@@ -250,6 +261,80 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
       });
     }
   }
+
+  function armPasteTarget(rowId: number) {
+    armedPasteRowIdRef.current = rowId;
+    pasteTargetRefs.current[rowId]?.focus();
+  }
+
+  async function handlePasteClick(rowId: number) {
+    if (!navigator.clipboard?.read) {
+      showToast("Press ⌘V / Ctrl+V now to paste");
+      armPasteTarget(rowId);
+      return;
+    }
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const files: File[] = [];
+      for (const clipboardItem of clipboardItems) {
+        const usableType = clipboardItem.types.find((type) => type.startsWith("image/"));
+        if (!usableType) continue;
+        const blob = await clipboardItem.getType(usableType);
+        const ext = usableType.split("/")[1] || "png";
+        // Only used to make the synthetic filename unique — this runs
+        // inside a click handler, never during render, despite the lint
+        // rule's static analysis flagging it (it's more conservative about
+        // calls reachable through an inline arrow closure than one passed
+        // by direct reference).
+        // eslint-disable-next-line react-hooks/purity
+        files.push(new File([blob], `pasted-${Date.now()}.${ext}`, { type: usableType }));
+      }
+      if (files.length === 0) {
+        // navigator.clipboard.read() only exposes a narrow, browser-defined
+        // allowlist of MIME types — an image the OS clipboard holds in a
+        // format outside that allowlist never shows up here. Arming the
+        // hidden target and prompting a real ⌘V is the reliable fallback:
+        // it triggers the browser's native paste event, which isn't bound
+        // by that allowlist.
+        showToast("Press ⌘V / Ctrl+V now to paste");
+        armPasteTarget(rowId);
+        return;
+      }
+      for (const file of files) await attachPhoto(rowId, file);
+    } catch {
+      showToast("Press ⌘V / Ctrl+V now to paste");
+      armPasteTarget(rowId);
+    }
+  }
+
+  // A single shared listener rather than one per row — with potentially
+  // dozens of rows, only whichever one is explicitly armed (its own Paste
+  // button was just clicked) should ever claim a raw ⌘V; an untargeted
+  // paste is silently ignored rather than guessing which row it was meant
+  // for.
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const rowId = armedPasteRowIdRef.current;
+      if (rowId == null) return;
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+      const files: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+      if (files.length === 0) {
+        showToast("No image found in what was pasted");
+        return;
+      }
+      e.preventDefault();
+      armedPasteRowIdRef.current = null;
+      files.forEach((file) => attachPhoto(rowId, file));
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [attachPhoto]);
 
   async function deletePhoto(rowId: number, taskId: number, photoId: number) {
     try {
@@ -383,7 +468,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                           type="button"
                           className={styles["photo-add"]}
                           disabled={!!uploading[row.id]}
-                          title="Attach a photo"
+                          title="Take a photo"
                           onClick={() => fileInputRefs.current[row.id]?.click()}
                         >
                           {uploading[row.id] ? "…" : "+"}
@@ -401,6 +486,25 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                             e.target.value = "";
                             if (file) attachPhoto(row.id, file);
                           }}
+                        />
+                        <button
+                          type="button"
+                          className={styles["photo-paste"]}
+                          disabled={!!uploading[row.id]}
+                          title="Paste a screenshot from clipboard"
+                          onClick={() => handlePasteClick(row.id)}
+                        >
+                          📋
+                        </button>
+                        <textarea
+                          ref={(el) => {
+                            pasteTargetRefs.current[row.id] = el;
+                          }}
+                          className={styles["photo-paste-target"]}
+                          aria-hidden="true"
+                          tabIndex={-1}
+                          value=""
+                          onChange={() => {}}
                         />
                       </div>
                     </td>
