@@ -231,14 +231,14 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
       <table className={styles.table}>
         <thead>
           <tr>
-            <th>Contact</th>
+            <th>Deal</th>
             <th>Next Action</th>
           </tr>
         </thead>
         <tbody>
           {visibleRows.map((row, index) => (
             <tr key={row.id} style={{ ["--row-color" as string]: STAGE_COLORS[row.stage] }}>
-              <td className={styles["contact-cell"]}>{row.contactLastName ? row.contactLastName.toUpperCase() : "—"}</td>
+              <td className={styles["deal-cell"]}>{row.dealName}</td>
               <td className={styles["action-cell"]}>
                 <input
                   ref={(el) => {
