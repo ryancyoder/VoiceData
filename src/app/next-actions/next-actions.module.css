@@ -418,9 +418,9 @@
 .timeline::before {
   content: "";
   position: absolute;
-  top: 13px;
-  left: 13px;
-  right: 13px;
+  top: 17px;
+  left: 17px;
+  right: 17px;
   height: 2px;
   background: var(--border);
   z-index: 0;
@@ -432,7 +432,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 26px;
+  width: 34px;
   flex-shrink: 0;
   text-decoration: none;
   cursor: default;
@@ -446,12 +446,12 @@ a.timeline-node {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: var(--surface);
   border: 2px solid var(--border);
-  font-size: 0.85rem;
+  font-size: 1.1rem;
   line-height: 1;
 }
 
@@ -466,19 +466,37 @@ a.timeline-node {
 }
 
 .timeline-dot {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--surface);
-  margin: 7px;
+  margin: 9px;
 }
 
+/* Hidden until the node is hovered — icons got bigger specifically to make
+   room by not needing a permanently-visible date label underneath every
+   single node. */
 .timeline-date {
-  margin-top: 4px;
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
   font-size: 0.62rem;
   color: var(--text-faint);
   white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.timeline-node:hover .timeline-date {
+  opacity: 1;
 }
 
 .toast {

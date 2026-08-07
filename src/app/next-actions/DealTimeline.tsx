@@ -110,7 +110,7 @@ export default function DealTimeline({
             <span className={`${styles["timeline-icon"]} ${node.fulfilled ? styles["is-fulfilled"] : styles["is-pending"]}`}>
               {node.icon}
             </span>
-            <span className={styles["timeline-date"]}>{node.date ? formatNodeDate(node.date) : ""}</span>
+            {node.date && <span className={styles["timeline-date"]}>{formatNodeDate(node.date)}</span>}
           </div>
         ) : (
           <Link key={node.key} href={node.href} className={styles["timeline-node"]} title={`${node.title} — ${formatNodeDate(node.date)}`}>
