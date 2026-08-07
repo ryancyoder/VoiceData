@@ -50,11 +50,30 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const [lightbox, setLightbox] = useState<{ rowId: number; taskId: number; photoId: number; url: string } | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
+  }, []);
+
+  // Alt/Option+K jumps here, deliberately not ⌘K — that's already claimed
+  // globally by the command palette (see CommandPalette.tsx), and browsers
+  // don't let a page override it anyway. Checked via e.code rather than
+  // e.key: on macOS, Option+<letter> types an accented/special character
+  // into e.key (it's a dead-key modifier for the OS), so e.key wouldn't
+  // reliably be "k" there — e.code stays "KeyK" regardless of modifiers.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.altKey && e.code === "KeyK") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
   function showToast(msg: string) {
@@ -272,8 +291,10 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
 
       <div className={styles["filter-bar"]}>
         <input
+          ref={searchInputRef}
           type="text"
-          placeholder="Search contact or deal…"
+          placeholder="Search contact or deal… (⌥K)"
+          title="Jump here with Option+K / Alt+K"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className={styles["search-input"]}
