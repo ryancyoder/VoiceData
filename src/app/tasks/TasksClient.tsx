@@ -123,6 +123,11 @@ export default function TasksClient({
     return () => window.removeEventListener("tasks:changed", onTasksChanged);
   }, []);
 
+  // Deliberately left unmemoized, matching the other handlers in this
+  // file — the Alt+N effect below re-subscribing whenever this identity
+  // changes (i.e. every render) is harmless, and is what keeps it from
+  // ever closing over a stale `dealFilter`.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   function openAddForm() {
     setEditingTask(null);
     setForm({ ...EMPTY_TASK_FORM, deal_id: typeof dealFilter === "number" ? dealFilter : null });
@@ -151,6 +156,26 @@ export default function TasksClient({
     setForm(EMPTY_TASK_FORM);
     setFormError("");
   }
+
+  // Alt/Option+N opens the add-task form — not Cmd+N/Ctrl+N, which is
+  // reserved by every major browser (including Safari) for "New Window"
+  // and never reaches page JavaScript at all. Checked via e.code rather
+  // than e.key for the same reason as the Next Actions page's Alt+K: on
+  // macOS, Option+<letter> is a dead-key modifier that can type an
+  // accented/special character into e.key, so e.key wouldn't reliably
+  // read as "n" there — e.code stays "KeyN" regardless of modifiers.
+  // Guarded on the form already being open so a stray Alt+N can't wipe
+  // out a title the user's mid-typing.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.altKey && e.code === "KeyN" && !formOpen) {
+        e.preventDefault();
+        openAddForm();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [formOpen, openAddForm]);
 
   // The task currently holding this deal's next-action flag, if it isn't
   // the one being edited — surfaced as a heads-up, since checking the box
@@ -247,7 +272,7 @@ export default function TasksClient({
           </p>
         </div>
         <div className={styles.toolbar}>
-          <button type="button" className={styles["nav-btn"]} onClick={openAddForm}>
+          <button type="button" className={styles["nav-btn"]} title="New task (⌥N)" onClick={openAddForm}>
             + Add Task
           </button>
         </div>
