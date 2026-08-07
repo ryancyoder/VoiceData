@@ -442,8 +442,8 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           <tr>
             <th>Deal</th>
             <th>Next Action</th>
-            <th>Photos</th>
             <th>Timeline</th>
+            <th>Photos</th>
           </tr>
         </thead>
         <tbody>
@@ -473,6 +473,9 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                         onKeyDown={(e) => handleKeyDown(e, row.id, index)}
                         onBlur={() => commit(row.id)}
                       />
+                    </td>
+                    <td className={styles["timeline-cell"]}>
+                      <DealTimeline currentStage={row.stage} stageDates={row.stageDates} events={row.timelineEvents} />
                     </td>
                     <td className={styles["photos-cell"]}>
                       <div className={styles["photo-strip"]}>
@@ -543,9 +546,6 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                           onChange={() => {}}
                         />
                       </div>
-                    </td>
-                    <td className={styles["timeline-cell"]}>
-                      <DealTimeline currentStage={row.stage} stageDates={row.stageDates} events={row.timelineEvents} />
                     </td>
                   </tr>
                 );

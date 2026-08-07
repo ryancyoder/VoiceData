@@ -411,7 +411,7 @@
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 18px;
+  gap: 54px;
   padding-top: 4px;
   width: max-content;
 }
