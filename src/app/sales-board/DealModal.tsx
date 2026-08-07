@@ -5,15 +5,20 @@ import Link from "next/link";
 import styles from "./sales-board.module.css";
 import PropertyPicker from "./PropertyPicker";
 import { dealAttachmentUrl, dealDocumentUrl, dealThumbUrl, type Deal, type DealInput, type PropertyOption } from "@/lib/salesBoard";
+import { TASK_CONTEXTS, type TaskContext } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 
 const PARSE_ASPIRE_TIMEOUT_MS = 25000;
+const ADD_TASK_TIMEOUT_MS = 15000;
+
+const EMPTY_INLINE_TASK_FORM = { title: "", context: "" as TaskContext | "", start_date: "", duration_hours: "", is_next_action: false };
 
 interface DealModalProps {
   deal: Deal;
   relatedDeals: Deal[];
   propertyOptions: PropertyOption[];
   onPropertyCreated: (option: PropertyOption) => void;
+  onTaskAdded: () => void;
   onSelectDeal: (id: number) => void;
   onClose: () => void;
   onSave: (id: number, updates: Partial<DealInput>) => Promise<void>;
@@ -92,11 +97,141 @@ function RelatedDeals({ deals, onSelectDeal }: { deals: Deal[]; onSelectDeal: (i
   );
 }
 
+// Adding a task here always ties it to this deal — unlike the Tasks page's
+// own add form, there's no deal picker, since being opened from a specific
+// deal's modal already answers that question.
+function AddTaskInline({ dealId, currentNextAction, onAdded }: { dealId: number; currentNextAction: string | null; onAdded: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_INLINE_TASK_FORM);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  function openForm() {
+    setForm(EMPTY_INLINE_TASK_FORM);
+    setError("");
+    setOpen(true);
+  }
+
+  function closeForm() {
+    setOpen(false);
+    setForm(EMPTY_INLINE_TASK_FORM);
+    setError("");
+  }
+
+  async function handleSubmit() {
+    const title = form.title.trim();
+    if (!title || submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetchWithTimeout(
+        "/api/tasks",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            deal_id: dealId,
+            context: form.context || null,
+            start_date: form.start_date || null,
+            duration_hours: form.duration_hours.trim() ? Number(form.duration_hours) : null,
+            is_next_action: form.is_next_action,
+          }),
+        },
+        ADD_TASK_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add task");
+      // Lets the Tasks page pick this up live if it's open elsewhere, and
+      // refreshes this board so deal.next_action reflects it immediately
+      // if it was marked as the next action.
+      window.dispatchEvent(new Event("tasks:changed"));
+      onAdded();
+      closeForm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add task");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className={styles["geocode-link"]} onClick={openForm}>
+        + Add task
+      </button>
+    );
+  }
+
+  return (
+    // A <div>, not a <form> — this renders inside the deal-edit <form> already,
+    // and nesting forms is invalid HTML (and breaks child <select>/<input>
+    // rendering). Enter submits manually instead of via native form submit.
+    <div
+      className={styles["inline-task-form"]}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "TEXTAREA") {
+          e.preventDefault();
+          handleSubmit();
+        }
+      }}
+    >
+      <input
+        autoFocus
+        autoComplete="off"
+        placeholder="Task title"
+        value={form.title}
+        onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+      />
+      <div className={styles["inline-task-form-row"]}>
+        <select value={form.context} onChange={(e) => setForm((f) => ({ ...f, context: e.target.value as TaskContext | "" }))}>
+          <option value="">No context</option>
+          {TASK_CONTEXTS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <input type="date" value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} />
+        <input
+          type="number"
+          min="0"
+          step="0.5"
+          placeholder="Hours"
+          value={form.duration_hours}
+          onChange={(e) => setForm((f) => ({ ...f, duration_hours: e.target.value }))}
+        />
+      </div>
+      <label className={styles["inline-task-next-action"]}>
+        <input
+          type="checkbox"
+          checked={form.is_next_action}
+          onChange={(e) => setForm((f) => ({ ...f, is_next_action: e.target.checked }))}
+        />
+        Mark as this deal&apos;s next action
+      </label>
+      {form.is_next_action && currentNextAction && (
+        <div className={styles["inline-task-hint"]}>This will replace &quot;{currentNextAction}&quot; as the next action.</div>
+      )}
+      {error && <div className={styles["inline-task-error"]}>{error}</div>}
+      <div className={styles["inline-task-form-actions"]}>
+        <button type="button" className={styles["card-edit-cancel"]} onClick={closeForm} disabled={submitting}>
+          Cancel
+        </button>
+        <button type="button" className={styles["card-edit-save"]} onClick={handleSubmit} disabled={submitting || !form.title.trim()}>
+          {submitting ? "Adding…" : "Add Task"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function DealModal({
   deal,
   relatedDeals,
   propertyOptions,
   onPropertyCreated,
+  onTaskAdded,
   onSelectDeal,
   onClose,
   onSave,
@@ -566,9 +701,12 @@ export default function DealModal({
             ) : (
               <div className={styles["next-action-display-empty"]}>No next action set</div>
             )}
-            <Link href={`/tasks?deal=${deal.id}`} className={styles["geocode-link"]}>
-              Manage tasks →
-            </Link>
+            <div className={styles["next-action-links"]}>
+              <Link href={`/tasks?deal=${deal.id}`} className={styles["geocode-link"]}>
+                Manage tasks →
+              </Link>
+              <AddTaskInline dealId={deal.id} currentNextAction={deal.next_action} onAdded={onTaskAdded} />
+            </div>
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-description">Proposal description</label>

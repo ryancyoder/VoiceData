@@ -834,6 +834,7 @@ export default function SalesBoardClient({
           relatedDeals={relatedDeals}
           propertyOptions={propertyOptions}
           onPropertyCreated={handlePropertyCreated}
+          onTaskAdded={refreshBoard}
           onSelectDeal={(id) => setActiveDealId(id)}
           onClose={() => setActiveDealId(null)}
           onSave={handleSaveDeal}
