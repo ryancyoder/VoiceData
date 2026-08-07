@@ -53,34 +53,50 @@ export default function DealTimeline({
 }) {
   const currentIndex = STAGES.indexOf(currentStage);
 
-  // Stage milestones with a known date (real transition, or the one-time
-  // backfilled current stage) sort in with calendar events by actual date.
-  // Ones with no date yet — not reached, or reached before this table
-  // existed — fall back to the end in pipeline order, since there's no
-  // real date to place them by.
-  const dated: TimelineNode[] = [];
-  const undated: TimelineNode[] = [];
+  // Milestones always render in fixed pipeline order — never reordered or
+  // displaced by event dates. Each calendar event is slotted into the gap
+  // right after whichever milestone's date is the closest one on-or-before
+  // the event's own date (skipping over any undated milestones in
+  // between), or before the very first milestone if none qualify.
+  const milestoneNodes: (TimelineNode & { kind: "stage" })[] = TIMELINE_STAGES.map(({ stage, icon }) => ({
+    kind: "stage",
+    key: `stage-${stage}`,
+    stage,
+    icon,
+    date: stageDates[stage] ?? null,
+    fulfilled: STAGES.indexOf(stage) <= currentIndex,
+  }));
 
-  for (const { stage, icon } of TIMELINE_STAGES) {
-    const fulfilled = STAGES.indexOf(stage) <= currentIndex;
-    const date = stageDates[stage] ?? null;
-    const node: TimelineNode = { kind: "stage", key: `stage-${stage}`, stage, icon, date, fulfilled };
-    (date ? dated : undated).push(node);
-  }
-
-  for (const event of events) {
-    dated.push({
-      kind: "event",
+  const eventNodes: (TimelineNode & { kind: "event" })[] = events
+    .map((event) => ({
+      kind: "event" as const,
       key: `event-${event.id}`,
       icon: event.event_type ? (EVENT_ICONS[event.event_type] ?? null) : null,
       date: event.start_time,
       href: `/calendar?event=${event.id}`,
       title: event.name || event.event_type || "Event",
-    });
+    }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // eventsAfter[i] holds every event whose slot is right after milestone i;
+  // eventsBefore holds ones that predate every dated milestone.
+  const eventsAfter: TimelineNode[][] = milestoneNodes.map(() => []);
+  const eventsBefore: TimelineNode[] = [];
+
+  for (const event of eventNodes) {
+    const eventTime = new Date(event.date).getTime();
+    let slot = -1;
+    for (let i = 0; i < milestoneNodes.length; i++) {
+      const milestoneDate = milestoneNodes[i].date;
+      if (milestoneDate && new Date(milestoneDate).getTime() <= eventTime) slot = i;
+    }
+    (slot === -1 ? eventsBefore : eventsAfter[slot]).push(event);
   }
 
-  dated.sort((a, b) => new Date(a.date!).getTime() - new Date(b.date!).getTime());
-  const nodes = [...dated, ...undated];
+  const nodes: TimelineNode[] = [...eventsBefore];
+  milestoneNodes.forEach((milestone, i) => {
+    nodes.push(milestone, ...eventsAfter[i]);
+  });
 
   return (
     <div className={styles.timeline}>
