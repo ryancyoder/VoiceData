@@ -38,6 +38,9 @@ export default function CommandPalette() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      // Matches ⌘K and ⌘⇧K alike (Ctrl on Windows/Linux) — shiftKey is
+      // deliberately not checked, since lowercasing e.key already collapses
+      // the shifted "K" and unshifted "k" to the same match.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen(true);
@@ -147,7 +150,7 @@ export default function CommandPalette() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title="Search (⌘K)"
+        title="Search (⌘K or ⌘⇧K)"
         aria-label="Search"
         className="fixed bottom-5 right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-600 shadow-lg hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
       >
