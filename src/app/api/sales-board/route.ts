@@ -58,6 +58,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Seeds this deal's timeline with its starting stage — best-effort, never
+  // blocks deal creation on failure.
+  try {
+    await supabase.from("deal_stage_history").insert({ deal_id: data.id, stage: data.stage });
+  } catch {
+    /* stage history is supplementary — the deal itself is already saved */
+  }
+
   // A contact belongs to the property, not the deal — silently skipped
   // (rather than failing the whole deal creation) when there's no property
   // to attach it to.

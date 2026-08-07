@@ -35,6 +35,23 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "No fields provided to update" }, { status: 400 });
   }
 
+  // Fetched up front (before the update overwrites it) so a stage-history
+  // row is only inserted when the stage is actually changing — a PATCH
+  // that re-sends the same stage shouldn't log a fresh "entered this
+  // stage" timestamp.
+  let previousStage: string | undefined;
+  if (body.stage !== undefined) {
+    const { data: existing, error: existingError } = await supabase
+      .from("Sales Board")
+      .select("stage")
+      .eq("id", id)
+      .maybeSingle();
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+    previousStage = existing?.stage;
+  }
+
   // Resolved once, and reused for the contact save below — a deal's
   // contact is saved as its property's primary contact, never a deal
   // column, so it needs to know which property this deal points to.
@@ -72,6 +89,14 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     data = updated;
+  }
+
+  if (body.stage !== undefined && body.stage !== previousStage) {
+    try {
+      await supabase.from("deal_stage_history").insert({ deal_id: Number(id), stage: body.stage });
+    } catch {
+      /* stage history is supplementary — the stage change itself already saved */
+    }
   }
 
   if (contactProvided && resolvedPropertyId != null) {

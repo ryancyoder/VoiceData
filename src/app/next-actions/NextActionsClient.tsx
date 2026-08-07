@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { STAGES, type Stage } from "@/lib/salesBoard";
 import { type TaskPhoto, taskPhotoUrl } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
+import DealTimeline, { type TimelineEvent } from "./DealTimeline";
 import styles from "./next-actions.module.css";
 
 const SAVE_TIMEOUT_MS = 15000;
@@ -29,6 +30,8 @@ export interface NextActionRow {
   nextActionTaskId: number | null;
   nextActionTitle: string;
   nextActionPhotos: TaskPhoto[];
+  timelineEvents: TimelineEvent[];
+  stageDates: Partial<Record<Stage, string>>;
 }
 
 export default function NextActionsClient({ initialRows }: { initialRows: NextActionRow[] }) {
@@ -440,13 +443,14 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
             <th>Deal</th>
             <th>Next Action</th>
             <th>Photos</th>
+            <th>Timeline</th>
           </tr>
         </thead>
         <tbody>
           {groups.map((group) => (
             <Fragment key={group.stage}>
               <tr className={styles["stage-header-row"]} style={{ ["--row-color" as string]: STAGE_COLORS[group.stage] }}>
-                <td colSpan={3}>
+                <td colSpan={4}>
                   {group.stage} <span className={styles["stage-count"]}>{group.rows.length}</span>
                 </td>
               </tr>
@@ -540,6 +544,9 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                         />
                       </div>
                     </td>
+                    <td className={styles["timeline-cell"]}>
+                      <DealTimeline currentStage={row.stage} stageDates={row.stageDates} events={row.timelineEvents} />
+                    </td>
                   </tr>
                 );
               })}
@@ -547,7 +554,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           ))}
           {visibleRows.length === 0 && (
             <tr>
-              <td colSpan={3} className={styles["empty-row"]}>
+              <td colSpan={4} className={styles["empty-row"]}>
                 No deals match these filters.
               </td>
             </tr>
