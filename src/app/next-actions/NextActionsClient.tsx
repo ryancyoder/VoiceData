@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { STAGES, type Stage } from "@/lib/salesBoard";
+import { type TaskPhoto, taskPhotoUrl } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import styles from "./next-actions.module.css";
 
@@ -27,6 +28,7 @@ export interface NextActionRow {
   contactLastName: string | null;
   nextActionTaskId: number | null;
   nextActionTitle: string;
+  nextActionPhotos: TaskPhoto[];
 }
 
 export default function NextActionsClient({ initialRows }: { initialRows: NextActionRow[] }) {
@@ -45,6 +47,9 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const [uploading, setUploading] = useState<Record<number, boolean>>({});
+  const [lightbox, setLightbox] = useState<{ rowId: number; taskId: number; photoId: number; url: string } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -116,15 +121,18 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     setDraftsState(next);
   }
 
-  async function commit(rowId: number) {
+  // Returns the id of the task this row's next action now lives on (or null
+  // if it has none) — used both after a keyboard-driven save and to make
+  // sure a task exists before a photo can be attached to it.
+  async function commit(rowId: number): Promise<number | null> {
     const draft = draftsRef.current[rowId];
-    if (draft === undefined) return;
     const row = rows.find((r) => r.id === rowId);
+    if (draft === undefined) return row?.nextActionTaskId ?? null;
     clearDraft(rowId);
-    if (!row) return;
+    if (!row) return null;
 
     const trimmed = draft.trim();
-    if (trimmed === row.nextActionTitle.trim()) return;
+    if (trimmed === row.nextActionTitle.trim()) return row.nextActionTaskId;
 
     setSaving((s) => ({ ...s, [rowId]: true }));
     try {
@@ -148,6 +156,8 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           }
         }
         setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, nextActionTitle: "", nextActionTaskId: null } : r)));
+        window.dispatchEvent(new Event("tasks:changed"));
+        return null;
       } else if (row.nextActionTaskId != null) {
         const res = await fetchWithTimeout(
           `/api/tasks/${row.nextActionTaskId}`,
@@ -161,6 +171,8 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to save next action");
         setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, nextActionTitle: trimmed } : r)));
+        window.dispatchEvent(new Event("tasks:changed"));
+        return row.nextActionTaskId;
       } else {
         const res = await fetchWithTimeout(
           "/api/tasks",
@@ -176,16 +188,62 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
         setRows((rs) =>
           rs.map((r) => (r.id === rowId ? { ...r, nextActionTitle: trimmed, nextActionTaskId: data.task.id } : r))
         );
+        window.dispatchEvent(new Event("tasks:changed"));
+        return data.task.id as number;
       }
-      window.dispatchEvent(new Event("tasks:changed"));
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save next action");
+      return null;
     } finally {
       setSaving((s) => {
         const next = { ...s };
         delete next[rowId];
         return next;
       });
+    }
+  }
+
+  async function attachPhoto(rowId: number, file: File) {
+    // commit() first — if there's unsaved text this creates the task from
+    // it, and if the row already has a saved next action it's a no-op that
+    // just returns the existing task id.
+    const taskId = await commit(rowId);
+    if (taskId == null) {
+      showToast("Add a next action before attaching a photo");
+      return;
+    }
+
+    setUploading((u) => ({ ...u, [rowId]: true }));
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetchWithTimeout(`/api/tasks/${taskId}/photos`, { method: "POST", body: formData }, SAVE_TIMEOUT_MS);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to attach photo");
+      setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, nextActionPhotos: [...r.nextActionPhotos, data.photo] } : r)));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to attach photo");
+    } finally {
+      setUploading((u) => {
+        const next = { ...u };
+        delete next[rowId];
+        return next;
+      });
+    }
+  }
+
+  async function deletePhoto(rowId: number, taskId: number, photoId: number) {
+    try {
+      const res = await fetchWithTimeout(`/api/tasks/${taskId}/photos/${photoId}`, { method: "DELETE" }, SAVE_TIMEOUT_MS);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete photo");
+      }
+      setRows((rs) =>
+        rs.map((r) => (r.id === rowId ? { ...r, nextActionPhotos: r.nextActionPhotos.filter((p) => p.id !== photoId) } : r))
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete photo");
     }
   }
 
@@ -248,13 +306,14 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           <tr>
             <th>Deal</th>
             <th>Next Action</th>
+            <th>Photos</th>
           </tr>
         </thead>
         <tbody>
           {groups.map((group) => (
             <Fragment key={group.stage}>
               <tr className={styles["stage-header-row"]} style={{ ["--row-color" as string]: STAGE_COLORS[group.stage] }}>
-                <td colSpan={2}>
+                <td colSpan={3}>
                   {group.stage} <span className={styles["stage-count"]}>{group.rows.length}</span>
                 </td>
               </tr>
@@ -278,6 +337,52 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                         onBlur={() => commit(row.id)}
                       />
                     </td>
+                    <td className={styles["photos-cell"]}>
+                      <div className={styles["photo-strip"]}>
+                        {row.nextActionPhotos.map((photo) => (
+                          <button
+                            key={photo.id}
+                            type="button"
+                            className={styles["photo-thumb"]}
+                            onClick={() =>
+                              setLightbox({
+                                rowId: row.id,
+                                taskId: row.nextActionTaskId!,
+                                photoId: photo.id,
+                                url: taskPhotoUrl(photo.storage_path),
+                              })
+                            }
+                            title={photo.file_name ?? "View photo"}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={taskPhotoUrl(photo.storage_path)} alt="" />
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className={styles["photo-add"]}
+                          disabled={!!uploading[row.id]}
+                          title="Attach a photo"
+                          onClick={() => fileInputRefs.current[row.id]?.click()}
+                        >
+                          {uploading[row.id] ? "…" : "+"}
+                        </button>
+                        <input
+                          ref={(el) => {
+                            fileInputRefs.current[row.id] = el;
+                          }}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className={styles["photo-file-input"]}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (file) attachPhoto(row.id, file);
+                          }}
+                        />
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -285,7 +390,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           ))}
           {visibleRows.length === 0 && (
             <tr>
-              <td colSpan={2} className={styles["empty-row"]}>
+              <td colSpan={3} className={styles["empty-row"]}>
                 No deals match these filters.
               </td>
             </tr>
@@ -296,6 +401,35 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
       <div className={`${styles.toast} ${toast ? styles["is-visible"] : ""}`} role="status" aria-live="polite">
         <span>{toast}</span>
       </div>
+
+      {lightbox && (
+        <div
+          className={styles.lightbox}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setLightbox(null);
+          }}
+        >
+          <div className={styles["lightbox-content"]}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={lightbox.url} alt="" />
+            <div className={styles["lightbox-actions"]}>
+              <button
+                type="button"
+                className={styles["lightbox-delete"]}
+                onClick={() => {
+                  deletePhoto(lightbox.rowId, lightbox.taskId, lightbox.photoId);
+                  setLightbox(null);
+                }}
+              >
+                Delete
+              </button>
+              <button type="button" className={styles["lightbox-close"]} onClick={() => setLightbox(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

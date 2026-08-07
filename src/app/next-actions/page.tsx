@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type Stage } from "@/lib/salesBoard";
+import type { TaskPhoto } from "@/lib/tasks";
 import NextActionsClient, { type NextActionRow } from "./NextActionsClient";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ type RawDeal = {
   properties: { contacts: { last_name: string | null } | null } | null;
 };
 
-type RawTask = { id: number; deal_id: number | null; title: string };
+type RawTask = { id: number; deal_id: number | null; title: string; task_photos: TaskPhoto[] | null };
 
 export default async function NextActionsPage() {
   const [dealsRes, tasksRes] = await Promise.all([
@@ -20,7 +21,10 @@ export default async function NextActionsPage() {
       .from("Sales Board")
       .select("id, deal_name, stage, lost_at, properties(contacts(last_name))")
       .order("created_at", { ascending: true }),
-    supabase.from("tasks").select("id, deal_id, title").eq("is_next_action", true),
+    supabase
+      .from("tasks")
+      .select("id, deal_id, title, task_photos(id, task_id, storage_path, file_name, created_at)")
+      .eq("is_next_action", true),
   ]);
 
   if (dealsRes.error) {
@@ -31,7 +35,7 @@ export default async function NextActionsPage() {
   }
 
   const nextActionByDeal = new Map<number, RawTask>();
-  for (const task of (tasksRes.data ?? []) as RawTask[]) {
+  for (const task of (tasksRes.data ?? []) as unknown as RawTask[]) {
     if (task.deal_id != null) nextActionByDeal.set(task.deal_id, task);
   }
 
@@ -46,6 +50,7 @@ export default async function NextActionsPage() {
         contactLastName: d.properties?.contacts?.last_name ?? null,
         nextActionTaskId: task?.id ?? null,
         nextActionTitle: task?.title ?? "",
+        nextActionPhotos: task?.task_photos ?? [],
       };
     })
     .sort((a, b) => STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage));

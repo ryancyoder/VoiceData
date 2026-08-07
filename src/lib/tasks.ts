@@ -10,6 +10,21 @@ export interface TaskDeal {
   lost_at: string | null;
 }
 
+export interface TaskPhoto {
+  id: number;
+  task_id: number;
+  storage_path: string;
+  file_name: string | null;
+  created_at: string;
+}
+
+export const TASK_PHOTOS_BUCKET = "task-photos";
+
+export function taskPhotoUrl(storagePath: string): string {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return `${base}/storage/v1/object/public/${TASK_PHOTOS_BUCKET}/${storagePath}`;
+}
+
 export interface Task {
   id: number;
   deal_id: number | null;
