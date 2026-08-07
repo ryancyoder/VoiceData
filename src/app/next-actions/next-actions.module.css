@@ -400,8 +400,8 @@
 }
 
 .timeline-cell {
-  width: 2880px;
-  max-width: 2880px;
+  width: 960px;
+  max-width: 960px;
   padding: 8px 12px;
   overflow-x: auto;
 }
