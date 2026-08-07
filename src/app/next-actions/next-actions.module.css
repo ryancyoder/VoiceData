@@ -146,7 +146,6 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
   box-shadow: var(--shadow);
 }
 
@@ -401,8 +400,8 @@
 }
 
 .timeline-cell {
-  width: 960px;
-  max-width: 960px;
+  width: 2880px;
+  max-width: 2880px;
   padding: 8px 12px;
   overflow-x: auto;
 }
