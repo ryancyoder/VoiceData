@@ -41,6 +41,17 @@ export interface DealAttachment {
   created_at: string;
 }
 
+// A screenshot of correspondence with the client (email/text threads) —
+// attached directly to the deal like DealAttachment, but a distinct table
+// so it renders as its own section rather than mixing with POs/receipts.
+export interface DealCorrespondence {
+  id: number;
+  deal_id: number;
+  storage_path: string;
+  file_name: string;
+  created_at: string;
+}
+
 export interface DealEvent {
   id: number;
   name: string | null;
@@ -117,6 +128,9 @@ export interface Deal {
   // POs, receipts, and other business documents — attached directly to
   // the deal, not by way of an event.
   attachments: DealAttachment[];
+  // Screenshots of correspondence with the client — also attached
+  // directly to the deal, kept separate from `attachments` above.
+  correspondence: DealCorrespondence[];
 }
 
 /**
@@ -166,6 +180,13 @@ export const DEAL_ATTACHMENTS_BUCKET = "deal-attachments";
 export function dealAttachmentUrl(storagePath: string): string {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   return `${base}/storage/v1/object/public/${DEAL_ATTACHMENTS_BUCKET}/${storagePath}`;
+}
+
+export const DEAL_CORRESPONDENCE_BUCKET = "deal-correspondence";
+
+export function dealCorrespondenceUrl(storagePath: string): string {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return `${base}/storage/v1/object/public/${DEAL_CORRESPONDENCE_BUCKET}/${storagePath}`;
 }
 
 export interface DealInput {

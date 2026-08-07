@@ -74,6 +74,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // A brand-new deal has no events or attachments yet.
-  return NextResponse.json({ deal: { ...data, events: [], attachments: [] } }, { status: 201 });
+  // A brand-new deal has no events, attachments, or correspondence yet.
+  return NextResponse.json({ deal: { ...data, events: [], attachments: [], correspondence: [] } }, { status: 201 });
 }

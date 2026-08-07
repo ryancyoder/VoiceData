@@ -413,6 +413,48 @@ export default function SalesBoardClient({
     }
   }
 
+  async function handleUploadCorrespondence(dealId: number, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetchWithTimeout(
+        `/api/sales-board/${dealId}/correspondence`,
+        { method: "POST", body: formData },
+        PHOTO_UPLOAD_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload correspondence");
+      setDeals((ds) =>
+        ds.map((d) => (d.id === dealId ? { ...d, correspondence: [data.correspondence, ...d.correspondence] } : d))
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Upload timed out — try again"
+          : err instanceof Error
+            ? err.message
+            : "Failed to upload correspondence";
+      showToast(message);
+    }
+  }
+
+  async function handleDeleteCorrespondence(dealId: number, correspondenceId: number) {
+    const previous = deals;
+    setDeals((ds) =>
+      ds.map((d) =>
+        d.id === dealId ? { ...d, correspondence: d.correspondence.filter((c) => c.id !== correspondenceId) } : d
+      )
+    );
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/correspondence/${correspondenceId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete correspondence");
+    } catch (err) {
+      setDeals(previous);
+      showToast(err instanceof Error ? err.message : "Failed to delete correspondence");
+    }
+  }
+
   async function handleDeletePhoto(dealId: number, photoId: number) {
     const previous = deals;
     setDeals((ds) =>
@@ -846,6 +888,8 @@ export default function SalesBoardClient({
           onDeleteProposalPdf={handleDeleteProposalPdf}
           onUploadAttachment={handleUploadAttachment}
           onDeleteAttachment={handleDeleteAttachment}
+          onUploadCorrespondence={handleUploadCorrespondence}
+          onDeleteCorrespondence={handleDeleteCorrespondence}
         />
       )}
 

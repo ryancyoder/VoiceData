@@ -4,7 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./sales-board.module.css";
 import PropertyPicker from "./PropertyPicker";
-import { dealAttachmentUrl, dealDocumentUrl, dealThumbUrl, type Deal, type DealInput, type PropertyOption } from "@/lib/salesBoard";
+import {
+  dealAttachmentUrl,
+  dealCorrespondenceUrl,
+  dealDocumentUrl,
+  dealThumbUrl,
+  type Deal,
+  type DealInput,
+  type PropertyOption,
+} from "@/lib/salesBoard";
 import { TASK_CONTEXTS, type TaskContext } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 
@@ -30,6 +38,8 @@ interface DealModalProps {
   onDeleteProposalPdf: (dealId: number) => Promise<void>;
   onUploadAttachment: (dealId: number, file: File) => Promise<void>;
   onDeleteAttachment: (dealId: number, attachmentId: number) => Promise<void>;
+  onUploadCorrespondence: (dealId: number, file: File) => Promise<void>;
+  onDeleteCorrespondence: (dealId: number, correspondenceId: number) => Promise<void>;
 }
 
 function formatDateTime(isoStr: string) {
@@ -243,6 +253,8 @@ export default function DealModal({
   onDeleteProposalPdf,
   onUploadAttachment,
   onDeleteAttachment,
+  onUploadCorrespondence,
+  onDeleteCorrespondence,
 }: DealModalProps) {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [parsingAspire, setParsingAspire] = useState(false);
@@ -255,6 +267,16 @@ export default function DealModal({
   // attempt right now — a ref, not state, since it's only ever read inside
   // event handlers and never drives a render.
   const attachmentPasteArmedRef = useRef(false);
+  const [uploadingCorrespondence, setUploadingCorrespondence] = useState(false);
+  const [deletingCorrespondenceId, setDeletingCorrespondenceId] = useState<number | null>(null);
+  const [correspondencePasteError, setCorrespondencePasteError] = useState("");
+  const correspondencePasteTargetRef = useRef<HTMLTextAreaElement>(null);
+  // Unlike attachments (which ambiently claim any raw ⌘V as a fallback —
+  // see the shared paste listener below), correspondence only ever claims
+  // a paste when explicitly armed, since a document-level listener can't
+  // otherwise tell which of the two sections an untargeted ⌘V was meant
+  // for without risking double-uploading the same image to both.
+  const correspondencePasteArmedRef = useRef(false);
   const [form, setForm] = useState({
     deal_name: deal.deal_name || "",
     company: deal.company || "",
@@ -293,6 +315,19 @@ export default function DealModal({
       }
     },
     [deal.id, onUploadAttachment]
+  );
+
+  const uploadCorrespondenceFile = useCallback(
+    async (file: File) => {
+      setUploadingCorrespondence(true);
+      setCorrespondencePasteError("");
+      try {
+        await onUploadCorrespondence(deal.id, file);
+      } finally {
+        setUploadingCorrespondence(false);
+      }
+    },
+    [deal.id, onUploadCorrespondence]
   );
 
   function armAttachmentPasteTarget() {
@@ -341,18 +376,78 @@ export default function DealModal({
     }
   }
 
-  // Listens for a real ⌘V anywhere in the modal, not just while the hidden
-  // paste target has focus — an image or PDF on the clipboard is
-  // unambiguously meant for the attachments list, so it's picked up
-  // without requiring the Paste button first. A paste that turns out to
-  // hold neither only surfaces an error when the user actually asked to
-  // paste an attachment (armed); otherwise it's silently left alone, since
-  // this modal has plenty of ordinary text fields a routine paste could
-  // just as easily be headed for.
+  function armCorrespondencePasteTarget() {
+    correspondencePasteArmedRef.current = true;
+    correspondencePasteTargetRef.current?.focus();
+  }
+
+  async function handlePasteCorrespondenceClick() {
+    setCorrespondencePasteError("");
+    if (!navigator.clipboard?.read) {
+      setCorrespondencePasteError("Press ⌘V / Ctrl+V now to paste");
+      armCorrespondencePasteTarget();
+      return;
+    }
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const files: File[] = [];
+      const typesSeen: string[] = [];
+      for (const clipboardItem of clipboardItems) {
+        typesSeen.push(...clipboardItem.types);
+        const usableType = clipboardItem.types.find((type) => type.startsWith("image/"));
+        if (!usableType) continue;
+        const blob = await clipboardItem.getType(usableType);
+        const ext = usableType.split("/")[1] || "png";
+        files.push(new File([blob], `pasted-${Date.now()}.${ext}`, { type: usableType }));
+      }
+      if (files.length === 0) {
+        setCorrespondencePasteError(
+          typesSeen.length > 0
+            ? `Press ⌘V / Ctrl+V now to paste (clipboard.read() only saw: ${typesSeen.join(", ")})`
+            : "Press ⌘V / Ctrl+V now to paste"
+        );
+        armCorrespondencePasteTarget();
+        return;
+      }
+      for (const file of files) await uploadCorrespondenceFile(file);
+    } catch {
+      setCorrespondencePasteError("Press ⌘V / Ctrl+V now to paste");
+      armCorrespondencePasteTarget();
+    }
+  }
+
+  // A single shared listener for both sections — two independent listeners
+  // would both try to claim the same raw ⌘V, double-uploading one pasted
+  // image to both attachments and correspondence. Correspondence only ever
+  // claims a paste when explicitly armed (its own Paste button was clicked,
+  // or its hidden target is focused); attachments keeps its original
+  // ambient behavior — claiming any image/PDF on an untargeted ⌘V — as the
+  // fallback when correspondence isn't armed, since that's the older,
+  // heavier-used of the two and changing it would be a real regression.
   useEffect(() => {
     function onPaste(e: ClipboardEvent) {
       const items = e.clipboardData?.items;
       if (!items || items.length === 0) return;
+
+      if (correspondencePasteArmedRef.current) {
+        const files: File[] = [];
+        for (const item of Array.from(items)) {
+          if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+        if (files.length === 0) {
+          const seen = Array.from(items).map((item) => `${item.kind}:${item.type || "(no type)"}`).join(", ");
+          setCorrespondencePasteError(`No image found in what was pasted (found: ${seen})`);
+          return;
+        }
+        e.preventDefault();
+        correspondencePasteArmedRef.current = false;
+        setCorrespondencePasteError("");
+        files.forEach((file) => uploadCorrespondenceFile(file));
+        return;
+      }
+
       const files: File[] = [];
       for (const item of Array.from(items)) {
         if (item.kind !== "file") continue;
@@ -373,7 +468,7 @@ export default function DealModal({
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [uploadAttachmentFile]);
+  }, [uploadAttachmentFile, uploadCorrespondenceFile]);
 
   async function handleDeleteAttachmentClick(attachmentId: number) {
     setDeletingAttachmentId(attachmentId);
@@ -381,6 +476,15 @@ export default function DealModal({
       await onDeleteAttachment(deal.id, attachmentId);
     } finally {
       setDeletingAttachmentId(null);
+    }
+  }
+
+  async function handleDeleteCorrespondenceClick(correspondenceId: number) {
+    setDeletingCorrespondenceId(correspondenceId);
+    try {
+      await onDeleteCorrespondence(deal.id, correspondenceId);
+    } finally {
+      setDeletingCorrespondenceId(null);
     }
   }
 
@@ -675,6 +779,64 @@ export default function DealModal({
             {attachmentPasteError && <div className={styles["card-edit-error"]}>{attachmentPasteError}</div>}
             <textarea
               ref={attachmentPasteTargetRef}
+              className={styles["paste-target"]}
+              aria-hidden="true"
+              tabIndex={-1}
+              value=""
+              onChange={() => {}}
+            />
+          </div>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            <label>Correspondence with client (screenshots)</label>
+            {deal.correspondence.length > 0 && (
+              <div className={styles["attachments-list"]}>
+                {deal.correspondence.map((item) => (
+                  <div key={item.id} className={styles["attachment-row"]}>
+                    <a
+                      href={dealCorrespondenceUrl(item.storage_path)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={styles["attachment-link"]}
+                    >
+                      <span className={styles["attachment-icon"]}>🖼️</span>
+                      <span className={styles["attachment-name"]}>{item.file_name}</span>
+                      <span className={styles["attachment-date"]}>{formatDateTime(item.created_at)}</span>
+                    </a>
+                    <button
+                      type="button"
+                      className={styles["attachment-remove"]}
+                      aria-label="Delete correspondence"
+                      disabled={deletingCorrespondenceId === item.id}
+                      onClick={() => handleDeleteCorrespondenceClick(item.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className={styles["attachment-actions"]}>
+              <label className={styles["attachment-add"]}>
+                + Add file
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files) Array.from(files).forEach((file) => uploadCorrespondenceFile(file));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button type="button" className={styles["attachment-paste-btn"]} onClick={handlePasteCorrespondenceClick}>
+                📋 Paste from clipboard
+              </button>
+              {uploadingCorrespondence && <span className={styles["proposal-pdf-busy"]}>Uploading…</span>}
+            </div>
+            {correspondencePasteError && <div className={styles["card-edit-error"]}>{correspondencePasteError}</div>}
+            <textarea
+              ref={correspondencePasteTargetRef}
               className={styles["paste-target"]}
               aria-hidden="true"
               tabIndex={-1}

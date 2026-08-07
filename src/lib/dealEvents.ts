@@ -1,15 +1,16 @@
-import type { Contact, Deal, DealAttachment, DealPhoto, Property } from "@/lib/salesBoard";
+import type { Contact, Deal, DealAttachment, DealCorrespondence, DealPhoto, Property } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 
 // Shared between every query that needs a deal's events+photos nested
 // (Sales Board list, single-deal fetch) — a photo is reached only by way
 // of its event, never directly off the deal. A deal's contact is likewise
 // reached only by way of its property, never a direct deal column.
-// Attachments (POs/receipts) are the one exception to "reached by way of
-// an event" — they hang directly off the deal, so deal_attachments joins
-// straight onto it rather than nesting under events.
+// Attachments (POs/receipts) and correspondence screenshots are the
+// exceptions to "reached by way of an event" — they hang directly off the
+// deal, so deal_attachments/deal_correspondence join straight onto it
+// rather than nesting under events.
 export const DEAL_EVENTS_SELECT =
-  "*, events(id, name, start_time, end_time, event_type, deal_photos(*)), properties(id, address, latitude, longitude, geocoded_at, primary_contact_id, created_at, contacts(id, first_name, last_name, email, phone, created_at)), deal_attachments(*)";
+  "*, events(id, name, start_time, end_time, event_type, deal_photos(*)), properties(id, address, latitude, longitude, geocoded_at, primary_contact_id, created_at, contacts(id, first_name, last_name, email, phone, created_at)), deal_attachments(*), deal_correspondence(*)";
 
 type RawEvent = {
   id: number;
@@ -22,10 +23,11 @@ type RawEvent = {
 
 type RawProperty = Omit<Property, "contact"> & { contacts: Contact | null };
 
-type RawDeal = Omit<Deal, "events" | "property" | "attachments"> & {
+type RawDeal = Omit<Deal, "events" | "property" | "attachments" | "correspondence"> & {
   events: RawEvent[] | null;
   properties: RawProperty | null;
   deal_attachments: DealAttachment[] | null;
+  deal_correspondence: DealCorrespondence[] | null;
 };
 
 // nextActionTitleByDeal maps deal id -> the title of whichever task is
@@ -35,7 +37,7 @@ type RawDeal = Omit<Deal, "events" | "property" | "attachments"> & {
 // an empty map inline) still works: every deal just gets null.
 export function mapRawDealEvents(rawDeals: unknown[], nextActionTitleByDeal?: Map<number, string>): Deal[] {
   return (rawDeals as RawDeal[]).map((d) => {
-    const { properties, events, deal_attachments, ...rest } = d;
+    const { properties, events, deal_attachments, deal_correspondence, ...rest } = d;
     return {
       ...rest,
       next_action: nextActionTitleByDeal?.get(d.id) ?? null,
@@ -51,6 +53,9 @@ export function mapRawDealEvents(rawDeals: unknown[], nextActionTitleByDeal?: Ma
         }))
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()),
       attachments: (deal_attachments ?? []).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
+      correspondence: (deal_correspondence ?? []).sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ),
     };
