@@ -162,12 +162,30 @@
 }
 
 .table tbody tr {
-  border-left: 3px solid var(--row-color, transparent);
   border-bottom: 1px solid var(--border);
 }
 
 .table tbody tr:last-child {
   border-bottom: none;
+}
+
+.stage-header-row {
+  border-left: 3px solid var(--row-color, transparent);
+  background: var(--surface-2);
+}
+
+.stage-header-row td {
+  padding: 7px 16px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.stage-count {
+  font-weight: 500;
+  color: var(--text-faint);
 }
 
 .deal-cell {

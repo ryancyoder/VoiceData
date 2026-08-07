@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { STAGES, type Stage } from "@/lib/salesBoard";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import styles from "./next-actions.module.css";
@@ -69,6 +69,21 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     }
     return true;
   });
+
+  // visibleRows is already sorted by stage (see page.tsx), so rows for the
+  // same stage are always contiguous — no need to re-group from scratch.
+  const groups: { stage: Stage; rows: NextActionRow[] }[] = [];
+  for (const row of visibleRows) {
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.stage === row.stage) lastGroup.rows.push(row);
+    else groups.push({ stage: row.stage, rows: [row] });
+  }
+
+  // Keyboard nav (focusRow/handleKeyDown) still operates on the flat
+  // visibleRows ordering — this just looks each row's original position up
+  // without a mutable counter, which the refs-in-render lint rule dislikes
+  // when it's threaded through an inline IIFE in the JSX below.
+  const indexByRowId = new Map<number, number>(visibleRows.map((row, i) => [row.id, i]));
 
   function toggleStage(stage: Stage) {
     setStageFilter((prev) => {
@@ -236,25 +251,37 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           </tr>
         </thead>
         <tbody>
-          {visibleRows.map((row, index) => (
-            <tr key={row.id} style={{ ["--row-color" as string]: STAGE_COLORS[row.stage] }}>
-              <td className={styles["deal-cell"]}>{row.dealName}</td>
-              <td className={styles["action-cell"]}>
-                <input
-                  ref={(el) => {
-                    inputRefs.current[row.id] = el;
-                  }}
-                  type="text"
-                  className={styles["action-input"]}
-                  placeholder="No next action — type to add one"
-                  value={drafts[row.id] ?? row.nextActionTitle}
-                  disabled={!!saving[row.id]}
-                  onChange={(e) => setDraft(row.id, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(e, row.id, index)}
-                  onBlur={() => commit(row.id)}
-                />
-              </td>
-            </tr>
+          {groups.map((group) => (
+            <Fragment key={group.stage}>
+              <tr className={styles["stage-header-row"]} style={{ ["--row-color" as string]: STAGE_COLORS[group.stage] }}>
+                <td colSpan={2}>
+                  {group.stage} <span className={styles["stage-count"]}>{group.rows.length}</span>
+                </td>
+              </tr>
+              {group.rows.map((row) => {
+                const index = indexByRowId.get(row.id)!;
+                return (
+                  <tr key={row.id}>
+                    <td className={styles["deal-cell"]}>{row.dealName}</td>
+                    <td className={styles["action-cell"]}>
+                      <input
+                        ref={(el) => {
+                          inputRefs.current[row.id] = el;
+                        }}
+                        type="text"
+                        className={styles["action-input"]}
+                        placeholder="No next action — type to add one"
+                        value={drafts[row.id] ?? row.nextActionTitle}
+                        disabled={!!saving[row.id]}
+                        onChange={(e) => setDraft(row.id, e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, row.id, index)}
+                        onBlur={() => commit(row.id)}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </Fragment>
           ))}
           {visibleRows.length === 0 && (
             <tr>
