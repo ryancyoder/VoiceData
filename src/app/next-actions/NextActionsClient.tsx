@@ -49,15 +49,36 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const pasteTargetRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
-  // Which row's photo cell should claim the next raw ⌘V — a ref, not state,
-  // since it's only ever read inside the paste listener and never drives a
-  // render. Only one row can be armed at a time: clicking a different row's
-  // Paste button just overwrites this rather than needing to disarm the
-  // previous one first.
-  const armedPasteRowIdRef = useRef<number | null>(null);
+  // Which row's photo cell should claim the next raw paste. State, not a
+  // ref, because it also drives whether that row's fallback paste target
+  // renders visibly (see isTouchDevice below) — reads happen at low
+  // frequency (one per Paste-button click), so there's no perf reason to
+  // avoid a render here. Only one row can be armed at a time: clicking a
+  // different row's Paste button just overwrites this rather than needing
+  // to disarm the previous one first.
+  const [armedPasteRowId, setArmedPasteRowId] = useState<number | null>(null);
+  // "Press ⌘V" is meaningless on an iPhone/iPad with no physical keyboard,
+  // and the fallback paste target is normally hidden off-screen (fine for
+  // capturing a real keyboard paste, useless as a touch target) — on a
+  // touch device we instead show that target visibly with tap-to-paste
+  // instructions. A lazy initializer rather than an effect: this never
+  // affects the very first render's output either way (it's only read once
+  // a row is armed, which can't happen before mount), so there's no
+  // server/client hydration mismatch to guard against here.
+  const [isTouchDevice] = useState(() => typeof navigator !== "undefined" && navigator.maxTouchPoints > 0);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const [lightbox, setLightbox] = useState<{ rowId: number; taskId: number; photoId: number; url: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Focuses the armed row's fallback paste target once it's actually in
+  // the DOM — armPasteTarget() itself only sets state, since the visible
+  // variant of this target doesn't exist to focus until after that
+  // state's own render commits.
+  useEffect(() => {
+    if (armedPasteRowId != null) {
+      pasteTargetRefs.current[armedPasteRowId]?.focus();
+    }
+  }, [armedPasteRowId]);
 
   useEffect(() => {
     return () => {
@@ -263,13 +284,19 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   }
 
   function armPasteTarget(rowId: number) {
-    armedPasteRowIdRef.current = rowId;
-    pasteTargetRefs.current[rowId]?.focus();
+    setArmedPasteRowId(rowId);
+  }
+
+  // On a touch device there's no keyboard shortcut to press, and the
+  // fallback target is shown visibly there (see the textarea below) so it
+  // can be tapped-and-held for the OS's native Paste menu instead.
+  function fallbackPasteMessage() {
+    return isTouchDevice ? "Tap the box that appeared below, then tap Paste" : "Press ⌘V / Ctrl+V now to paste";
   }
 
   async function handlePasteClick(rowId: number) {
     if (!navigator.clipboard?.read) {
-      showToast("Press ⌘V / Ctrl+V now to paste");
+      showToast(fallbackPasteMessage());
       armPasteTarget(rowId);
       return;
     }
@@ -293,29 +320,29 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
         // navigator.clipboard.read() only exposes a narrow, browser-defined
         // allowlist of MIME types — an image the OS clipboard holds in a
         // format outside that allowlist never shows up here. Arming the
-        // hidden target and prompting a real ⌘V is the reliable fallback:
-        // it triggers the browser's native paste event, which isn't bound
-        // by that allowlist.
-        showToast("Press ⌘V / Ctrl+V now to paste");
+        // fallback target and prompting a real paste is the reliable
+        // fallback: it triggers the browser's native paste event, which
+        // isn't bound by that allowlist.
+        showToast(fallbackPasteMessage());
         armPasteTarget(rowId);
         return;
       }
       for (const file of files) await attachPhoto(rowId, file);
     } catch {
-      showToast("Press ⌘V / Ctrl+V now to paste");
+      showToast(fallbackPasteMessage());
       armPasteTarget(rowId);
     }
   }
 
   // A single shared listener rather than one per row — with potentially
   // dozens of rows, only whichever one is explicitly armed (its own Paste
-  // button was just clicked) should ever claim a raw ⌘V; an untargeted
+  // button was just clicked) should ever claim a raw paste; an untargeted
   // paste is silently ignored rather than guessing which row it was meant
   // for.
   useEffect(() => {
     function onPaste(e: ClipboardEvent) {
-      const rowId = armedPasteRowIdRef.current;
-      if (rowId == null) return;
+      if (armedPasteRowId == null) return;
+      const rowId = armedPasteRowId;
       const items = e.clipboardData?.items;
       if (!items || items.length === 0) return;
       const files: File[] = [];
@@ -329,12 +356,12 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
         return;
       }
       e.preventDefault();
-      armedPasteRowIdRef.current = null;
+      setArmedPasteRowId(null);
       files.forEach((file) => attachPhoto(rowId, file));
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [attachPhoto]);
+  }, [attachPhoto, armedPasteRowId]);
 
   async function deletePhoto(rowId: number, taskId: number, photoId: number) {
     try {
@@ -500,9 +527,14 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                           ref={(el) => {
                             pasteTargetRefs.current[row.id] = el;
                           }}
-                          className={styles["photo-paste-target"]}
-                          aria-hidden="true"
-                          tabIndex={-1}
+                          className={
+                            armedPasteRowId === row.id && isTouchDevice
+                              ? styles["photo-paste-target-visible"]
+                              : styles["photo-paste-target"]
+                          }
+                          placeholder={armedPasteRowId === row.id && isTouchDevice ? "Tap, then Paste" : undefined}
+                          aria-hidden={!(armedPasteRowId === row.id && isTouchDevice)}
+                          tabIndex={armedPasteRowId === row.id && isTouchDevice ? 0 : -1}
                           value=""
                           onChange={() => {}}
                         />

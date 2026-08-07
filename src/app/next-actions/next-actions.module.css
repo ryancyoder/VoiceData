@@ -325,6 +325,27 @@
   resize: none;
 }
 
+/* On a touch device there's no keyboard shortcut to trigger a paste, so
+   this needs to be an actual visible, tappable target instead — long-press
+   it and the OS's native Paste menu appears, same as any other text field. */
+.photo-paste-target-visible {
+  position: static;
+  width: 120px;
+  height: 30px;
+  padding: 4px 8px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  resize: none;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-family: inherit;
+}
+
 .lightbox {
   position: fixed;
   inset: 0;

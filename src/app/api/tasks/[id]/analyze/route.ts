@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { analyzeTaskText } from "@/lib/analyzeTask";
 
-const TASK_SELECT = '*, deal:"Sales Board"(id, deal_name, company, stage, lost_at)';
+const TASK_SELECT =
+  '*, deal:"Sales Board"(id, deal_name, company, stage, lost_at), photos:task_photos(id, task_id, storage_path, file_name, created_at)';
 
 type RouteParams = { params: Promise<{ id: string }> };
 

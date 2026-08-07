@@ -43,6 +43,7 @@ export interface Task {
   updated_at: string;
   // Present when joined.
   deal: TaskDeal | null;
+  photos: TaskPhoto[];
 }
 
 export interface TaskInput {

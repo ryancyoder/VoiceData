@@ -4,7 +4,8 @@ import TasksClient from "./TasksClient";
 
 export const dynamic = "force-dynamic";
 
-const TASK_SELECT = '*, deal:"Sales Board"(id, deal_name, company, stage, lost_at)';
+const TASK_SELECT =
+  '*, deal:"Sales Board"(id, deal_name, company, stage, lost_at), photos:task_photos(id, task_id, storage_path, file_name, created_at)';
 
 export default async function TasksPage() {
   const [tasksRes, dealsRes] = await Promise.all([

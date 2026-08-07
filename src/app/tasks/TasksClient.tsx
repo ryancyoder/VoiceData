@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import styles from "./tasks.module.css";
 import { fetchWithTimeout } from "@/lib/withTimeout";
-import { TASK_CONTEXTS, formatDealLabel, formatDuration, type Task, type TaskContext, type TaskDeal } from "@/lib/tasks";
+import { TASK_CONTEXTS, formatDealLabel, formatDuration, taskPhotoUrl, type Task, type TaskContext, type TaskDeal } from "@/lib/tasks";
 
 const SUBMIT_TIMEOUT_MS = 15000;
 
@@ -57,6 +57,7 @@ export default function TasksClient({
   const [formError, setFormError] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -340,6 +341,7 @@ export default function TasksClient({
                   <th>Context</th>
                   <th>Start</th>
                   <th>Duration</th>
+                  <th>Photos</th>
                   <th></th>
                 </tr>
               </thead>
@@ -375,6 +377,29 @@ export default function TasksClient({
                     <td>{task.start_date ? formatStartDate(task.start_date) : <span className={styles["no-value"]}>—</span>}</td>
                     <td className={styles["task-duration"]}>
                       {task.duration_hours != null ? formatDuration(task.duration_hours) : <span className={styles["no-value"]}>—</span>}
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {task.photos.length > 0 ? (
+                        <div className={styles["task-photo-strip"]}>
+                          {task.photos.slice(0, 3).map((photo) => (
+                            <button
+                              key={photo.id}
+                              type="button"
+                              className={styles["task-photo-thumb"]}
+                              title={photo.file_name ?? "View photo"}
+                              onClick={() => setLightboxUrl(taskPhotoUrl(photo.storage_path))}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={taskPhotoUrl(photo.storage_path)} alt="" />
+                            </button>
+                          ))}
+                          {task.photos.length > 3 && (
+                            <span className={styles["task-photo-more"]}>+{task.photos.length - 3}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className={styles["no-value"]}>—</span>
+                      )}
                     </td>
                     <td>{task.is_next_action && <span className={styles["next-action-badge"]}>★ Next action</span>}</td>
                   </tr>
@@ -506,6 +531,23 @@ export default function TasksClient({
       <div className={`${styles.toast} ${toast ? styles["is-visible"] : ""}`} role="status" aria-live="polite">
         <span>{toast}</span>
       </div>
+
+      {lightboxUrl && (
+        <div
+          className={styles.lightbox}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setLightboxUrl(null);
+          }}
+        >
+          <div className={styles["lightbox-content"]}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={lightboxUrl} alt="" />
+            <button type="button" className={styles["lightbox-close"]} onClick={() => setLightboxUrl(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
