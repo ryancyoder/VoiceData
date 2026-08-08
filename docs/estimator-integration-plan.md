@@ -77,7 +77,9 @@ create table public.assembly_kits (
 -- Estimates, each optionally linked to a deal + property
 create table public.estimates (
   id            uuid primary key default gen_random_uuid(),
-  deal_id       bigint references public."Sales Board"(id) on delete set null,
+  -- One estimate per deal: unique link, so at most one estimate points at
+  -- a given deal. Nullable so an estimate can exist before it's attached.
+  deal_id       bigint unique references public."Sales Board"(id) on delete set null,
   property_id   bigint references public.properties(id) on delete set null,
   project_name  text default '',
   client_name   text default '',
@@ -150,7 +152,7 @@ Following the existing `NextRequest`/`supabase`/`NextResponse` conventions:
 | `api/estimator/estimates/route.ts` | GET, POST | list / create estimates |
 | `api/estimator/estimates/[id]/route.ts` | GET, PUT, DELETE | load / save / delete one estimate |
 | `api/estimator/estimates/[id]/plan-image/route.ts` | POST, DELETE | upload/remove plan image (Storage) |
-| `api/sales-board/[id]/estimate/route.ts` | GET, POST | the deal's estimate; POST pushes total→`value` + generated PDF→`proposal_pdf_path` |
+| `api/sales-board/[id]/estimate/route.ts` | GET, PUT | the deal's single estimate (one-to-one); PUT upserts on `deal_id` and pushes total→`value` + generated PDF→`proposal_pdf_path` |
 
 ## 5. Frontend port — file by file
 
@@ -204,6 +206,7 @@ helpers.
 
 - Confirm the exact RLS policy shape used on existing tables so new tables
   match (single-tenant anon vs. authenticated).
-- Multiple estimates per deal (versions/revisions) or one-to-one?
+- ~~Multiple estimates per deal (versions/revisions) or one-to-one?~~
+  **Decided: one estimate per deal** (unique `deal_id`).
 - Decide on the `action_history` RLS gap before adding more anon-key tables.
 - Keep the JSON import/export escape hatch, or Supabase-only?
