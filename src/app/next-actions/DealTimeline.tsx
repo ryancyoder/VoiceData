@@ -20,14 +20,26 @@ const TIMELINE_MILESTONES: { type: MilestoneEventType; icon: string }[] = [
 
 const MILESTONE_EVENT_TYPE_SET = new Set<string>(MILESTONE_EVENT_TYPES);
 
-// Mirrors the CSS: .timeline-icon is 34px, and .timeline-lead/.timeline-slot
-// are each a fixed 115px (34px icon + 81px trailing space) — kept in sync
-// here so the connecting line's JS-computed position lines up with the
-// milestone icons' CSS-driven one. This fixed slot width is exactly what
-// keeps milestones a constant distance apart regardless of how many
-// non-milestone events land in the slot alongside them.
-const SLOT_WIDTH = 115;
-const ICON_CENTER = 17;
+// Every non-milestone slot reserves a fixed grid: one dedicated column for
+// Appointments (so they always land in the same spot, lining up vertically
+// across every deal's timeline) plus DOT_CAPACITY more for everything
+// else. These mirror the CSS below (.timeline-event-capacity's grid-
+// template-columns and gap) — kept in sync here so the connecting line's
+// JS-computed position lines up with the milestone icons' CSS-driven one.
+const ICON_WIDTH = 34;
+const ICON_CENTER = ICON_WIDTH / 2;
+const CAPACITY_GAP = 8;
+const DOT_CAPACITY = 3;
+const EVENT_CAPACITY_WIDTH = ICON_WIDTH * (1 + DOT_CAPACITY) + CAPACITY_GAP * DOT_CAPACITY;
+const SLOT_GAP = 10;
+// A milestone's own icon, plus its reserved trailing event capacity — this
+// fixed width is what keeps milestones a constant distance apart no
+// matter how many (or how few) events land in the gap alongside them.
+const SLOT_WIDTH = ICON_WIDTH + SLOT_GAP + EVENT_CAPACITY_WIDTH;
+// Events that predate every milestone get the same reserved capacity,
+// always present even when empty, so milestone 0's position never shifts
+// based on whether any exist.
+const LEAD_WIDTH = EVENT_CAPACITY_WIDTH + SLOT_GAP;
 
 // Calendar event types that get their own icon instead of a plain dot.
 const EVENT_ICONS: Partial<Record<EventType, string>> = {
@@ -125,6 +137,23 @@ export default function DealTimeline({ events }: { events: TimelineEvent[] }) {
     );
   }
 
+  // Appointments always render in their own reserved column (so they line
+  // up vertically across every deal's timeline, not just within one);
+  // everything else fills the DOT_CAPACITY dot columns that follow, in
+  // date order. A gap rarely holds more than one Appointment or more than
+  // DOT_CAPACITY plain events, but if it does, the extras simply render
+  // past the reserved columns rather than being dropped.
+  function renderEventCapacity(nodes: (TimelineNode & { kind: "event" })[]) {
+    const appointments = nodes.filter((n) => n.icon != null);
+    const dots = nodes.filter((n) => n.icon == null);
+    return (
+      <div className={styles["timeline-event-capacity"]}>
+        <div className={styles["timeline-capacity-cell"]}>{appointments.map(renderEventNode)}</div>
+        {dots.map(renderEventNode)}
+      </div>
+    );
+  }
+
   function renderMilestoneNode(node: TimelineNode & { kind: "milestone" }) {
     const milestoneTitle = `${node.type}${node.date ? ` — ${formatNodeDate(node.date)}` : " — not yet reached"}`;
     const milestoneIcon = (
@@ -150,16 +179,13 @@ export default function DealTimeline({ events }: { events: TimelineEvent[] }) {
     <div className={styles.timeline}>
       <div
         className={styles["timeline-line"]}
-        style={{ left: SLOT_WIDTH + ICON_CENTER, width: (milestoneNodes.length - 1) * SLOT_WIDTH }}
+        style={{ left: LEAD_WIDTH + ICON_CENTER, width: (milestoneNodes.length - 1) * SLOT_WIDTH }}
       />
-      {/* A fixed-width lead-in slot for events that predate every dated
-          milestone — always reserved, even when empty, so milestone 0's
-          position never shifts based on whether any exist. */}
-      <div className={styles["timeline-lead"]}>{eventsBefore.map(renderEventNode)}</div>
+      <div className={styles["timeline-lead"]}>{renderEventCapacity(eventsBefore)}</div>
       {milestoneNodes.map((milestone, i) => (
         <div key={milestone.key} className={styles["timeline-slot"]}>
           {renderMilestoneNode(milestone)}
-          {eventsAfter[i].map(renderEventNode)}
+          {renderEventCapacity(eventsAfter[i])}
         </div>
       ))}
     </div>

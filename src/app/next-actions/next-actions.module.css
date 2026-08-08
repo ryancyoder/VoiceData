@@ -422,8 +422,8 @@
   z-index: 0;
 }
 
-/* Each milestone (and the leading slot for events that predate the first
-   milestone) gets a FIXED-width slot — this is what keeps milestones a
+/* Each milestone (and the leading zone for events that predate the first
+   milestone) gets a FIXED-width box — this is what keeps milestones a
    constant distance apart no matter how many non-milestone events land
    in between them. Events after a milestone render inside its own slot,
    never as siblings of the milestones themselves, so they can never
@@ -434,19 +434,40 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  flex: 0 0 115px;
-  /* Without this, flex's default min-width:auto lets overflowing content
-     (a slot with several events crammed in) force the box itself wider
-     than its 115px basis, which is exactly what would push the next
-     milestone out of its fixed position — the bug this layout exists to
-     avoid. Overflowing dots spill past the edge instead, which is the
-     acceptable trade-off. */
-  min-width: 0;
   gap: 10px;
+  /* Without min-width: 0, flex's default min-width: auto lets overflowing
+     content (a slot with more events than its reserved capacity) force
+     the box itself wider, which is exactly what would push the next
+     milestone out of its fixed position — the bug this layout exists to
+     avoid. Overflowing events spill past the edge instead. */
+  min-width: 0;
 }
 
 .timeline-lead {
-  justify-content: flex-end;
+  flex: 0 0 170px;
+}
+
+.timeline-slot {
+  flex: 0 0 204px;
+}
+
+/* Fixed capacity for the non-milestone events in one gap: one dedicated
+   column for Appointments — so they land in the same spot in every deal's
+   timeline, lining up vertically down the whole table — plus three more
+   for everything else, filled in date order. */
+.timeline-event-capacity {
+  display: grid;
+  grid-template-columns: 34px repeat(3, 34px);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.timeline-capacity-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .timeline-node {
