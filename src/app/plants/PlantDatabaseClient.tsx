@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, LayoutGrid, Rows3 } from "lucide-react";
 import type { LibraryItemData, LibraryKind } from "@/lib/design/library";
 import {
   TOP_LEVEL_CATEGORIES,
@@ -66,6 +66,7 @@ export function PlantDatabaseClient() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<LibraryKind>("perspective-stamp");
+  const [layout, setLayout] = useState<"gallery" | "table">("gallery");
   const [adding, setAdding] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -296,6 +297,23 @@ export function PlantDatabaseClient() {
               </button>
             ))}
           </div>
+          <div className="flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
+            {(["gallery", "table"] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setLayout(l)}
+                title={l === "gallery" ? "Gallery view" : "Table view"}
+                aria-label={l === "gallery" ? "Gallery view" : "Table view"}
+                className={`flex items-center justify-center rounded-full px-3 py-1.5 transition-colors ${
+                  layout === l
+                    ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-100"
+                    : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                }`}
+              >
+                {l === "gallery" ? <LayoutGrid size={16} /> : <Rows3 size={16} />}
+              </button>
+            ))}
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -343,7 +361,7 @@ export function PlantDatabaseClient() {
             No {kind === "plan-symbol" ? "symbols" : "plants"} yet.
           </p>
         </div>
-      ) : (
+      ) : layout === "table" ? (
         <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
           <table className="w-full text-sm">
             <thead className="bg-zinc-50 text-left dark:bg-zinc-900">
@@ -369,8 +387,68 @@ export function PlantDatabaseClient() {
             </tbody>
           </table>
         </div>
+      ) : (
+        <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {shown.map((item) => (
+            <GalleryCard
+              key={item.id}
+              item={item}
+              onUpdate={(patch) => updateItem(item.id, patch)}
+              onDelete={() => deleteItem(item.id, item.data?.name ?? "this item")}
+            />
+          ))}
+        </ul>
       )}
     </main>
+  );
+}
+
+function GalleryCard({
+  item,
+  onUpdate,
+  onDelete,
+}: {
+  item: LibraryItem;
+  onUpdate: (patch: Partial<LibraryItemData>) => void;
+  onDelete: () => void;
+}) {
+  const d = item.data ?? ({} as LibraryItemData);
+  const categoryKnown = CATEGORY_OPTIONS.some((c) => c.id === d.category);
+  return (
+    <li className="group relative overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      {/* Image tile — light checkerboard-ish bg so transparent cutouts read well */}
+      <div className="flex aspect-square items-center justify-center bg-[linear-gradient(45deg,#f4f4f5_25%,transparent_25%,transparent_75%,#f4f4f5_75%),linear-gradient(45deg,#f4f4f5_25%,transparent_25%,transparent_75%,#f4f4f5_75%)] bg-[length:16px_16px] bg-[position:0_0,8px_8px] p-3 dark:bg-[linear-gradient(45deg,#27272a_25%,transparent_25%,transparent_75%,#27272a_75%),linear-gradient(45deg,#27272a_25%,transparent_25%,transparent_75%,#27272a_75%)]">
+        {item.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.imageUrl} alt={d.name ?? ""} className="max-h-full max-w-full object-contain" />
+        ) : (
+          <span className="text-xs text-zinc-400">No image</span>
+        )}
+      </div>
+      <div className="border-t border-zinc-100 p-2 dark:border-zinc-800">
+        <EditableCell value={d.name ?? ""} placeholder="Name" onCommit={(v) => onUpdate({ name: v })} />
+        <select
+          value={d.category ?? "custom"}
+          onChange={(e) => onUpdate({ category: e.target.value })}
+          className="mt-1 w-full cursor-pointer rounded border border-transparent bg-transparent px-1.5 py-1 text-xs text-zinc-500 outline-none hover:border-zinc-300 focus:border-blue-400 dark:text-zinc-400 dark:hover:border-zinc-600"
+        >
+          {!categoryKnown && d.category && <option value={d.category}>{d.category}</option>}
+          {CATEGORY_OPTIONS.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <button
+        onClick={onDelete}
+        title="Delete"
+        aria-label={`Delete ${d.name ?? "item"}`}
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-500 opacity-0 shadow-sm transition-opacity hover:text-red-600 group-hover:opacity-100 dark:bg-zinc-950/90 dark:text-zinc-300"
+      >
+        <Trash2 size={15} />
+      </button>
+    </li>
   );
 }
 
