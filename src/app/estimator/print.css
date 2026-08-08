@@ -1,0 +1,55 @@
+@media print {
+  /* Hide everything screen-only */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Show the print view */
+  .hidden.print\:block {
+    display: block !important;
+  }
+
+  body {
+    background: white;
+    font-size: 12pt;
+  }
+
+  /* Ensure print view fills page */
+  #root > .print\:block {
+    display: block !important;
+  }
+
+  /* Remove shadows for print */
+  * {
+    box-shadow: none !important;
+  }
+
+  /* Ensure table borders print */
+  table {
+    border-collapse: collapse;
+  }
+
+  th, td {
+    border: 1px solid #e5e7eb;
+    padding: 8px 12px;
+  }
+
+  thead th {
+    background-color: #166534 !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f9fafb !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .bg-green-800 {
+    background-color: #166534 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
