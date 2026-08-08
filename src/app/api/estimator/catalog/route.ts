@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
+import { catalogPhotoUrl, type CatalogPhoto } from "@/lib/estimator/catalogPhotos";
 
 // The catalog is edited locally in the Catalog Editor and persisted as a
 // whole on Save (matching the app's existing edit-then-save UX), so this is a
-// collection endpoint: GET returns the full catalog + delivery rate, PUT
-// replaces it. Each row's `data` jsonb is the full frontend (camelCase) item.
+// collection endpoint: GET returns the full catalog + delivery rate + photos,
+// PUT replaces items + delivery rate. Each row's `data` jsonb is the full
+// frontend (camelCase) item. Photos are managed separately (per-item routes).
 
 export async function GET() {
-  const [itemsRes, settingsRes] = await Promise.all([
+  const [itemsRes, settingsRes, photosRes] = await Promise.all([
     supabase.from("catalog_items").select("data").order("sort_order", { ascending: true }),
     supabase.from("estimator_settings").select("delivery_rate").eq("id", 1).maybeSingle(),
+    supabase
+      .from("catalog_item_photos")
+      .select("id, catalog_item_id, storage_path, is_cover")
+      .order("created_at", { ascending: true }),
   ]);
 
   if (itemsRes.error) {
@@ -18,11 +24,24 @@ export async function GET() {
   if (settingsRes.error) {
     return NextResponse.json({ error: settingsRes.error.message }, { status: 500 });
   }
+  if (photosRes.error) {
+    return NextResponse.json({ error: photosRes.error.message }, { status: 500 });
+  }
 
   const items = (itemsRes.data ?? []).map((row) => row.data);
   const deliveryRate = settingsRes.data?.delivery_rate ?? 80;
 
-  return NextResponse.json({ items, deliveryRate: Number(deliveryRate) });
+  // Group photos by catalog item id, cover first.
+  const photos: Record<string, CatalogPhoto[]> = {};
+  for (const row of photosRes.data ?? []) {
+    const list = (photos[row.catalog_item_id] ??= []);
+    list.push({ id: row.id, url: catalogPhotoUrl(row.storage_path), is_cover: row.is_cover });
+  }
+  for (const id of Object.keys(photos)) {
+    photos[id].sort((a, b) => Number(b.is_cover) - Number(a.is_cover));
+  }
+
+  return NextResponse.json({ items, deliveryRate: Number(deliveryRate), photos });
 }
 
 interface CatalogItem {
