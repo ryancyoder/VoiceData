@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { DesignClient } from "./client";
+import { DesignListClient } from "./DesignListClient";
 
 export const metadata: Metadata = {
-  title: "Design · VoiceData",
-  description: "Perspective landscape design tool.",
+  title: "Designs · VoiceData",
+  description: "Perspective landscape designs.",
 };
 
-export default function DesignPage() {
-  return <DesignClient />;
+export default function DesignListPage() {
+  return <DesignListClient />;
 }

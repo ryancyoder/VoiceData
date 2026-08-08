@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid';
 import type { PlacedStamp, PerspectiveConfig, ToolMode, HistoryEntry, ViewMode, PlanViewConfig, Point2D, CustomSubcategory, LightSource, LightingConfig, LightPreset } from '../types';
 import { createDefaultPerspective } from '../engine/perspective';
 import { TOP_LEVEL_CATEGORIES } from '../engine/categoryGroups';
-import { saveProjectState, loadProjectState, usePlanSymbolStore } from './useCustomStampStore';
+import { usePlanSymbolStore } from './useCustomStampStore';
 
 interface ProjectState {
   // Background
@@ -601,56 +601,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 }));
 
-// ---- Auto-save project state to IndexedDB ----
-
-const SAVE_KEYS = [
+// ---- Persisted project state ----
+//
+// The non-image project fields that make up a saved design. Image fields
+// (backgroundImage + planView.image/selectionImage/eraseMask +
+// lightingConfig.penMask) are persisted separately to Storage; see
+// projectPersistence.ts, which owns loading a project into this store and the
+// debounced Supabase autosave. (Phase 3 replaced the single-project IndexedDB
+// auto-save/-load that used to live here.)
+export const SAVE_KEYS = [
   'backgroundImage', 'backgroundWidth', 'backgroundHeight',
   'backgroundSaturation', 'backgroundOpacity', 'backgroundBrightness', 'backgroundContrast',
   'perspective', 'stamps', 'planStamps', 'planView', 'planPixelsPerFoot', 'clusterMode',
   'lightingConfig',
   'customSubcategories', 'activeTopCategory', 'activeCategory',
 ] as const;
-
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-useProjectStore.subscribe((state) => {
-  // Debounce saves to avoid thrashing during drag
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    const toSave: Record<string, any> = {};
-    for (const key of SAVE_KEYS) {
-      toSave[key] = state[key];
-    }
-    saveProjectState(toSave);
-  }, 1000);
-});
-
-// ---- Auto-load on startup ----
-
-// Map legacy top-level category ids ('trees'/'plants'/'surfaces') to the new scheme
-const LEGACY_TOP_LEVEL_MAP: Record<string, string> = {
-  trees: 'deciduous',
-  plants: 'perennials',
-  surfaces: 'other',
-};
-
-loadProjectState().then((saved) => {
-  if (!saved) return;
-  const updates: Record<string, any> = {};
-  for (const key of SAVE_KEYS) {
-    if (saved[key] !== undefined) {
-      updates[key] = saved[key];
-    }
-  }
-  // Migrate legacy top-level category ids to the new scheme
-  if (typeof updates.activeTopCategory === 'string' && LEGACY_TOP_LEVEL_MAP[updates.activeTopCategory]) {
-    updates.activeTopCategory = LEGACY_TOP_LEVEL_MAP[updates.activeTopCategory];
-  }
-  if (!TOP_LEVEL_CATEGORIES.find((t) => t.id === updates.activeTopCategory)) {
-    // Unknown top-level id → drop it so default is used
-    delete updates.activeTopCategory;
-  }
-  if (Object.keys(updates).length > 0) {
-    useProjectStore.setState(updates);
-  }
-});

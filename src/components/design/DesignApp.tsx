@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Konva from 'konva';
 import { Toolbar } from './components/Toolbar/Toolbar';
 import { ObjectStrip } from './components/StampLibrary/ObjectStrip';
@@ -10,11 +10,19 @@ import { LightingCanvas } from './components/Lighting/LightingCanvas';
 import { ToolsSidebar } from './components/GestureControls/ToolsSidebar';
 import { PlantTable } from './components/PlantTable';
 import { useProjectStore } from './store/useProjectStore';
+import { initProject, teardownProject } from './store/projectPersistence';
 
-export default function App() {
+export default function App({ projectId }: { projectId: string }) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const viewMode = useProjectStore((s) => s.viewMode);
   const [plantTableOpen, setPlantTableOpen] = useState(false);
+
+  // Load this project into the store and start the Supabase autosave; tear it
+  // down on unmount / project change.
+  useEffect(() => {
+    void initProject(projectId);
+    return () => teardownProject();
+  }, [projectId]);
 
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-gray-50 overflow-hidden">

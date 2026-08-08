@@ -250,9 +250,18 @@ rather than keep a standalone tool:
    components changed. Any Phase‑1 IndexedDB library is migrated up on first
    load. `saveProjectState`/`loadProjectState` stay on IndexedDB (that's Phase 3).
    *(~1 day)*
-3. **Projects + images → Supabase** — `pp_projects` + `pp-designs` bucket; the
-   design list; **all base64 → Storage paths**; rework the autosave. This is the
-   bulk. *(~2–3 days)*
+3. **Projects + images → Supabase — DONE.** `pp_projects` table + `pp-designs`
+   bucket (open RLS / storage policies); `api/design/projects` (GET list / POST
+   create-from-deal), `api/design/projects/[id]` (GET load / PUT autosave doc,
+   never unlinking a deal / DELETE + image cleanup), and `.../[id]/image`
+   (POST/DELETE per field). `/design` is now the design **list**; `/design/[id]`
+   is the editor. The project store's IndexedDB auto-save/-load was replaced by
+   `projectPersistence.ts`: it loads a project into the store, resolves the five
+   image fields (background + plan image/selection/erase-mask + lighting pen
+   mask) from Storage back to data URLs, and runs an **image-aware autosave** —
+   images upload only when they change; the debounced PUT sends just the small
+   `doc` jsonb. Undo/redo stays ephemeral. Any legacy single-project IndexedDB
+   design is migrated up on first list load. *(~2–3 days, the bulk)*
 4. **Deal linkage** — create-from-deal, background-from-`deal_photos`, render
    back as `Site_Plan_Image`, deal-detail integration. *(~1–2 days)*
 
