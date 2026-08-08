@@ -29,12 +29,48 @@ const KINDS: { id: LibraryKind; label: string }[] = [
   { id: "plan-symbol", label: "2D Symbols" },
 ];
 
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(",");
+  const mime = /:(.*?);/.exec(dataUrl.slice(0, comma))?.[1] || "image/png";
+  const bin = atob(dataUrl.slice(comma + 1));
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+// A library item as it appears in an exported JSON (old-app format): metadata
+// plus the image inline as a base64 data URL.
+interface ExportedItem {
+  id?: string;
+  name?: string;
+  category?: string;
+  dataUrl?: string;
+  naturalWidth?: number;
+  naturalHeight?: number;
+  createdAt?: number;
+  botanicalName?: string;
+  commonName?: string;
+  notes?: string;
+}
+
 export function PlantDatabaseClient() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<LibraryKind>("perspective-stamp");
   const [adding, setAdding] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -144,6 +180,95 @@ export function PlantDatabaseClient() {
     [kind],
   );
 
+  // Import a JSON library export (old-app format) into the CURRENT tab's kind.
+  // Sequential with progress — the reliable path for large libraries — and it
+  // skips items already present so it's safe to re-run.
+  const importJson = useCallback(
+    async (file: File) => {
+      let arr: ExportedItem[];
+      try {
+        const parsed = JSON.parse(await file.text());
+        if (!Array.isArray(parsed)) throw new Error("not an array");
+        arr = parsed;
+      } catch {
+        window.alert("That file isn't a valid library export (expected a JSON array).");
+        return;
+      }
+      const existing = new Set(items.map((i) => i.id));
+      const toImport = arr.filter((s) => s && s.dataUrl && !(s.id && existing.has(s.id)));
+      if (toImport.length === 0) {
+        window.alert("Nothing new to import — these items are already in your library.");
+        return;
+      }
+      setImportProgress({ done: 0, total: toImport.length });
+      for (let i = 0; i < toImport.length; i++) {
+        const s = toImport[i];
+        try {
+          const id =
+            typeof s.id === "string" && s.id
+              ? s.id
+              : `${kind === "plan-symbol" ? "plan" : "custom"}-${crypto.randomUUID()}`;
+          const data: LibraryItemData = {
+            name: s.name || "Imported",
+            category: s.category || "custom",
+            naturalWidth: s.naturalWidth || 100,
+            naturalHeight: s.naturalHeight || 100,
+            createdAt: s.createdAt || Date.now(),
+            botanicalName: s.botanicalName,
+            commonName: s.commonName,
+            notes: s.notes,
+          };
+          const form = new FormData();
+          form.append("file", dataUrlToBlob(s.dataUrl as string), `${id}.png`);
+          form.append("id", id);
+          form.append("kind", kind);
+          form.append("data", JSON.stringify(data));
+          const res = await fetch("/api/design/library", { method: "POST", body: form });
+          if (res.ok) {
+            const { item } = (await res.json()) as { item: LibraryItem };
+            setItems((prev) => [...prev, item]);
+          }
+        } catch {
+          /* skip this item, keep going */
+        }
+        setImportProgress({ done: i + 1, total: toImport.length });
+      }
+      setImportProgress(null);
+      if (importInputRef.current) importInputRef.current.value = "";
+    },
+    [items, kind],
+  );
+
+  // Export the current tab's items as a self-contained JSON (images inlined),
+  // matching the old-app format — a portable backup.
+  const exportJson = useCallback(async () => {
+    setExporting(true);
+    try {
+      const rows: ExportedItem[] = await Promise.all(
+        shown.map(async (it) => {
+          let dataUrl = "";
+          if (it.imageUrl) {
+            try {
+              dataUrl = await blobToDataUrl(await (await fetch(it.imageUrl)).blob());
+            } catch {
+              /* leave dataUrl empty on fetch failure */
+            }
+          }
+          return { id: it.id, ...it.data, dataUrl };
+        }),
+      );
+      const blob = new Blob([JSON.stringify(rows)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = kind === "plan-symbol" ? "plan-symbols.json" : "plants.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }, [shown, kind]);
+
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -179,6 +304,27 @@ export function PlantDatabaseClient() {
             className="hidden"
             onChange={(e) => e.target.files && addFiles(e.target.files)}
           />
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && importJson(e.target.files[0])}
+          />
+          <button
+            onClick={exportJson}
+            disabled={exporting || shown.length === 0}
+            className="shrink-0 rounded-full border border-zinc-300 px-3.5 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            {exporting ? "Exporting…" : "Export"}
+          </button>
+          <button
+            onClick={() => importInputRef.current?.click()}
+            disabled={importProgress !== null}
+            className="shrink-0 rounded-full border border-zinc-300 px-3.5 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            {importProgress ? `Importing ${importProgress.done}/${importProgress.total}…` : "Import"}
+          </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={adding}
