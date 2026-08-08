@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   DndContext,
   DragOverlay,
@@ -23,12 +25,15 @@ import PlanView from './PlanView';
 import PrintView from './PrintView';
 import { CATEGORY_COLORS } from '@/lib/estimator/catalog';
 
-export default function App() {
+export default function App({ estimateId }) {
+  const router = useRouter();
   const { catalogItems, deliveryRate, updateDeliveryRate, updateCatalogItem, addCatalogItem, removeCatalogItem, saveCatalog } = useCatalog();
   const { kits, saveKit, removeKit, updateKit } = useAssemblyKits();
 
   const {
     estimate,
+    loading,
+    saveState,
     updateField,
     addGroup,
     updateGroup,
@@ -42,7 +47,6 @@ export default function App() {
     moveItemToGroup,
     addKitToGroup,
     importEstimate,
-    resetEstimate,
     setPlanImage,
     setPlanScale,
     addShape,
@@ -58,7 +62,7 @@ export default function App() {
     totalDelivery,
     taxAmount,
     total,
-  } = useEstimate(deliveryRate);
+  } = useEstimate(deliveryRate, estimateId);
 
   // activeDrag: { type: 'catalog', item } | { type: 'takeoff-group' } | { type: 'assembly-kit', kit } | null
   const [activeDrag, setActiveDrag] = useState(null);
@@ -72,7 +76,7 @@ export default function App() {
   const [savingKitGroupId, setSavingKitGroupId] = useState(null);
   const loadInputRef = useRef(null);
 
-  const activeGroup = estimate.rows.find(r => r.type === 'group' && r.id === activeGroupId) ?? null;
+  const activeGroup = estimate ? (estimate.rows.find(r => r.type === 'group' && r.id === activeGroupId) ?? null) : null;
 
   const openPicker = useCallback(() => setPickerOpen(true), []);
 
@@ -138,6 +142,21 @@ export default function App() {
     e.target.value = '';
   }
 
+  async function handleNewEstimate() {
+    try {
+      const res = await fetch('/api/estimator/estimates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (!res.ok) throw new Error('create failed');
+      const { id } = await res.json();
+      router.push(`/estimator/${id}`);
+    } catch {
+      alert('Could not create a new estimate.');
+    }
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -146,6 +165,15 @@ export default function App() {
       activationConstraint: { delay: 200, tolerance: 5 },
     })
   );
+
+  // Everything below reads `estimate`; hold rendering until it has loaded.
+  if (loading || !estimate) {
+    return (
+      <div className="flex flex-1 min-h-0 items-center justify-center bg-slate-50 text-slate-400 print:hidden">
+        Loading estimate…
+      </div>
+    );
+  }
 
   function handleDragStart(event) {
     const data = event.active.data.current;
@@ -233,34 +261,25 @@ export default function App() {
         {/* Top bar */}
         <header className="flex items-center justify-between px-6 py-3 bg-green-800 text-white shrink-0 shadow">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">🌿</span>
-            <h1 className="text-lg font-bold tracking-tight">Landscape Estimator</h1>
-            <button
-              onClick={async () => {
-                if ('serviceWorker' in navigator) {
-                  const regs = await navigator.serviceWorker.getRegistrations();
-                  await Promise.all(regs.map(r => r.unregister()));
-                }
-                if ('caches' in window) {
-                  const keys = await caches.keys();
-                  await Promise.all(keys.map(k => caches.delete(k)));
-                }
-                window.location.reload();
-              }}
-              className="p-1.5 rounded-lg text-green-300 hover:text-white hover:bg-green-700 transition-colors"
-              title="Force refresh"
+            <Link
+              href="/estimator"
+              className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-green-200 hover:text-white hover:bg-green-700 transition-colors"
+              title="Back to all estimates"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-            </button>
+              Estimates
+            </Link>
+            <span className="text-2xl">🌿</span>
+            <h1 className="text-lg font-bold tracking-tight">Landscape Estimator</h1>
+            <span className="text-xs text-green-200/90 w-16" aria-live="polite">
+              {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Save failed' : ''}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                if (window.confirm('Start a new estimate? All current work will be cleared.')) resetEstimate();
-              }}
+              onClick={handleNewEstimate}
               className="flex items-center gap-2 px-3 py-1.5 bg-green-700 hover:bg-green-600
                          rounded-lg text-sm font-medium transition-colors"
               title="New estimate"

@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { EstimatorClient } from "./client";
-import "./print.css";
+import { EstimateListClient } from "./EstimateListClient";
 
 export const metadata: Metadata = {
   title: "Estimator · VoiceData",
-  description: "Landscape job estimating tool.",
+  description: "Landscape job estimates.",
 };
 
 export default function EstimatorPage() {
-  return <EstimatorClient />;
+  return <EstimateListClient />;
 }

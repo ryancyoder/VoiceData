@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { arrayMove } from '@dnd-kit/sortable';
 import { METACATEGORIES, CATEGORY_METACATEGORY } from './catalog';
 
@@ -294,46 +294,45 @@ export function buildImportedEstimate(data, catalogItems) {
   };
 }
 
-const ESTIMATE_KEY = 'landscape-estimate';
+// Backfill plan sub-fields for estimates saved before those features existed.
+function normalizePlan(plan) {
+  const p = { ...emptyPlan, ...(plan ?? {}) };
+  if (!Array.isArray(p.shapes)) p.shapes = [];
+  if (!Array.isArray(p.plants)) p.plants = [];
+  if (!Array.isArray(p.items)) p.items = [];
+  return p;
+}
 
-export function useEstimate(deliveryRate = 0) {
-  const [estimate, setEstimate] = useState(() => {
-    try {
-      const saved = localStorage.getItem(ESTIMATE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Backfill plan fields for estimates saved before these features were added
-        if (!parsed.plan) return { ...parsed, plan: emptyPlan };
-        if (!parsed.plan.plants) return { ...parsed, plan: { ...parsed.plan, plants: [], items: [] } };
-        // Clear old-format plants (plantType with no catalogId — pre-catalog-symbol model)
-        if (parsed.plan.plants.some(p => p.plantType && !p.catalogId)) {
-          return { ...parsed, plan: { ...parsed.plan, plants: [], items: [] } };
-        }
-        if (!parsed.plan.items) return { ...parsed, plan: { ...parsed.plan, items: [] } };
-        // Backfill deliveryFee on items that have unitsPerLoad but predate the deliveryFee field
-        const backfillItem = item =>
-          (item.unitsPerLoad && item.deliveryFee === undefined)
-            ? { ...item, deliveryFee: true }
-            : item;
-        const backfilledRows = parsed.rows.map(row => {
-          if (row.type === 'group') return { ...row, items: row.items.map(backfillItem) };
-          return backfillItem(row);
-        });
-        if (backfilledRows.some((row, i) =>
-          row !== parsed.rows[i] ||
-          (row.type === 'group' && row.items.some((item, j) => item !== parsed.rows[i].items[j]))
-        )) {
-          return { ...parsed, rows: backfilledRows };
-        }
-        return parsed;
-      }
-    } catch (e) {}
-    return initialEstimate;
-  });
+// Phase 3 persistence: Supabase, one estimate per id. Loaded on mount and
+// autosaved (debounced) as it changes. `estimateId` is required; the hook
+// returns `loading` until the estimate has been fetched.
+export function useEstimate(deliveryRate = 0, estimateId = null) {
+  const [estimate, setEstimate] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saveState, setSaveState] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+  const skipSave = useRef(true); // don't autosave the value we just loaded
+  const saveTimer = useRef(null);
 
   useEffect(() => {
-    try { localStorage.setItem(ESTIMATE_KEY, JSON.stringify(estimate)); } catch (e) {}
-  }, [estimate]);
+    if (!estimateId) { setLoading(false); return; }
+    let active = true;
+    setLoading(true);
+    skipSave.current = true;
+    fetch(`/api/estimator/estimates/${estimateId}`)
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('load failed'))))
+      .then(data => {
+        if (!active) return;
+        const e = data.estimate ?? initialEstimate;
+        setEstimate({ ...initialEstimate, ...e, plan: normalizePlan(e.plan) });
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setEstimate({ ...initialEstimate, plan: normalizePlan() });
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [estimateId]);
 
   const updateField = useCallback((field, value) => {
     setEstimate(prev => ({ ...prev, [field]: value }));
@@ -477,9 +476,22 @@ export function useEstimate(deliveryRate = 0) {
 
   // ── Plan ─────────────────────────────────────────────────────────────────────
 
-  const setPlanImage = useCallback(({ imageDataUrl, imageWidth, imageHeight }) => {
-    setEstimate(prev => ({ ...prev, plan: { ...prev.plan, imageDataUrl, imageWidth, imageHeight } }));
-  }, []);
+  // The plan image is uploaded to Supabase Storage (not stored as a base64
+  // data URL in the estimate). We keep the returned public URL locally for
+  // display; the storage path is tracked on the estimate row server-side.
+  const setPlanImage = useCallback(async ({ file, imageWidth, imageHeight }) => {
+    if (!estimateId || !file) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/estimator/estimates/${estimateId}/plan-image`, { method: 'POST', body: fd });
+      if (!res.ok) throw new Error('upload failed');
+      const { url } = await res.json();
+      setEstimate(prev => ({ ...prev, plan: { ...prev.plan, imageDataUrl: url, imageWidth, imageHeight } }));
+    } catch (e) {
+      console.error('Failed to upload plan image', e);
+    }
+  }, [estimateId]);
 
   const setPlanScale = useCallback((scaleData) => {
     setEstimate(prev => ({ ...prev, plan: { ...prev.plan, scale: scaleData } }));
@@ -692,10 +704,11 @@ export function useEstimate(deliveryRate = 0) {
   }, []);
 
   // ── Computed ─────────────────────────────────────────────────────────────────
+  // Guard every derived value against the pre-load null estimate.
 
-  const allItems = estimate.rows.flatMap(row =>
+  const allItems = estimate ? estimate.rows.flatMap(row =>
     row.type === 'group' ? row.items : row.type === 'item' ? [row] : []
-  );
+  ) : [];
 
   const totalLoads = allItems.reduce((sum, item) => {
     if (!item.deliveryFee || !item.unitsPerLoad || !(item.quantity > 0)) return sum;
@@ -712,11 +725,32 @@ export function useEstimate(deliveryRate = 0) {
   }, {});
   // Delivery charges count as logistics
   metacategoryTotals['LOGISTICS'] = (metacategoryTotals['LOGISTICS'] ?? 0) + totalDelivery;
-  const taxAmount = subtotal * (estimate.taxRate / 100);
+  const taxAmount = subtotal * ((estimate?.taxRate ?? 0) / 100);
   const total = subtotal + taxAmount;
+
+  // Debounced autosave. Runs only after the estimate has loaded; the first
+  // post-load change is skipped so we don't immediately re-save what we read.
+  useEffect(() => {
+    if (loading || !estimate || !estimateId) return;
+    if (skipSave.current) { skipSave.current = false; return; }
+    setSaveState('saving');
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fetch(`/api/estimator/estimates/${estimateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...estimate, deliveryRate, subtotal, total }),
+      })
+        .then(res => setSaveState(res.ok ? 'saved' : 'error'))
+        .catch(() => setSaveState('error'));
+    }, 800);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [estimate, estimateId, loading, deliveryRate, subtotal, total]);
 
   return {
     estimate,
+    loading,
+    saveState,
     allItems,
     updateField,
     addGroup,

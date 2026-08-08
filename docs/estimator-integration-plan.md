@@ -159,13 +159,25 @@ saves, so the catalog is a collection replace and settings ride with it):
 | `api/estimator/kits/route.ts` | GET, POST | list kits / create a kit |
 | `api/estimator/kits/[id]/route.ts` | PATCH, DELETE | update (merge into `data`) / remove kit |
 
-**Phase 3+ (planned):**
+**Phase 3 — DONE** (estimates + estimate list + plan images in Storage):
 
 | Route | Methods | Purpose |
 |---|---|---|
-| `api/estimator/estimates/route.ts` | GET, POST | list / create estimates |
-| `api/estimator/estimates/[id]/route.ts` | GET, PUT, DELETE | load / save / delete one estimate |
-| `api/estimator/estimates/[id]/plan-image/route.ts` | POST, DELETE | upload/remove plan image (Storage) |
+| `api/estimator/estimates/route.ts` | GET, POST | list summaries / create (blank or from body) |
+| `api/estimator/estimates/[id]/route.ts` | GET, PUT, DELETE | load / autosave content / delete (also removes plan image) |
+| `api/estimator/estimates/[id]/plan-image/route.ts` | POST, DELETE | upload/remove plan image in the `estimate-plans` bucket |
+
+Notes: `/estimator` is now the estimate **list**; `/estimator/[id]` is the
+editor (client-only, `next/dynamic ssr:false`). The editor **autosaves**
+(debounced) via PUT; PUT deliberately never touches `deal_id`/`property_id` so
+autosave can't unlink a deal. Plan images upload to Storage on pick — the
+base64-in-jsonb path is gone; `imageDataUrl` is derived from
+`plan_image_path` on read and stripped on write.
+
+**Phase 4 (planned):**
+
+| Route | Methods | Purpose |
+|---|---|---|
 | `api/sales-board/[id]/estimate/route.ts` | GET, PUT | the deal's single estimate (one-to-one); PUT upserts on `deal_id` and pushes total→`value` + generated PDF→`proposal_pdf_path` |
 
 ## 5. Frontend port — file by file

@@ -157,7 +157,10 @@ export default function PlanShapeList({
     reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
-        onSetPlanImage({ imageDataUrl: ev.target.result, imageWidth: img.naturalWidth, imageHeight: img.naturalHeight });
+        // Pass the File itself; the estimate uploads it to Storage rather than
+        // embedding a base64 data URL. The data URL is only used here to read
+        // the image's natural dimensions.
+        onSetPlanImage({ file, imageWidth: img.naturalWidth, imageHeight: img.naturalHeight });
       };
       img.src = ev.target.result;
     };
