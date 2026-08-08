@@ -261,6 +261,9 @@ export default function DealModal({
   // The deal's single estimate: undefined = loading, null = none yet.
   const [estimateInfo, setEstimateInfo] = useState<{ id: string; total: number | null } | null | undefined>(undefined);
   const [creatingEstimate, setCreatingEstimate] = useState(false);
+  // The deal's designs: undefined = loading.
+  const [designs, setDesigns] = useState<{ id: string; name: string }[] | undefined>(undefined);
+  const [creatingDesign, setCreatingDesign] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [parsingAspire, setParsingAspire] = useState(false);
   const [aspireParseError, setAspireParseError] = useState("");
@@ -330,6 +333,30 @@ export default function DealModal({
     } catch {
       setError("Could not create an estimate for this deal.");
       setCreatingEstimate(false);
+    }
+  }, [deal.id, router]);
+
+  // Load this deal's designs (perspective renderings).
+  useEffect(() => {
+    let active = true;
+    setDesigns(undefined);
+    fetch(`/api/sales-board/${deal.id}/design`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("load failed"))))
+      .then((data) => { if (active) setDesigns(data.designs ?? []); })
+      .catch(() => { if (active) setDesigns([]); });
+    return () => { active = false; };
+  }, [deal.id]);
+
+  const handleCreateDesign = useCallback(async () => {
+    setCreatingDesign(true);
+    try {
+      const res = await fetch(`/api/sales-board/${deal.id}/design`, { method: "POST" });
+      if (!res.ok) throw new Error("create failed");
+      const { id } = await res.json();
+      router.push(`/design/${id}`);
+    } catch {
+      setError("Could not create a design for this deal.");
+      setCreatingDesign(false);
     }
   }, [deal.id, router]);
 
@@ -778,6 +805,30 @@ export default function DealModal({
                 >
                   {creatingEstimate ? "Creating…" : "📐 Create estimate"}
                 </button>
+              )}
+            </div>
+          </div>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]} ${styles["estimate-field"]}`}>
+            <label>Designs</label>
+            <div className={styles["estimate-actions"]} style={{ flexWrap: "wrap", gap: 8 }}>
+              {designs === undefined ? (
+                <span className={styles["proposal-pdf-busy"]}>Loading…</span>
+              ) : (
+                <>
+                  {designs.map((d) => (
+                    <Link key={d.id} href={`/design/${d.id}`} className={styles["estimate-open"]}>
+                      🎨 {d.name}
+                    </Link>
+                  ))}
+                  <button
+                    type="button"
+                    className={styles["estimate-create"]}
+                    onClick={handleCreateDesign}
+                    disabled={creatingDesign}
+                  >
+                    {creatingDesign ? "Creating…" : "🎨 New design"}
+                  </button>
+                </>
               )}
             </div>
           </div>

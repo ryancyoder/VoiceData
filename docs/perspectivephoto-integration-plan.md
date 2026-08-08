@@ -262,8 +262,25 @@ rather than keep a standalone tool:
    images upload only when they change; the debounced PUT sends just the small
    `doc` jsonb. Undo/redo stays ephemeral. Any legacy single-project IndexedDB
    design is migrated up on first list load. *(~2–3 days, the bulk)*
-4. **Deal linkage** — create-from-deal, background-from-`deal_photos`, render
-   back as `Site_Plan_Image`, deal-detail integration. *(~1–2 days)*
+4. **Deal linkage — DONE.** `api/sales-board/[id]/design` (GET the deal's
+   designs with thumbnails / POST create-from-deal, seeded with name +
+   `property_id`); a **Designs** section in `DealModal` (open existing / create,
+   navigating into the editor). In the editor, a deal-linked design gets a "Use
+   jobsite photo" button that opens a picker over the deal's photos
+   (`api/design/projects/[id]/deal-photos`, reached via events by deal_id and
+   property_id); the chosen photo is inlined to a data URL as the background and
+   the autosave copies it into the design's own Storage. On export, the
+   flattened render is uploaded as the design's `render` image and becomes the
+   deal thumbnail.
+
+   > **Deviation from the original sketch (deliberate):** renders are stored per
+   > design (`render_path` in `pp-designs`) and surfaced on the deal via the
+   > Designs section, **not** written into `deal_photos` as `Site_Plan_Image`.
+   > That slot is already owned by the estimator as a one-per-deal image with
+   > replace-all-on-reupload semantics; pushing multiple design renders there
+   > would collide (many designs per deal) and the estimator's next upload would
+   > delete them. Per-design `render_path` avoids the clash while still showing
+   > the render on the deal. *(~1–2 days)*
 
 **Rough total: ~5–7 focused days**, same ballpark as the estimator port, each
 phase independently shippable.

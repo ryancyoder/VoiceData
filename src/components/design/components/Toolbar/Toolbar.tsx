@@ -18,20 +18,23 @@ import {
   Table2,
   Lightbulb,
   PenTool,
+  ImagePlus,
 } from 'lucide-react';
 import { useCustomStampStore } from '../../store/useCustomStampStore';
 import { SettingsMenu } from '../SettingsMenu';
 import { PlanDiameterDisplay } from '../GestureControls/ToolsSidebar';
 import Konva from 'konva';
 import { useProjectStore } from '../../store/useProjectStore';
+import { uploadRender } from '../../store/projectPersistence';
 import type { ToolMode } from '../../types';
 
 interface ToolbarProps {
   stageRef: React.RefObject<Konva.Stage | null>;
   onOpenPlantTable?: () => void;
+  onOpenJobsitePhotos?: () => void;
 }
 
-export function Toolbar({ stageRef, onOpenPlantTable }: ToolbarProps) {
+export function Toolbar({ stageRef, onOpenPlantTable, onOpenJobsitePhotos }: ToolbarProps) {
 
   const toolMode = useProjectStore((s) => s.toolMode);
   const setToolMode = useProjectStore((s) => s.setToolMode);
@@ -161,6 +164,9 @@ export function Toolbar({ stageRef, onOpenPlantTable }: ToolbarProps) {
       link.href = dataUrl;
       link.click();
 
+      // Also persist the render as this design's preview (shown on the deal).
+      void uploadRender(dataUrl);
+
       // Restore guides and selection
       guidesLayer.visible(true);
       if (prevSelected) {
@@ -190,6 +196,12 @@ export function Toolbar({ stageRef, onOpenPlantTable }: ToolbarProps) {
       <ToolButton onClick={handleUploadPhoto} label="Upload Photo">
         <Upload size={20} />
       </ToolButton>
+      {/* Pick a background from the deal's jobsite photos (deal-linked only) */}
+      {onOpenJobsitePhotos && (
+        <ToolButton onClick={onOpenJobsitePhotos} label="Use Jobsite Photo">
+          <ImagePlus size={20} />
+        </ToolButton>
+      )}
       {/* Upload plan image */}
       <ToolButton onClick={handleUploadPlan} label="Upload Plan Image">
         <LayoutGrid size={20} />

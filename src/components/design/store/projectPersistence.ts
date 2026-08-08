@@ -82,10 +82,20 @@ function buildDoc(state: StoreState): Record<string, unknown> {
 
 // ---- lifecycle ----
 
+export interface ProjectLink {
+  dealId: number | null;
+  propertyId: number | null;
+}
+
 let currentProjectId: string | null = null;
+let projectLink: ProjectLink = { dealId: null, propertyId: null };
 let loading = false;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribe: (() => void) | null = null;
+
+export function getCurrentProjectId(): string | null {
+  return currentProjectId;
+}
 
 // Per-field cache of the last base64 known to be persisted, so autosave only
 // re-uploads an image when it actually changes.
@@ -100,10 +110,11 @@ const savedImages: Record<ImageField, string | null> = {
 let saving = false;
 let dirtyDuringSave = false;
 
-export async function initProject(projectId: string): Promise<void> {
+export async function initProject(projectId: string): Promise<ProjectLink> {
   teardownProject();
   loading = true;
   currentProjectId = projectId;
+  projectLink = { dealId: null, propertyId: null };
   for (const f of IMAGE_FIELDS) savedImages[f] = null;
 
   // Reset the data fields to their defaults so a previously-open project can't
@@ -117,8 +128,14 @@ export async function initProject(projectId: string): Promise<void> {
     const res = await fetch(`${PROJECTS_API}/${projectId}`);
     if (res.ok) {
       const { project } = (await res.json()) as {
-        project: { doc: Record<string, unknown>; images: Record<ImageField, string | null> };
+        project: {
+          doc: Record<string, unknown>;
+          images: Record<ImageField, string | null>;
+          deal_id: number | null;
+          property_id: number | null;
+        };
       };
+      projectLink = { dealId: project.deal_id ?? null, propertyId: project.property_id ?? null };
       const doc = project.doc ?? {};
 
       const updates: Record<string, unknown> = {};
@@ -168,12 +185,30 @@ export async function initProject(projectId: string): Promise<void> {
     loading = false;
     unsubscribe = useProjectStore.subscribe(scheduleSave);
   }
+  return projectLink;
+}
+
+// Upload the exported render as this project's `render` image (used as the deal
+// thumbnail). Separate from autosave so export can trigger it explicitly.
+export async function uploadRender(dataUrl: string): Promise<boolean> {
+  const pid = currentProjectId;
+  if (!pid) return false;
+  try {
+    const form = new FormData();
+    form.append('field', 'render');
+    form.append('file', dataUrlToBlob(dataUrl), 'render.png');
+    const r = await fetch(`${PROJECTS_API}/${pid}/image`, { method: 'POST', body: form });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
 export function teardownProject(): void {
   if (unsubscribe) { unsubscribe(); unsubscribe = null; }
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   currentProjectId = null;
+  projectLink = { dealId: null, propertyId: null };
   loading = false;
 }
 
