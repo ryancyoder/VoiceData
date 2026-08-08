@@ -113,9 +113,13 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     try {
       const start = new Date();
       const end = new Date(start.getTime() + 60 * 60 * 1000);
+      // Named after the deal (not the milestone) so the calendar block
+      // reads as "Smith Deal" — the milestone itself is already shown via
+      // event_type's badge (e.g. "SOLD").
+      const dealName = typeof data?.deal_name === "string" ? data.deal_name : milestone;
       await supabase.from("events").insert({
         deal_id: Number(id),
-        name: milestone,
+        name: dealName,
         event_type: milestone,
         start_time: start.toISOString(),
         end_time: end.toISOString(),
