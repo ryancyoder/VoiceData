@@ -29,7 +29,7 @@ const MILESTONE_EVENT_TYPE_SET = new Set<string>(MILESTONE_EVENT_TYPES);
 const ICON_WIDTH = 34;
 const ICON_CENTER = ICON_WIDTH / 2;
 const CAPACITY_GAP = 8;
-const DOT_CAPACITY = 3;
+const DOT_CAPACITY = 2;
 const EVENT_CAPACITY_WIDTH = ICON_WIDTH * (1 + DOT_CAPACITY) + CAPACITY_GAP * DOT_CAPACITY;
 const SLOT_GAP = 10;
 // A milestone's own icon, plus its reserved trailing event capacity — this

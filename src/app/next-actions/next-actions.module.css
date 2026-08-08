@@ -444,20 +444,20 @@
 }
 
 .timeline-lead {
-  flex: 0 0 170px;
+  flex: 0 0 128px;
 }
 
 .timeline-slot {
-  flex: 0 0 204px;
+  flex: 0 0 162px;
 }
 
 /* Fixed capacity for the non-milestone events in one gap: one dedicated
    column for Appointments — so they land in the same spot in every deal's
-   timeline, lining up vertically down the whole table — plus three more
+   timeline, lining up vertically down the whole table — plus two more
    for everything else, filled in date order. */
 .timeline-event-capacity {
   display: grid;
-  grid-template-columns: 34px repeat(3, 34px);
+  grid-template-columns: 34px repeat(2, 34px);
   align-items: center;
   gap: 8px;
   min-width: 0;
