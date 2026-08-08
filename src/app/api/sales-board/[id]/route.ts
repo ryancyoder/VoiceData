@@ -110,13 +110,14 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const milestone = body.stage !== undefined ? STAGE_TO_MILESTONE[body.stage] : undefined;
   if (milestone && body.stage !== previousStage) {
     try {
-      const now = new Date().toISOString();
+      const start = new Date();
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
       await supabase.from("events").insert({
         deal_id: Number(id),
         name: milestone,
         event_type: milestone,
-        start_time: now,
-        end_time: now,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
       });
     } catch {
       /* milestone event is supplementary — the stage change itself already saved */
