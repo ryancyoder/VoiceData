@@ -757,9 +757,9 @@ export default function DealModal({
               )}
             </div>
           </div>
-          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]} ${styles["estimate-field"]}`}>
             <label>Estimate</label>
-            <div className={styles["proposal-pdf"]}>
+            <div className={styles["estimate-actions"]}>
               {estimateInfo === undefined ? (
                 <span className={styles["proposal-pdf-busy"]}>Loading…</span>
               ) : estimateInfo ? (
