@@ -89,6 +89,8 @@ create table public.pp_library_items (
 );
 
 -- Designs, each optionally linked to a deal / property / event.
+-- Many designs may point at the same deal (decided) — deal_id is a plain FK,
+-- not unique. This is the opposite of estimates' one-per-deal constraint.
 create table public.pp_projects (
   id                uuid primary key default gen_random_uuid(),
   deal_id           bigint references public."Sales Board"(id) on delete set null,
@@ -255,9 +257,10 @@ phase independently shippable.
 
 - Confirm the `action_history` RLS gap decision before adding the two new
   anon-key tables (§3.3).
-- One design per deal, or many (versions/revisions)? The schema above allows
-  **many** (`deal_id` is a plain FK, not unique) — the opposite of estimates'
-  one-per-deal. Confirm that is intended.
+- ~~One design per deal, or many (versions/revisions)?~~ **Decided: many designs
+  per deal** — `deal_id` is a plain FK, not unique (the opposite of estimates'
+  one-per-deal). The deal's Design row therefore lists/creates multiple, and
+  `api/sales-board/[id]/design` GET returns a list.
 - Should the background always be a copy in `pp-designs`, or a direct reference
   to the existing `deal_photos` object? Referencing avoids duplication but
   couples a design to a photo that could be deleted; copying is safer but
