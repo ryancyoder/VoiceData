@@ -402,7 +402,11 @@
 .timeline-cell {
   width: 960px;
   max-width: 960px;
-  padding: 8px 12px;
+  /* Extra top padding reserves room for .timeline-date's hover popup,
+     which now anchors above its icon — without it, overflow-x: auto
+     (which forces overflow-y to auto too) would clip the popup instead
+     of letting it show cleanly. */
+  padding: 24px 12px 8px;
   overflow-x: auto;
 }
 
@@ -520,13 +524,17 @@ a.timeline-node {
 
 /* Hidden until the node is hovered — icons got bigger specifically to make
    room by not needing a permanently-visible date label underneath every
-   single node. */
+   single node. Anchored above (not below) the icon: .timeline-cell's
+   overflow-x: auto forces overflow-y to auto too (CSS requires both axes
+   to agree once either leaves "visible"), and .timeline-cell's own
+   padding-top is sized to give this room to pop up without either getting
+   clipped by that or needing the cell to scroll to reveal it. */
 .timeline-date {
   position: absolute;
-  top: 100%;
+  bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  margin-top: 5px;
+  margin-bottom: 5px;
   padding: 1px 5px;
   border-radius: 4px;
   background: var(--surface);
