@@ -39,6 +39,10 @@ export interface GalleryEvent {
   propertyAddress: string | null;
   propertyContactLastName: string | null;
   propertyCoverPhotoId: number | null;
+  // A synthetic group holding a deal's event-less Site_Plan_Image photos
+  // (uploaded from the estimator). Rendered with a SITE PLAN badge and no
+  // calendar link / add controls, since it isn't a real calendar event.
+  isSitePlan?: boolean;
 }
 
 interface DealGroup {
@@ -465,45 +469,55 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                         .map((event) => (
                           <div key={event.id} className={styles["event-group"]} data-event-group={event.id}>
                             <div className={styles["event-group-header"]}>
-                              {event.event_type && <span className={styles["event-type-badge"]}>{event.event_type}</span>}
-                              <span className={styles["event-group-name"]}>{event.name ?? "Site visit"}</span>
-                              <span className={styles["event-group-date"]}>
-                                {new Date(event.start_time).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })}
-                              </span>
-                              <Link href={`/calendar?event=${event.id}`} className={styles["event-group-link"]}>
-                                View on Calendar →
-                              </Link>
-                              <span className={styles["event-add-actions"]}>
-                                <label className={styles["event-add-btn"]}>
-                                  + Add
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    disabled={uploadingEventId === event.id}
-                                    onChange={(e) => {
-                                      const files = e.target.files ? Array.from(e.target.files) : [];
-                                      e.target.value = "";
-                                      if (files.length > 0) uploadFilesToEvent(event.id, files);
-                                    }}
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  className={styles["event-paste-btn"]}
-                                  disabled={uploadingEventId === event.id}
-                                  onClick={() => handlePasteButtonClick(event.id)}
-                                >
-                                  📋 Paste
-                                </button>
-                                {uploadingEventId === event.id && (
-                                  <span className={styles["event-upload-status"]}>Uploading…</span>
-                                )}
-                              </span>
+                              {event.isSitePlan ? (
+                                <>
+                                  <span className={styles["event-type-badge"]}>SITE PLAN</span>
+                                  <span className={styles["event-group-name"]}>Site Plan</span>
+                                  <span className={styles["event-group-date"]}>from the estimator</span>
+                                </>
+                              ) : (
+                                <>
+                                  {event.event_type && <span className={styles["event-type-badge"]}>{event.event_type}</span>}
+                                  <span className={styles["event-group-name"]}>{event.name ?? "Site visit"}</span>
+                                  <span className={styles["event-group-date"]}>
+                                    {new Date(event.start_time).toLocaleDateString("en-US", {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    })}
+                                  </span>
+                                  <Link href={`/calendar?event=${event.id}`} className={styles["event-group-link"]}>
+                                    View on Calendar →
+                                  </Link>
+                                  <span className={styles["event-add-actions"]}>
+                                    <label className={styles["event-add-btn"]}>
+                                      + Add
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        disabled={uploadingEventId === event.id}
+                                        onChange={(e) => {
+                                          const files = e.target.files ? Array.from(e.target.files) : [];
+                                          e.target.value = "";
+                                          if (files.length > 0) uploadFilesToEvent(event.id, files);
+                                        }}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      className={styles["event-paste-btn"]}
+                                      disabled={uploadingEventId === event.id}
+                                      onClick={() => handlePasteButtonClick(event.id)}
+                                    >
+                                      📋 Paste
+                                    </button>
+                                    {uploadingEventId === event.id && (
+                                      <span className={styles["event-upload-status"]}>Uploading…</span>
+                                    )}
+                                  </span>
+                                </>
+                              )}
                             </div>
                             {pasteFeedback && pasteFeedback.eventId === event.id && (
                               <div className={styles["event-paste-error"]}>{pasteFeedback.message}</div>
