@@ -114,7 +114,7 @@ export function CatalogClient() {
   }
 
   // ── Photos (immediate, independent of the Save batch) ────────────────────
-  async function uploadPhoto(itemId: string, file: File) {
+  const uploadPhoto = useCallback(async (itemId: string, file: File) => {
     setUploadingPhoto(true);
     try {
       const fd = new FormData();
@@ -131,7 +131,28 @@ export function CatalogClient() {
     } finally {
       setUploadingPhoto(false);
     }
-  }
+  }, []);
+
+  // Paste an image (⌘/Ctrl+V) while the photo manager is open and unlocked.
+  useEffect(() => {
+    if (!managerItemId || locked || unsavedIds.has(managerItemId)) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const clipboardItems = e.clipboardData?.items;
+      if (!clipboardItems) return;
+      for (const ci of clipboardItems) {
+        if (ci.kind === "file" && ci.type.startsWith("image/")) {
+          const file = ci.getAsFile();
+          if (file) {
+            e.preventDefault();
+            uploadPhoto(managerItemId, file);
+          }
+          break;
+        }
+      }
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [managerItemId, locked, unsavedIds, uploadPhoto]);
 
   async function deletePhoto(itemId: string, photoId: string) {
     const prevList = photos[itemId] ?? [];
@@ -505,20 +526,25 @@ export function CatalogClient() {
                         Save the catalog first, then you can add photos to this new item.
                       </p>
                     ) : (
-                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600">
-                        {uploadingPhoto ? "Uploading…" : "+ Add photo"}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          disabled={uploadingPhoto}
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) uploadPhoto(managerItemId, f);
-                            e.target.value = "";
-                          }}
-                        />
-                      </label>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600">
+                          {uploadingPhoto ? "Uploading…" : "+ Add photo"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={uploadingPhoto}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadPhoto(managerItemId, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                          or paste an image (⌘/Ctrl+V)
+                        </span>
+                      </div>
                     )}
                   </div>
                 ) : (
