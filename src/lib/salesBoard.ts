@@ -14,6 +14,13 @@ export const STAGES = [
 
 export type Stage = (typeof STAGES)[number];
 
+// A special photo label. null = an ordinary jobsite photo. "Site_Plan_Image"
+// is the estimator's site plan for a deal — stored as an event-less deal photo
+// (deal_id set, event_id null) so it lives in the deal's gallery without being
+// a calendar event.
+export const SITE_PLAN_IMAGE_TYPE = "Site_Plan_Image";
+export type PhotoType = typeof SITE_PLAN_IMAGE_TYPE | null;
+
 export interface DealPhoto {
   id: number;
   deal_id: number | null;
@@ -27,6 +34,7 @@ export interface DealPhoto {
   media_type: "photo" | "video";
   poster_path: string | null;
   is_outlier: boolean;
+  photo_type: PhotoType;
 }
 
 // A PO or receipt attached directly to a deal — unlike DealPhoto, never
@@ -125,6 +133,10 @@ export interface Deal {
   // There is no direct deal->photo relationship; every photo is reached by
   // way of its event.
   events: DealEvent[];
+  // The deal's site plan image(s) — event-less deal photos marked
+  // "Site_Plan_Image", uploaded from the estimator's Plan view. Kept separate
+  // from `events` photos since they aren't jobsite/calendar photos.
+  site_plan_photos: DealPhoto[];
   // POs, receipts, and other business documents — attached directly to
   // the deal, not by way of an event.
   attachments: DealAttachment[];
