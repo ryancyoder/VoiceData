@@ -45,9 +45,26 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase.from("estimates").update(update).eq("id", id);
+  const { data: saved, error } = await supabase
+    .from("estimates")
+    .update(update)
+    .eq("id", id)
+    .select("deal_id, total")
+    .single();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Keep the linked deal's value in sync with the estimate total. Only push a
+  // positive total, so an empty/just-created estimate never clobbers an
+  // existing deal value (e.g. one imported from Aspire) with 0. Best-effort:
+  // a failure here never fails the estimate save.
+  if (saved?.deal_id != null && saved.total != null && Number(saved.total) > 0) {
+    try {
+      await supabase.from("Sales Board").update({ value: Number(saved.total) }).eq("id", saved.deal_id);
+    } catch {
+      /* value sync is supplementary */
+    }
   }
 
   return NextResponse.json({ ok: true });

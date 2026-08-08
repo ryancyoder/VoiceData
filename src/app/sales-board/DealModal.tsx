@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import styles from "./sales-board.module.css";
 import PropertyPicker from "./PropertyPicker";
 import {
@@ -256,6 +257,10 @@ export default function DealModal({
   onUploadCorrespondence,
   onDeleteCorrespondence,
 }: DealModalProps) {
+  const router = useRouter();
+  // The deal's single estimate: undefined = loading, null = none yet.
+  const [estimateInfo, setEstimateInfo] = useState<{ id: string; total: number | null } | null | undefined>(undefined);
+  const [creatingEstimate, setCreatingEstimate] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [parsingAspire, setParsingAspire] = useState(false);
   const [aspireParseError, setAspireParseError] = useState("");
@@ -303,6 +308,30 @@ export default function DealModal({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+
+  // Load this deal's estimate (if any) to show Open-vs-Create.
+  useEffect(() => {
+    let active = true;
+    setEstimateInfo(undefined);
+    fetch(`/api/sales-board/${deal.id}/estimate`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("load failed"))))
+      .then((data) => { if (active) setEstimateInfo(data.estimate ?? null); })
+      .catch(() => { if (active) setEstimateInfo(null); });
+    return () => { active = false; };
+  }, [deal.id]);
+
+  const handleCreateEstimate = useCallback(async () => {
+    setCreatingEstimate(true);
+    try {
+      const res = await fetch(`/api/sales-board/${deal.id}/estimate`, { method: "POST" });
+      if (!res.ok) throw new Error("create failed");
+      const { id } = await res.json();
+      router.push(`/estimator/${id}`);
+    } catch {
+      setError("Could not create an estimate for this deal.");
+      setCreatingEstimate(false);
+    }
+  }, [deal.id, router]);
 
   const uploadAttachmentFile = useCallback(
     async (file: File) => {
@@ -725,6 +754,30 @@ export default function DealModal({
                     </button>
                   )}
                 </>
+              )}
+            </div>
+          </div>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            <label>Estimate</label>
+            <div className={styles["proposal-pdf"]}>
+              {estimateInfo === undefined ? (
+                <span className={styles["proposal-pdf-busy"]}>Loading…</span>
+              ) : estimateInfo ? (
+                <Link href={`/estimator/${estimateInfo.id}`} className={styles["proposal-pdf-link"]}>
+                  📐 Open estimate
+                  {estimateInfo.total != null
+                    ? ` · ${estimateInfo.total.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`
+                    : ""}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className={styles["proposal-pdf-add"]}
+                  onClick={handleCreateEstimate}
+                  disabled={creatingEstimate}
+                >
+                  {creatingEstimate ? "Creating…" : "+ Create estimate"}
+                </button>
               )}
             </div>
           </div>

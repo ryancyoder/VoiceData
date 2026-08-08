@@ -176,9 +176,25 @@ base64-in-jsonb path is gone; `imageDataUrl` is derived from
 
 **Phase 4 (planned):**
 
+**Phase 4 — DONE** (deal ↔ estimate linkage):
+
 | Route | Methods | Purpose |
 |---|---|---|
-| `api/sales-board/[id]/estimate/route.ts` | GET, PUT | the deal's single estimate (one-to-one); PUT upserts on `deal_id` and pushes total→`value` + generated PDF→`proposal_pdf_path` |
+| `api/sales-board/[id]/estimate/route.ts` | GET, POST | the deal's single estimate — GET returns it (id + total) or null; POST creates one prefilled from the deal (project = deal name, client = property's primary contact, property_id carried over) or returns the existing one (idempotent) |
+
+How linkage works:
+- **Create/open from a deal:** `DealModal` shows an Estimate row — "Open
+  estimate · $total" when one exists, else "+ Create estimate" which POSTs and
+  navigates to `/estimator/[id]`.
+- **Total → deal value:** the estimate autosave (`PUT
+  /api/estimator/estimates/[id]`) syncs the linked deal's `value` to the
+  estimate total — but only when total > 0, so a blank/just-created estimate
+  never clobbers an existing (e.g. Aspire-derived) value with 0.
+- One-per-deal is enforced by the unique `deal_id` constraint.
+
+**Deferred:** auto-generating the proposal **PDF** from `PrintView` into
+`proposal_pdf_path`. Needs headless rendering; the existing manual
+proposal-PDF upload + browser Print flow still cover this. Good follow-up.
 
 ## 5. Frontend port — file by file
 
