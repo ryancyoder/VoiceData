@@ -1,9 +1,24 @@
 import { supabase } from "@/lib/supabaseClient";
-import type { DealPhoto } from "@/lib/salesBoard";
+import { SITE_PLAN_IMAGE_TYPE, type DealPhoto } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import PhotoGalleryClient, { type GalleryEvent } from "./PhotoGalleryClient";
 
 export const dynamic = "force-dynamic";
+
+// A deal's event-less site plan photos, joined to their deal + property so
+// they can be slotted into the album's property→deal grouping.
+type RawSitePlan = DealPhoto & {
+  deal:
+    | {
+        id: number;
+        deal_name: string;
+        company: string | null;
+        stage: string | null;
+        property_id: number | null;
+        properties: { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null } | null;
+      }
+    | null;
+};
 
 type RawEvent = {
   id: number;
@@ -56,5 +71,50 @@ export default async function PhotosPage() {
       propertyCoverPhotoId: e.properties?.cover_photo_id ?? null,
     }));
 
-  return <PhotoGalleryClient events={events} />;
+  // Site plan images are event-less deal photos, so they don't come through the
+  // events query above. Fetch them separately and slot one synthetic "Site
+  // Plan" group per deal into the same property→deal album structure.
+  const { data: sitePlanData, error: sitePlanError } = await supabase
+    .from("deal_photos")
+    .select(
+      '*, deal:"Sales Board"(id, deal_name, company, stage, property_id, properties(id, address, cover_photo_id, contacts(last_name)))'
+    )
+    .eq("photo_type", SITE_PLAN_IMAGE_TYPE)
+    .order("created_at", { ascending: false });
+
+  if (sitePlanError) {
+    throw new Error(`Failed to load site plan photos: ${sitePlanError.message}`);
+  }
+
+  const sitePlansByDeal = new Map<number, RawSitePlan[]>();
+  for (const row of (sitePlanData ?? []) as unknown as RawSitePlan[]) {
+    if (!row.deal) continue;
+    const list = sitePlansByDeal.get(row.deal.id) ?? [];
+    list.push(row);
+    sitePlansByDeal.set(row.deal.id, list);
+  }
+
+  const sitePlanEvents: GalleryEvent[] = Array.from(sitePlansByDeal.entries()).map(([dealId, rows]) => {
+    const deal = rows[0].deal!;
+    return {
+      id: -dealId, // synthetic, negative so it never collides with a real event id
+      name: "Site Plan",
+      start_time: rows[0].created_at,
+      end_time: rows[0].created_at,
+      event_type: null,
+      isSitePlan: true,
+      photos: rows.map(({ deal: _deal, ...photo }) => photo as DealPhoto),
+      dealId,
+      dealName: deal.deal_name,
+      dealCompany: deal.company,
+      dealStage: deal.stage,
+      propertyId: deal.property_id,
+      propertyAddress: deal.properties?.address ?? null,
+      propertyContactLastName: deal.properties?.contacts?.last_name ?? null,
+      propertyCoverPhotoId: deal.properties?.cover_photo_id ?? null,
+    };
+  });
+
+  // Append after real events so a jobsite photo stays the default album cover.
+  return <PhotoGalleryClient events={[...events, ...sitePlanEvents]} />;
 }
