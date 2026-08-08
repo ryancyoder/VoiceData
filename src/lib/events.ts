@@ -3,7 +3,24 @@ import { haversineMeters } from "@/lib/geocode";
 import { DEFAULT_MAX_GAP_MS, DEFAULT_MAX_DISTANCE_METERS } from "@/lib/photoEvents";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 
-export const EVENT_TYPES = ["Appointment", "Consultation", "Design", "Estimating", "Meeting", "Job", "EOM", "Other"] as const;
+export const EVENT_TYPES = [
+  "Appointment",
+  "Consultation",
+  "Design",
+  "Estimating",
+  "Meeting",
+  "Job",
+  "EOM",
+  "Other",
+  // A deal moving to one of these pipeline stages auto-creates a matching
+  // calendar event (see PATCH /api/sales-board/[id]) — these types double
+  // as the deal timeline's fixed milestones.
+  "Proposal Sent",
+  "Sold",
+  "Project Management",
+  "Invoiced",
+  "Paid in Full",
+] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
 

@@ -10,13 +10,9 @@ import styles from "./next-actions.module.css";
 const SAVE_TIMEOUT_MS = 15000;
 
 const STAGE_COLORS: Record<Stage, string> = {
-  Lead: "var(--c-lead)",
-  Propose: "var(--c-propose)",
-  Sent: "var(--c-send)",
+  "Proposal Sent": "var(--c-proposal-sent)",
   Sold: "var(--c-sold)",
-  Scheduled: "var(--c-schedule)",
   "Project Management": "var(--c-pm)",
-  "Job Costing": "var(--c-jobcosting)",
   Invoiced: "var(--c-invoiced)",
   "Paid in Full": "var(--c-paid)",
 };
@@ -31,7 +27,6 @@ export interface NextActionRow {
   nextActionTitle: string;
   nextActionPhotos: TaskPhoto[];
   timelineEvents: TimelineEvent[];
-  stageDates: Partial<Record<Stage, string>>;
 }
 
 export default function NextActionsClient({ initialRows }: { initialRows: NextActionRow[] }) {
@@ -475,7 +470,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                       />
                     </td>
                     <td className={styles["timeline-cell"]}>
-                      <DealTimeline currentStage={row.stage} stageDates={row.stageDates} events={row.timelineEvents} />
+                      <DealTimeline currentStage={row.stage} events={row.timelineEvents} />
                     </td>
                     <td className={styles["photos-cell"]}>
                       <div className={styles["photo-strip"]}>

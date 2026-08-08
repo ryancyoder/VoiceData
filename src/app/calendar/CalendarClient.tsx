@@ -494,7 +494,7 @@ export default function CalendarClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           deal_name: dealName,
-          stage: "Propose",
+          stage: "Proposal Sent",
           property_id: property?.id ?? null,
         }),
       });

@@ -13,13 +13,9 @@ import { compressImage } from "@/lib/compressImage";
 const UPLOAD_TIMEOUT_MS = 60000;
 
 const STAGE_COLORS: Record<Stage, string> = {
-  Lead: "var(--c-lead)",
-  Propose: "var(--c-propose)",
-  Sent: "var(--c-send)",
+  "Proposal Sent": "var(--c-proposal-sent)",
   Sold: "var(--c-sold)",
-  Scheduled: "var(--c-schedule)",
   "Project Management": "var(--c-pm)",
-  "Job Costing": "var(--c-jobcosting)",
   Invoiced: "var(--c-invoiced)",
   "Paid in Full": "var(--c-paid)",
 };

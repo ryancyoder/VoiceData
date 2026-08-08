@@ -14,13 +14,9 @@ import { fetchWithTimeout } from "@/lib/withTimeout";
 const PHOTO_UPLOAD_TIMEOUT_MS = 60000;
 
 const STAGE_COLORS: Record<Stage, string> = {
-  Lead: "var(--c-lead)",
-  Propose: "var(--c-propose)",
-  Sent: "var(--c-send)",
+  "Proposal Sent": "var(--c-proposal-sent)",
   Sold: "var(--c-sold)",
-  Scheduled: "var(--c-schedule)",
   "Project Management": "var(--c-pm)",
-  "Job Costing": "var(--c-jobcosting)",
   Invoiced: "var(--c-invoiced)",
   "Paid in Full": "var(--c-paid)",
 };
@@ -825,7 +821,7 @@ export default function SalesBoardClient({
                     >
                       {"A/Z" + (sortMode === "alpha_asc" ? "▴" : sortMode === "alpha_desc" ? "▾" : "")}
                     </button>
-                    {stage === "Sent" && (
+                    {stage === "Proposal Sent" && (
                       <button
                         type="button"
                         className={`${styles["column-sort-btn"]} ${sortMode.indexOf("date_") === 0 ? styles["is-active"] : ""}`}

@@ -35,10 +35,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "No fields provided to update" }, { status: 400 });
   }
 
-  // Fetched up front (before the update overwrites it) so a stage-history
-  // row is only inserted when the stage is actually changing — a PATCH
-  // that re-sends the same stage shouldn't log a fresh "entered this
-  // stage" timestamp.
+  // Fetched up front (before the update overwrites it) so a milestone
+  // event is only logged when the stage is actually changing — a PATCH
+  // that re-sends the same stage shouldn't create a duplicate event.
   let previousStage: string | undefined;
   if (body.stage !== undefined) {
     const { data: existing, error: existingError } = await supabase
@@ -91,11 +90,21 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     data = updated;
   }
 
+  // A stage change is logged as a calendar event (event_type = the new
+  // stage) — the deal timeline reads these directly as its milestones,
+  // so there's no separate stage-history table to keep in sync.
   if (body.stage !== undefined && body.stage !== previousStage) {
     try {
-      await supabase.from("deal_stage_history").insert({ deal_id: Number(id), stage: body.stage });
+      const now = new Date().toISOString();
+      await supabase.from("events").insert({
+        deal_id: Number(id),
+        name: body.stage,
+        event_type: body.stage,
+        start_time: now,
+        end_time: now,
+      });
     } catch {
-      /* stage history is supplementary — the stage change itself already saved */
+      /* milestone event is supplementary — the stage change itself already saved */
     }
   }
 
