@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { EventType } from "@/lib/events";
+import { MILESTONE_EVENT_TYPES, type EventType, type MilestoneEventType } from "@/lib/events";
 import styles from "./next-actions.module.css";
 
 // The deal timeline's milestones are a fixed, dedicated list — entirely
@@ -10,7 +10,7 @@ import styles from "./next-actions.module.css";
 // the deal (see PATCH /api/sales-board/[id], which creates one of these
 // automatically for the stage transitions that matter), never by the
 // deal's current pipeline stage.
-const TIMELINE_MILESTONES: { type: MilestoneType; icon: string }[] = [
+const TIMELINE_MILESTONES: { type: MilestoneEventType; icon: string }[] = [
   { type: "Proposal Sent", icon: "📤" },
   { type: "Sold", icon: "🤝" },
   { type: "Project Management", icon: "🚧" },
@@ -18,12 +18,7 @@ const TIMELINE_MILESTONES: { type: MilestoneType; icon: string }[] = [
   { type: "Paid in Full", icon: "💰" },
 ];
 
-// These double as calendar event_type values (see EVENT_TYPES in
-// lib/events.ts) — a milestone's date/link comes directly from the
-// earliest matching event.
-export type MilestoneType = "Proposal Sent" | "Sold" | "Project Management" | "Invoiced" | "Paid in Full";
-
-const MILESTONE_EVENT_TYPES = new Set<string>(TIMELINE_MILESTONES.map((m) => m.type));
+const MILESTONE_EVENT_TYPE_SET = new Set<string>(MILESTONE_EVENT_TYPES);
 
 // Calendar event types that get their own icon instead of a plain dot.
 const EVENT_ICONS: Partial<Record<EventType, string>> = {
@@ -38,7 +33,7 @@ export interface TimelineEvent {
 }
 
 type TimelineNode =
-  | { kind: "milestone"; key: string; type: MilestoneType; icon: string; date: string | null; href: string | null; fulfilled: boolean }
+  | { kind: "milestone"; key: string; type: MilestoneEventType; icon: string; date: string | null; href: string | null; fulfilled: boolean }
   | { kind: "event"; key: string; icon: string | null; date: string; href: string; title: string };
 
 function formatNodeDate(iso: string) {
@@ -53,7 +48,7 @@ export default function DealTimeline({ events }: { events: TimelineEvent[] }) {
   // wins.
   const earliestMilestoneEvent = new Map<string, TimelineEvent>();
   for (const event of events) {
-    if (!event.event_type || !MILESTONE_EVENT_TYPES.has(event.event_type)) continue;
+    if (!event.event_type || !MILESTONE_EVENT_TYPE_SET.has(event.event_type)) continue;
     const existing = earliestMilestoneEvent.get(event.event_type);
     if (!existing || new Date(event.start_time).getTime() < new Date(existing.start_time).getTime()) {
       earliestMilestoneEvent.set(event.event_type, event);
@@ -82,7 +77,7 @@ export default function DealTimeline({ events }: { events: TimelineEvent[] }) {
   const eventNodes: (TimelineNode & { kind: "event" })[] = events
     // Milestone-fulfilling events already render as their milestone node
     // above — showing them again as a floating dot would duplicate them.
-    .filter((event) => !event.event_type || !MILESTONE_EVENT_TYPES.has(event.event_type))
+    .filter((event) => !event.event_type || !MILESTONE_EVENT_TYPE_SET.has(event.event_type))
     .map((event) => ({
       kind: "event" as const,
       key: `event-${event.id}`,

@@ -189,6 +189,22 @@
 .event-block.no-deal { background: var(--warn-soft); border-left-color: var(--warn); }
 .event-block.no-location { background: var(--danger-soft); border-left-color: var(--danger); }
 
+/* System-generated (a Sales Board stage change), not entered by hand —
+   a diagonal hatch + dashed border reads as "automatic" at a glance,
+   distinct from the solid blocks of manually-scheduled events. Takes
+   priority over .no-location, since these never carry a location and
+   that's expected, not a problem to flag. */
+.event-block.is-milestone {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--accent-soft) 0,
+    var(--accent-soft) 5px,
+    var(--surface) 5px,
+    var(--surface) 10px
+  );
+  border-left: 3px dashed var(--accent);
+}
+
 .event-resize-handle {
   position: absolute;
   left: 0;

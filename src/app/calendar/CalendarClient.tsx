@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./calendar.module.css";
 import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, type PropertyOption } from "@/lib/salesBoard";
-import { EVENT_TYPES, type EventType } from "@/lib/events";
+import { EVENT_TYPES, isMilestoneEventType, type EventType } from "@/lib/events";
 import PhotoUpload from "./PhotoUpload";
 import EventMediaUpload from "./EventMediaUpload";
 import EventPhotoUpload from "./EventPhotoUpload";
@@ -810,11 +810,13 @@ export default function CalendarClient({
                     role="button"
                     tabIndex={0}
                     className={`${styles["event-block"]} ${
-                      event.latitude == null || event.longitude == null
-                        ? styles["no-location"]
-                        : event.deals.length === 0
-                          ? styles["no-deal"]
-                          : ""
+                      isMilestoneEventType(event.eventType)
+                        ? styles["is-milestone"]
+                        : event.latitude == null || event.longitude == null
+                          ? styles["no-location"]
+                          : event.deals.length === 0
+                            ? styles["no-deal"]
+                            : ""
                     } ${dragPreview?.eventId === event.id ? styles["is-dragging"] : ""}`}
                     style={{
                       top,

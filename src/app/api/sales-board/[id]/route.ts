@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, type DealInput, type Stage } from "@/lib/salesBoard";
 import { upsertPropertyContact } from "@/lib/contacts";
+import type { MilestoneEventType } from "@/lib/events";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -10,7 +11,7 @@ type RouteParams = { params: Promise<{ id: string }> };
 // into one of these creates a calendar event (event_type = the milestone),
 // which is how the timeline's milestones get their dates; the rest of the
 // pipeline's stages simply don't produce a timeline event.
-const STAGE_TO_MILESTONE: Partial<Record<Stage, string>> = {
+const STAGE_TO_MILESTONE: Partial<Record<Stage, MilestoneEventType>> = {
   Sent: "Proposal Sent",
   Sold: "Sold",
   "Project Management": "Project Management",
