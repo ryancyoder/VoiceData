@@ -467,7 +467,6 @@ export function PlantDatabaseClient() {
             <GalleryCard
               key={item.id}
               item={item}
-              onUpdate={(patch) => updateItem(item.id, patch)}
               onDelete={() => deleteItem(item.id, item.data?.name ?? "this item")}
             />
           ))}
@@ -502,42 +501,23 @@ function FilterChip({
   );
 }
 
-function GalleryCard({
-  item,
-  onUpdate,
-  onDelete,
-}: {
-  item: LibraryItem;
-  onUpdate: (patch: Partial<LibraryItemData>) => void;
-  onDelete: () => void;
-}) {
+function GalleryCard({ item, onDelete }: { item: LibraryItem; onDelete: () => void }) {
   const d = item.data ?? ({} as LibraryItemData);
-  const categoryKnown = CATEGORY_OPTIONS.some((c) => c.id === d.category);
   return (
     <li className="group relative overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      {/* Image tile — light checkerboard-ish bg so transparent cutouts read well */}
-      <div className="flex aspect-square items-center justify-center bg-[linear-gradient(45deg,#f4f4f5_25%,transparent_25%,transparent_75%,#f4f4f5_75%),linear-gradient(45deg,#f4f4f5_25%,transparent_25%,transparent_75%,#f4f4f5_75%)] bg-[length:16px_16px] bg-[position:0_0,8px_8px] p-3 dark:bg-[linear-gradient(45deg,#27272a_25%,transparent_25%,transparent_75%,#27272a_75%),linear-gradient(45deg,#27272a_25%,transparent_25%,transparent_75%,#27272a_75%)]">
+      {/* Image tile — light checkerboard-ish bg so transparent cutouts read well.
+          View-only: the name overlays the image; editing lives in the table view. */}
+      <div className="relative flex aspect-square items-center justify-center bg-[linear-gradient(45deg,#f4f4f5_25%,transparent_25%,transparent_75%,#f4f4f5_75%),linear-gradient(45deg,#f4f4f5_25%,transparent_25%,transparent_75%,#f4f4f5_75%)] bg-[length:16px_16px] bg-[position:0_0,8px_8px] p-3 dark:bg-[linear-gradient(45deg,#27272a_25%,transparent_25%,transparent_75%,#27272a_75%),linear-gradient(45deg,#27272a_25%,transparent_25%,transparent_75%,#27272a_75%)]">
         {item.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={item.imageUrl} alt={d.name ?? ""} className="max-h-full max-w-full object-contain" />
         ) : (
           <span className="text-xs text-zinc-400">No image</span>
         )}
-      </div>
-      <div className="border-t border-zinc-100 p-2 dark:border-zinc-800">
-        <EditableCell value={d.name ?? ""} placeholder="Name" onCommit={(v) => onUpdate({ name: v })} />
-        <select
-          value={d.category ?? "custom"}
-          onChange={(e) => onUpdate({ category: e.target.value })}
-          className="mt-1 w-full cursor-pointer rounded border border-transparent bg-transparent px-1.5 py-1 text-xs text-zinc-500 outline-none hover:border-zinc-300 focus:border-blue-400 dark:text-zinc-400 dark:hover:border-zinc-600"
-        >
-          {!categoryKnown && d.category && <option value={d.category}>{d.category}</option>}
-          {CATEGORY_OPTIONS.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+        {/* Title overlay */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-3 pb-2 pt-8">
+          <p className="truncate text-sm font-medium text-white drop-shadow-sm">{d.name || "Untitled"}</p>
+        </div>
       </div>
       <button
         onClick={onDelete}
