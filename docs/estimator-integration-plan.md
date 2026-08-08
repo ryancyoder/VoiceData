@@ -39,40 +39,45 @@ once. Both apps are on Tailwind v4.
 
 ### 3.1 New tables
 
+> **Implemented decision (Phase 2):** catalog items and kits are stored as
+> whole `jsonb` documents rather than exploded into typed columns. The real
+> catalog data is variant-shaped (plain / assembly / wall-assembly, plus
+> optional `planSymbol`, `roundTo`, `description`) and the frontend keys off
+> camelCase field *presence*. A `data jsonb` column is lossless and needs no
+> two-way snake_case↔camelCase mapping. Nothing server-side queries these,
+> so the typed-column version below was dropped in favor of the document
+> shape actually applied by the `estimator_catalog_kits_settings` migration:
+
 ```sql
--- Shared reference catalog (replaces the bundled JSON + dev-only save)
+-- Shared reference catalog (replaces the bundled JSON + dev-only save).
+-- `data` holds the full frontend (camelCase) item.
 create table public.catalog_items (
-  id            text primary key,            -- keep existing ids: 'p1', 'custom-...'
-  name          text not null,
-  category      text not null,
-  unit          text not null default 'ea',
-  unit_price    numeric not null default 0,
-  -- feature flags / assembly fields, mirrors the JSON shape
-  is_assembly       boolean not null default false,
-  takeoff_unit      text,
-  coverage_rate     numeric,
-  round_to          numeric,
-  units_per_load    numeric,
-  delivery_fee      boolean,
-  is_wall_assembly  boolean not null default false,
-  price_per_face_ft   numeric,
-  price_per_linear_ft numeric,
-  plan_symbol   text,
-  sort_order    int not null default 0,
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  id          text primary key,   -- keep existing ids: 'p1', 'custom-...'
+  sort_order  int  not null default 0,
+  data        jsonb not null,
+  updated_at  timestamptz not null default now()
 );
 
--- Reusable assembly kits (was localStorage 'landscape-assembly-kits')
+-- Reusable assembly kits (was localStorage 'landscape-assembly-kits').
+-- `data` holds the full frontend (camelCase) kit incl. its client id.
 create table public.assembly_kits (
-  id            uuid primary key default gen_random_uuid(),
-  name          text not null,
-  description   text default '',
-  color         text,
-  takeoff_unit  text,                         -- 'area' | 'linear' | null
-  items         jsonb not null default '[]',  -- kit line items (denormalized, as today)
-  created_at    timestamptz not null default now()
+  id          text primary key,   -- client-generated 'kit-...'
+  data        jsonb not null,
+  created_at  timestamptz not null default now()
 );
+
+-- Global settings singleton (delivery rate).
+create table public.estimator_settings (
+  id            int primary key default 1,
+  delivery_rate numeric not null default 80,
+  updated_at    timestamptz not null default now(),
+  constraint estimator_settings_singleton check (id = 1)
+);
+```
+
+> `estimates` (Phase 3) keeps typed columns for the relational bits
+> (`deal_id`, `property_id`, `value`, `total`) with `jsonb` for `rows`/`plan`,
+> as below — that split still applies.
 
 -- Estimates, each optionally linked to a deal + property
 create table public.estimates (
@@ -119,16 +124,19 @@ insert into public.estimator_settings (id, delivery_rate) values (1, 80);
 
 ### 3.3 RLS (must match existing tables)
 
-All existing feature tables have RLS **enabled**. New tables must too, with
-policies matching the app's current single-tenant, anon-key access pattern:
+All existing feature tables have RLS **enabled** with a uniform pattern
+(confirmed by inspecting `pg_policies`): four PERMISSIVE policies per table —
+one each for SELECT/INSERT/UPDATE/DELETE — all `using (true)` / `with check
+(true)`, granted to `anon, authenticated`. Fully open, single-tenant. The
+Phase 2 tables replicate this exactly (applied in the migration):
 
 ```sql
 alter table public.catalog_items       enable row level security;
 alter table public.assembly_kits       enable row level security;
-alter table public.estimates           enable row level security;
 alter table public.estimator_settings  enable row level security;
--- then add policies matching the existing tables' policies
--- (confirm the exact USING/WITH CHECK the current tables use before copying)
+-- + four "allow all" policies per table for anon, authenticated
+--   (using true / with check true), matching every existing table.
+-- estimates (Phase 3) will follow the same pattern.
 ```
 
 > **Pre-existing security gap (surface, don't auto-fix):** Supabase's advisor
@@ -142,13 +150,19 @@ alter table public.estimator_settings  enable row level security;
 
 Following the existing `NextRequest`/`supabase`/`NextResponse` conventions:
 
+**Phase 2 — DONE** (simpler than first sketched; the app edits locally then
+saves, so the catalog is a collection replace and settings ride with it):
+
 | Route | Methods | Purpose |
 |---|---|---|
-| `api/estimator/catalog/route.ts` | GET, POST | list / add catalog items |
-| `api/estimator/catalog/[id]/route.ts` | PATCH, DELETE | edit / remove catalog item |
-| `api/estimator/kits/route.ts` | GET, POST | list / save kits |
-| `api/estimator/kits/[id]/route.ts` | PATCH, DELETE | update / remove kit |
-| `api/estimator/settings/route.ts` | GET, PATCH | delivery rate |
+| `api/estimator/catalog/route.ts` | GET, PUT | get full catalog + delivery rate / replace-all on Save (upsert + delete-missing, updates settings) |
+| `api/estimator/kits/route.ts` | GET, POST | list kits / create a kit |
+| `api/estimator/kits/[id]/route.ts` | PATCH, DELETE | update (merge into `data`) / remove kit |
+
+**Phase 3+ (planned):**
+
+| Route | Methods | Purpose |
+|---|---|---|
 | `api/estimator/estimates/route.ts` | GET, POST | list / create estimates |
 | `api/estimator/estimates/[id]/route.ts` | GET, PUT, DELETE | load / save / delete one estimate |
 | `api/estimator/estimates/[id]/plan-image/route.ts` | POST, DELETE | upload/remove plan image (Storage) |

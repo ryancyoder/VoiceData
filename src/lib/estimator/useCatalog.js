@@ -11,36 +11,32 @@ const UNIT_OVERRIDES = {
   edging:             { unit: 'ln ft' },
 };
 
-// Phase 1 persistence: browser localStorage. The bundled JSON is the seed
-// the first time this runs (or if storage is empty/corrupt). Phase 2 moves
-// this to Supabase (`catalog_items` / `estimator_settings`).
-const CATALOG_KEY = 'landscape-catalog';
-
+// Phase 2 persistence: Supabase, via /api/estimator/catalog. The catalog is
+// edited locally and written back as a whole on Save (the app's existing
+// edit-then-save UX). The bundled JSON is only a fallback if the load fails.
 export function useCatalog() {
-  const [items, setItems] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(CATALOG_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed.items) && parsed.items.length) return parsed.items;
-        }
-      } catch { /* fall through to bundled defaults */ }
-    }
-    return defaultCatalog.map(item => ({ ...item }));
-  });
-  const [deliveryRate, setDeliveryRate] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(CATALOG_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (typeof parsed.deliveryRate === 'number') return parsed.deliveryRate;
-        }
-      } catch { /* fall through */ }
-    }
-    return CATALOG_DELIVERY_RATE;
-  });
+  const [items, setItems] = useState([]);
+  const [deliveryRate, setDeliveryRate] = useState(CATALOG_DELIVERY_RATE);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/estimator/catalog')
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('load failed'))))
+      .then(data => {
+        if (!active) return;
+        if (Array.isArray(data.items)) setItems(data.items);
+        if (typeof data.deliveryRate === 'number') setDeliveryRate(data.deliveryRate);
+        setLoaded(true);
+      })
+      .catch(() => {
+        // Fall back to the bundled defaults so the tool is still usable offline.
+        if (!active) return;
+        setItems(defaultCatalog.map(item => ({ ...item })));
+        setLoaded(true);
+      });
+    return () => { active = false; };
+  }, []);
 
   const updateItem = (id, field, value) => {
     setItems(prev =>
@@ -84,15 +80,16 @@ export function useCatalog() {
 
   const saveCatalog = async (currentItems, currentDeliveryRate) => {
     try {
-      localStorage.setItem(
-        CATALOG_KEY,
-        JSON.stringify({ deliveryRate: currentDeliveryRate, items: currentItems }),
-      );
-      return true;
+      const res = await fetch('/api/estimator/catalog', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deliveryRate: currentDeliveryRate, items: currentItems }),
+      });
+      return res.ok;
     } catch {
       return false;
     }
   };
 
-  return { catalogItems: items, deliveryRate, updateDeliveryRate, updateCatalogItem: updateItem, addCatalogItem: addItem, removeCatalogItem: removeItem, saveCatalog };
+  return { catalogItems: items, deliveryRate, loaded, updateDeliveryRate, updateCatalogItem: updateItem, addCatalogItem: addItem, removeCatalogItem: removeItem, saveCatalog };
 }

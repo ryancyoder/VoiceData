@@ -1,22 +1,24 @@
 import { useState, useEffect } from 'react';
 
-const KITS_KEY = 'landscape-assembly-kits';
-
 let idCounter = 0;
 
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+// Phase 2 persistence: Supabase, via /api/estimator/kits. Local state is
+// updated optimistically for a snappy UI; the matching request persists in
+// the background (kits are low-stakes reference data, so a failed write logs
+// rather than blocking the interaction).
 export function useAssemblyKits() {
-  const [kits, setKits] = useState(() => {
-    try {
-      const saved = localStorage.getItem(KITS_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [kits, setKits] = useState([]);
 
   useEffect(() => {
-    try { localStorage.setItem(KITS_KEY, JSON.stringify(kits)); } catch {}
-  }, [kits]);
+    let active = true;
+    fetch('/api/estimator/kits')
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('load failed'))))
+      .then(data => { if (active && Array.isArray(data.kits)) setKits(data.kits); })
+      .catch(() => { /* start empty if kits can't be loaded */ });
+    return () => { active = false; };
+  }, []);
 
   const saveKit = (name, description, groupItems, { color, takeoffUnit } = {}) => {
     const kitItems = groupItems.map(item => {
@@ -56,15 +58,21 @@ export function useAssemblyKits() {
       items: kitItems,
     };
     setKits(prev => [...prev, kit]);
+    fetch('/api/estimator/kits', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(kit) })
+      .catch(err => console.error('Failed to save kit', err));
     return kit.id;
   };
 
   const removeKit = (id) => {
     setKits(prev => prev.filter(k => k.id !== id));
+    fetch(`/api/estimator/kits/${id}`, { method: 'DELETE' })
+      .catch(err => console.error('Failed to delete kit', err));
   };
 
   const updateKit = (id, changes) => {
     setKits(prev => prev.map(k => k.id === id ? { ...k, ...changes } : k));
+    fetch(`/api/estimator/kits/${id}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(changes) })
+      .catch(err => console.error('Failed to update kit', err));
   };
 
   return { kits, saveKit, removeKit, updateKit };
