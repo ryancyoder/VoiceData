@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useCustomStampStore } from '../../store/useCustomStampStore';
 import { SettingsMenu } from '../SettingsMenu';
+import { HelpPanel } from '../HelpPanel';
 import { PlanDiameterDisplay } from '../GestureControls/ToolsSidebar';
 import Konva from 'konva';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -323,6 +324,9 @@ export function Toolbar({ stageRef, onOpenPlantTable, onOpenJobsitePhotos }: Too
       <ToolButton onClick={handleExport} label="Export PNG" accent>
         <Download size={20} />
       </ToolButton>
+
+      {/* Help & shortcuts */}
+      <HelpPanel />
 
       {/* Settings */}
       <SettingsMenu />
