@@ -73,6 +73,11 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const [events, setEvents] = useState<GalleryEvent[]>(initialEvents);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  // Overlay captions on the fronts of the images — a viewing preference,
+  // persisted per browser.
+  const [showCaptions, setShowCaptions] = useState(false);
+  const [savingCaptionId, setSavingCaptionId] = useState<number | null>(null);
+  const [captionDraft, setCaptionDraft] = useState("");
   // Optimistic overlay on top of the property's stored cover_photo_id —
   // keyed by property key rather than folded into `events`, since the
   // cover choice lives on the property row, not any individual event.
@@ -197,6 +202,11 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [activeIndex, activePhotos.length]);
 
+  // Keep the lightbox caption editor in sync with whichever photo is open.
+  useEffect(() => {
+    setCaptionDraft(activePhoto?.caption ?? "");
+  }, [activePhoto?.id]);
+
   function openAlbum(key: string) {
     setActivePropertyKey(key);
     setActiveIndex(null);
@@ -205,6 +215,45 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   function backToAlbums() {
     setActivePropertyKey(null);
     setActiveIndex(null);
+  }
+
+  useEffect(() => {
+    try {
+      setShowCaptions(localStorage.getItem("gallery-show-captions") === "1");
+    } catch {
+      /* no persisted preference */
+    }
+  }, []);
+
+  function toggleCaptions() {
+    setShowCaptions((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("gallery-show-captions", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
+  async function saveCaption(photo: DealPhoto, raw: string) {
+    const caption = raw.trim() || null;
+    if (caption === (photo.caption ?? null)) return;
+    setSavingCaptionId(photo.id);
+    try {
+      const res = await fetch(`/api/photos/${photo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caption }),
+      });
+      if (!res.ok) throw new Error("Failed to save caption");
+      setEvents((es) => es.map((e) => ({ ...e, photos: e.photos.map((p) => (p.id === photo.id ? { ...p, caption } : p)) })));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save caption");
+    } finally {
+      setSavingCaptionId(null);
+    }
   }
 
   async function handleDelete(photo: DealPhoto) {
@@ -377,6 +426,17 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
             )}
           </p>
         </div>
+        {propertyGroups.length > 0 && (
+          <button
+            type="button"
+            className={`${styles["caption-toggle"]} ${showCaptions ? styles["is-active"] : ""}`}
+            onClick={toggleCaptions}
+            aria-pressed={showCaptions}
+            title="Overlay captions on the images"
+          >
+            {showCaptions ? "🏷️ Captions on" : "🏷️ Captions off"}
+          </button>
+        )}
       </div>
 
       {!activeProperty && propertyGroups.length > 0 && (
@@ -546,6 +606,9 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                             ⚠
                                           </span>
                                         )}
+                                        {showCaptions && photo.caption && (
+                                          <span className={styles["thumb-caption-overlay"]}>{photo.caption}</span>
+                                        )}
                                       </span>
                                     </button>
                                     {activeProperty.propertyId != null && (
@@ -615,6 +678,20 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
             <div className={styles["lightbox-head"]}>
               <div className={styles["lightbox-head-main"]}>
                 <div className={styles["lightbox-title"]}>{activeProperty.propertyLabel}</div>
+                <input
+                  className={styles["lightbox-caption-input"]}
+                  placeholder="Add a caption…"
+                  value={captionDraft}
+                  disabled={savingCaptionId === activePhoto.id}
+                  onChange={(e) => setCaptionDraft(e.target.value)}
+                  onBlur={() => saveCaption(activePhoto, captionDraft)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                />
               </div>
               <div className={styles["lightbox-actions"]}>
                 <button
