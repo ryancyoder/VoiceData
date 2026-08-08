@@ -539,22 +539,14 @@ a.timeline-node {
   transition: opacity 0.12s ease;
 }
 
-.timeline-node:hover .timeline-date {
+/* :focus-visible mirrors DealCard's .card-hover-tooltip pattern
+   (sales-board.module.css) — that tooltip reveals correctly on touch
+   devices via plain :hover/:focus-visible with no touch-specific
+   workaround, so the timeline nodes (all real <a> links, natively
+   focusable) match that same proven approach instead of reinventing one. */
+.timeline-node:hover .timeline-date,
+.timeline-node:focus-visible .timeline-date {
   opacity: 1;
-}
-
-/* A device whose primary input has no real hover state (touchscreens)
-   would never trigger the rule above — show dates permanently there
-   instead. Deliberately a CSS media feature, not JS touch-detection: a
-   JS check reads differently on the server (no navigator) than on a
-   touch client, which is a hydration mismatch React won't patch up,
-   silently leaving the server's "hide it" version stuck even on real
-   touch devices. A media query is resolved purely client-side per
-   render, so there's no server/client value to disagree over. */
-@media (hover: none) {
-  .timeline-date {
-    opacity: 1;
-  }
 }
 
 .toast {
