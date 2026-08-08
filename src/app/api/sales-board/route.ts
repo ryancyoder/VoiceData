@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
-import { STAGES, type DealInput } from "@/lib/salesBoard";
+import { STAGES, SITE_PLAN_IMAGE_TYPE, type DealInput, type DealPhoto } from "@/lib/salesBoard";
 import { upsertPropertyContact } from "@/lib/contacts";
 import { mapRawDealEvents, DEAL_EVENTS_SELECT } from "@/lib/dealEvents";
 
 export async function GET() {
-  const [dealsRes, nextActionsRes] = await Promise.all([
+  const [dealsRes, nextActionsRes, sitePlansRes] = await Promise.all([
     supabase.from("Sales Board").select(DEAL_EVENTS_SELECT).order("created_at", { ascending: true }),
     supabase.from("tasks").select("deal_id, title").eq("is_next_action", true),
+    supabase.from("deal_photos").select("*").eq("photo_type", SITE_PLAN_IMAGE_TYPE).order("created_at", { ascending: false }),
   ]);
 
   if (dealsRes.error) {
@@ -16,13 +17,25 @@ export async function GET() {
   if (nextActionsRes.error) {
     return NextResponse.json({ error: nextActionsRes.error.message }, { status: 500 });
   }
+  if (sitePlansRes.error) {
+    return NextResponse.json({ error: sitePlansRes.error.message }, { status: 500 });
+  }
 
   const nextActionByDeal = new Map<number, string>();
   for (const row of (nextActionsRes.data ?? []) as { deal_id: number | null; title: string }[]) {
     if (row.deal_id != null) nextActionByDeal.set(row.deal_id, row.title);
   }
 
-  return NextResponse.json({ deals: mapRawDealEvents(dealsRes.data ?? [], nextActionByDeal) });
+  const sitePlanByDeal = new Map<number, DealPhoto[]>();
+  for (const photo of (sitePlansRes.data ?? []) as DealPhoto[]) {
+    if (photo.deal_id != null) {
+      const list = sitePlanByDeal.get(photo.deal_id) ?? [];
+      list.push(photo);
+      sitePlanByDeal.set(photo.deal_id, list);
+    }
+  }
+
+  return NextResponse.json({ deals: mapRawDealEvents(dealsRes.data ?? [], nextActionByDeal, sitePlanByDeal) });
 }
 
 export async function POST(req: NextRequest) {
@@ -82,6 +95,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // A brand-new deal has no events, attachments, or correspondence yet.
-  return NextResponse.json({ deal: { ...data, events: [], attachments: [], correspondence: [] } }, { status: 201 });
+  // A brand-new deal has no events, photos, attachments, or correspondence yet.
+  return NextResponse.json(
+    { deal: { ...data, events: [], site_plan_photos: [], attachments: [], correspondence: [] } },
+    { status: 201 }
+  );
 }

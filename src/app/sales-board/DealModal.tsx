@@ -928,6 +928,40 @@ export default function DealModal({
             <textarea id="dm-description" rows={3} value={form.proposal_description} onChange={(e) => set("proposal_description", e.target.value)} />
           </div>
 
+          {(deal.site_plan_photos ?? []).length > 0 && (
+            <div className={styles["photo-events"]}>
+              <div className={styles["photo-event-group"]}>
+                <div className={styles["photo-event-header"]}>
+                  <span className={styles["event-type-badge"]}>SITE PLAN</span>
+                  <span className={styles["photo-event-name"]}>Site Plan</span>
+                  <span className={styles["photo-event-date"]}>from the estimator</span>
+                </div>
+                <div className={styles["photo-row"]}>
+                  {(deal.site_plan_photos ?? []).map((photo) => {
+                    const url = dealThumbUrl(photo);
+                    return (
+                      <a
+                        key={photo.id}
+                        className={styles["photo-thumb"]}
+                        href={url ?? undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open site plan"
+                      >
+                        {url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={url} alt="Site plan" />
+                        ) : (
+                          <span className={styles["photo-thumb-placeholder"]}>🗺</span>
+                        )}
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className={styles["photo-events"]}>
             {deal.events
               .filter((event) => event.photos.length > 0)

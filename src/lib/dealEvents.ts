@@ -35,12 +35,17 @@ type RawDeal = Omit<Deal, "events" | "property" | "attachments" | "correspondenc
 // no next_action column of its own to select, so this is the only way to
 // populate Deal.next_action. Omitted entirely (rather than defaulted to
 // an empty map inline) still works: every deal just gets null.
-export function mapRawDealEvents(rawDeals: unknown[], nextActionTitleByDeal?: Map<number, string>): Deal[] {
+export function mapRawDealEvents(
+  rawDeals: unknown[],
+  nextActionTitleByDeal?: Map<number, string>,
+  sitePlanPhotosByDeal?: Map<number, DealPhoto[]>
+): Deal[] {
   return (rawDeals as RawDeal[]).map((d) => {
     const { properties, events, deal_attachments, deal_correspondence, ...rest } = d;
     return {
       ...rest,
       next_action: nextActionTitleByDeal?.get(d.id) ?? null,
+      site_plan_photos: sitePlanPhotosByDeal?.get(d.id) ?? [],
       property: properties ? { ...properties, contact: properties.contacts ?? null } : null,
       events: (events ?? [])
         .map((e) => ({

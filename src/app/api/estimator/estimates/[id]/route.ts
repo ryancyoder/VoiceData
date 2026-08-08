@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { mapEstimateContent, type EstimateRow } from "@/lib/estimator/estimateMap";
 import { ESTIMATE_PLANS_BUCKET } from "@/lib/estimator/estimatePlan";
+import { dealPhotoUrl, SITE_PLAN_IMAGE_TYPE } from "@/lib/salesBoard";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -16,7 +17,23 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "estimate not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ estimate: mapEstimateContent(data as EstimateRow) });
+  const estimate = mapEstimateContent(data as EstimateRow);
+
+  // When linked to a deal, the plan image is the deal's Site_Plan_Image photo
+  // (not the estimate-plans bucket) — resolve it so the Plan view shows it.
+  if (data.deal_id != null) {
+    const { data: sitePlan } = await supabase
+      .from("deal_photos")
+      .select("storage_path")
+      .eq("deal_id", data.deal_id)
+      .eq("photo_type", SITE_PLAN_IMAGE_TYPE)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    (estimate.plan as Record<string, unknown>).imageDataUrl = sitePlan ? dealPhotoUrl(sitePlan.storage_path) : null;
+  }
+
+  return NextResponse.json({ estimate });
 }
 
 // Save an estimate's content (autosaved from the editor). Deliberately does
