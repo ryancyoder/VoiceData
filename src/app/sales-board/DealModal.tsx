@@ -763,7 +763,7 @@ export default function DealModal({
               {estimateInfo === undefined ? (
                 <span className={styles["proposal-pdf-busy"]}>Loading…</span>
               ) : estimateInfo ? (
-                <Link href={`/estimator/${estimateInfo.id}`} className={styles["proposal-pdf-link"]}>
+                <Link href={`/estimator/${estimateInfo.id}`} className={styles["estimate-open"]}>
                   📐 Open estimate
                   {estimateInfo.total != null
                     ? ` · ${estimateInfo.total.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`
@@ -772,11 +772,11 @@ export default function DealModal({
               ) : (
                 <button
                   type="button"
-                  className={styles["proposal-pdf-add"]}
+                  className={styles["estimate-create"]}
                   onClick={handleCreateEstimate}
                   disabled={creatingEstimate}
                 >
-                  {creatingEstimate ? "Creating…" : "+ Create estimate"}
+                  {creatingEstimate ? "Creating…" : "📐 Create estimate"}
                 </button>
               )}
             </div>
