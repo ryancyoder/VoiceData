@@ -841,32 +841,41 @@
 .proposal-pdf-busy { font-size: 0.72rem; color: var(--text-muted); }
 
 /* Estimate controls — deliberately NOT styled like the dashed file-upload
-   buttons above them, so "Create estimate" is never mistaken for "Upload PDF". */
-.estimate-open {
-  display: inline-flex;
+   buttons above them, so "Create estimate" is never mistaken for "Upload PDF".
+   Clearly separated from the Proposal PDF row above and given a large,
+   full-width tap target so it can't be mis-tapped on mobile. */
+.estimate-field {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  position: relative;
+  z-index: 1;
+}
+.estimate-actions { display: flex; margin-top: 6px; }
+.estimate-open,
+.estimate-create {
+  display: flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 42px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+.estimate-open {
   background: var(--accent-soft);
   border: 1px solid var(--accent);
-  border-radius: 6px;
-  padding: 5px 10px;
-  font-size: 0.76rem;
-  font-weight: 600;
   color: var(--accent);
   text-decoration: none;
 }
 .estimate-open:hover { filter: brightness(0.97); }
 .estimate-create {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
   background: var(--accent);
   color: var(--bg);
   border: none;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 0.78rem;
-  font-weight: 600;
   cursor: pointer;
 }
 .estimate-create:hover { filter: brightness(1.06); }
