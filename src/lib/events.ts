@@ -12,9 +12,10 @@ export const EVENT_TYPES = [
   "Job",
   "EOM",
   "Other",
-  // A deal moving to one of these pipeline stages auto-creates a matching
-  // calendar event (see PATCH /api/sales-board/[id]) — these types double
-  // as the deal timeline's fixed milestones.
+  // Certain Sales Board stage transitions auto-create a matching calendar
+  // event (see PATCH /api/sales-board/[id]) — these types double as the
+  // deal timeline's fixed milestones, entirely decoupled from the real
+  // pipeline stages.
   "Proposal Sent",
   "Sold",
   "Project Management",

@@ -49,13 +49,21 @@ export async function POST(req: NextRequest) {
       aspire_link: body.aspire_link?.trim() || null,
       property_id: propertyId,
       value: body.value ?? null,
-      stage: body.stage ?? "Proposal Sent",
+      stage: body.stage ?? "Lead",
     })
     .select()
     .single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Seeds this deal's timeline with its starting stage — best-effort, never
+  // blocks deal creation on failure.
+  try {
+    await supabase.from("deal_stage_history").insert({ deal_id: data.id, stage: data.stage });
+  } catch {
+    /* stage history is supplementary — the deal itself is already saved */
   }
 
   // A contact belongs to the property, not the deal — silently skipped

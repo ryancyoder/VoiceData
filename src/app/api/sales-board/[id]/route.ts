@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
-import { STAGES, type DealInput } from "@/lib/salesBoard";
+import { STAGES, type DealInput, type Stage } from "@/lib/salesBoard";
 import { upsertPropertyContact } from "@/lib/contacts";
 
 type RouteParams = { params: Promise<{ id: string }> };
+
+// Only these stage transitions represent a deal-timeline milestone — the
+// pipeline itself has more stages than the timeline cares to show. Moving
+// into one of these creates a calendar event (event_type = the milestone),
+// which is how the timeline's milestones get their dates; the rest of the
+// pipeline's stages simply don't produce a timeline event.
+const STAGE_TO_MILESTONE: Partial<Record<Stage, string>> = {
+  Sent: "Proposal Sent",
+  Sold: "Sold",
+  "Project Management": "Project Management",
+  Invoiced: "Invoiced",
+  "Paid in Full": "Paid in Full",
+};
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
@@ -90,16 +103,18 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     data = updated;
   }
 
-  // A stage change is logged as a calendar event (event_type = the new
-  // stage) — the deal timeline reads these directly as its milestones,
-  // so there's no separate stage-history table to keep in sync.
-  if (body.stage !== undefined && body.stage !== previousStage) {
+  // A stage change that lands on one of the timeline's milestones is
+  // logged as a calendar event (event_type = the milestone) — the deal
+  // timeline reads these directly, so there's no separate stage-history
+  // table to keep in sync.
+  const milestone = body.stage !== undefined ? STAGE_TO_MILESTONE[body.stage] : undefined;
+  if (milestone && body.stage !== previousStage) {
     try {
       const now = new Date().toISOString();
       await supabase.from("events").insert({
         deal_id: Number(id),
-        name: body.stage,
-        event_type: body.stage,
+        name: milestone,
+        event_type: milestone,
         start_time: now,
         end_time: now,
       });

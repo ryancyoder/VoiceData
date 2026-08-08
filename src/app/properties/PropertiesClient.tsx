@@ -9,9 +9,13 @@ import { STAGES, type Stage } from "@/lib/salesBoard";
 import type { PropertyRow } from "./page";
 
 const STAGE_COLORS: Record<Stage, string> = {
-  "Proposal Sent": "var(--c-proposal-sent)",
+  Lead: "var(--c-lead)",
+  Propose: "var(--c-propose)",
+  Sent: "var(--c-send)",
   Sold: "var(--c-sold)",
+  Scheduled: "var(--c-schedule)",
   "Project Management": "var(--c-pm)",
+  "Job Costing": "var(--c-jobcosting)",
   Invoiced: "var(--c-invoiced)",
   "Paid in Full": "var(--c-paid)",
 };

@@ -1,27 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { STAGES, type Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import styles from "./next-actions.module.css";
 
-// A dedicated, timeline-only list of milestones — deliberately separate
-// from the Sales Board's STAGES array (which drives the actual pipeline
-// columns), so this list's icons/membership can be trimmed or extended
-// later without touching the pipeline itself. Currently a 1:1 mirror of
-// STAGES.
-const TIMELINE_STAGES: { stage: Stage; icon: string }[] = [
-  { stage: "Proposal Sent", icon: "📤" },
-  { stage: "Sold", icon: "🤝" },
-  { stage: "Project Management", icon: "🚧" },
-  { stage: "Invoiced", icon: "🧾" },
-  { stage: "Paid in Full", icon: "💰" },
+// The deal timeline's milestones are a fixed, dedicated list — entirely
+// decoupled from the Sales Board's real pipeline (Stage/STAGES). A
+// milestone is "reached" purely by a matching calendar event existing for
+// the deal (see PATCH /api/sales-board/[id], which creates one of these
+// automatically for the stage transitions that matter), never by the
+// deal's current pipeline stage.
+const TIMELINE_MILESTONES: { type: MilestoneType; icon: string }[] = [
+  { type: "Proposal Sent", icon: "📤" },
+  { type: "Sold", icon: "🤝" },
+  { type: "Project Management", icon: "🚧" },
+  { type: "Invoiced", icon: "🧾" },
+  { type: "Paid in Full", icon: "💰" },
 ];
 
-// Every stage in TIMELINE_STAGES doubles as a calendar event_type — moving
-// a deal to that stage auto-creates a matching event (see PATCH
-// /api/sales-board/[id]), which is how a milestone's date gets filled in.
-const MILESTONE_EVENT_TYPES = new Set<string>(TIMELINE_STAGES.map((m) => m.stage));
+// These double as calendar event_type values (see EVENT_TYPES in
+// lib/events.ts) — a milestone's date/link comes directly from the
+// earliest matching event.
+export type MilestoneType = "Proposal Sent" | "Sold" | "Project Management" | "Invoiced" | "Paid in Full";
+
+const MILESTONE_EVENT_TYPES = new Set<string>(TIMELINE_MILESTONES.map((m) => m.type));
 
 // Calendar event types that get their own icon instead of a plain dot.
 const EVENT_ICONS: Partial<Record<EventType, string>> = {
@@ -36,27 +38,19 @@ export interface TimelineEvent {
 }
 
 type TimelineNode =
-  | { kind: "stage"; key: string; stage: Stage; icon: string; date: string | null; href: string | null; fulfilled: boolean }
+  | { kind: "milestone"; key: string; type: MilestoneType; icon: string; date: string | null; href: string | null; fulfilled: boolean }
   | { kind: "event"; key: string; icon: string | null; date: string; href: string; title: string };
 
 function formatNodeDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function DealTimeline({
-  currentStage,
-  events,
-}: {
-  currentStage: Stage;
-  events: TimelineEvent[];
-}) {
-  const currentIndex = STAGES.indexOf(currentStage);
-
+export default function DealTimeline({ events }: { events: TimelineEvent[] }) {
   // A stage change auto-creates a calendar event whose event_type is the
-  // new stage (see PATCH /api/sales-board/[id]) — that event IS the
-  // milestone's date/link, so no separate stage-history data is needed.
-  // When a deal passed through the same stage more than once, the
-  // earliest event wins.
+  // milestone it represents — that event IS the milestone's date/link/
+  // fulfillment, so no separate stage-history data is needed. When a deal
+  // passed through the same milestone more than once, the earliest event
+  // wins.
   const earliestMilestoneEvent = new Map<string, TimelineEvent>();
   for (const event of events) {
     if (!event.event_type || !MILESTONE_EVENT_TYPES.has(event.event_type)) continue;
@@ -66,27 +60,27 @@ export default function DealTimeline({
     }
   }
 
-  // Milestones always render in fixed pipeline order — never reordered or
+  // Milestones always render in fixed order — never reordered or
   // displaced by event dates. Each remaining calendar event is slotted
   // into the gap right after whichever milestone's date is the closest
   // one on-or-before the event's own date (skipping over any undated
   // milestones in between), or before the very first milestone if none
   // qualify.
-  const milestoneNodes: (TimelineNode & { kind: "stage" })[] = TIMELINE_STAGES.map(({ stage, icon }) => {
-    const fulfillingEvent = earliestMilestoneEvent.get(stage);
+  const milestoneNodes: (TimelineNode & { kind: "milestone" })[] = TIMELINE_MILESTONES.map(({ type, icon }) => {
+    const fulfillingEvent = earliestMilestoneEvent.get(type);
     return {
-      kind: "stage",
-      key: `stage-${stage}`,
-      stage,
+      kind: "milestone",
+      key: `milestone-${type}`,
+      type,
       icon,
       date: fulfillingEvent?.start_time ?? null,
       href: fulfillingEvent ? `/calendar?event=${fulfillingEvent.id}` : null,
-      fulfilled: STAGES.indexOf(stage) <= currentIndex,
+      fulfilled: !!fulfillingEvent,
     };
   });
 
   const eventNodes: (TimelineNode & { kind: "event" })[] = events
-    // Milestone-fulfilling events already render as their stage's node
+    // Milestone-fulfilling events already render as their milestone node
     // above — showing them again as a floating dot would duplicate them.
     .filter((event) => !event.event_type || !MILESTONE_EVENT_TYPES.has(event.event_type))
     .map((event) => ({
@@ -122,23 +116,23 @@ export default function DealTimeline({
   return (
     <div className={styles.timeline}>
       {nodes.map((node) => {
-        if (node.kind === "stage") {
-          const stageTitle = `${node.stage}${node.date ? ` — ${formatNodeDate(node.date)}` : node.fulfilled ? " — reached" : " — not yet reached"}`;
-          const stageIcon = (
+        if (node.kind === "milestone") {
+          const milestoneTitle = `${node.type}${node.date ? ` — ${formatNodeDate(node.date)}` : " — not yet reached"}`;
+          const milestoneIcon = (
             <span className={`${styles["timeline-icon"]} ${node.fulfilled ? styles["is-fulfilled"] : styles["is-pending"]}`}>
               {node.icon}
             </span>
           );
-          const stageDate = node.date && <span className={styles["timeline-date"]}>{formatNodeDate(node.date)}</span>;
+          const milestoneDate = node.date && <span className={styles["timeline-date"]}>{formatNodeDate(node.date)}</span>;
           return node.href ? (
-            <Link key={node.key} href={node.href} className={styles["timeline-node"]} title={stageTitle}>
-              {stageIcon}
-              {stageDate}
+            <Link key={node.key} href={node.href} className={styles["timeline-node"]} title={milestoneTitle}>
+              {milestoneIcon}
+              {milestoneDate}
             </Link>
           ) : (
-            <div key={node.key} className={styles["timeline-node"]} title={stageTitle}>
-              {stageIcon}
-              {stageDate}
+            <div key={node.key} className={styles["timeline-node"]} title={milestoneTitle}>
+              {milestoneIcon}
+              {milestoneDate}
             </div>
           );
         }

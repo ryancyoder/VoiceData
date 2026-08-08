@@ -1,6 +1,16 @@
 import type { EventType } from "@/lib/events";
 
-export const STAGES = ["Proposal Sent", "Sold", "Project Management", "Invoiced", "Paid in Full"] as const;
+export const STAGES = [
+  "Lead",
+  "Propose",
+  "Sent",
+  "Sold",
+  "Scheduled",
+  "Project Management",
+  "Job Costing",
+  "Invoiced",
+  "Paid in Full",
+] as const;
 
 export type Stage = (typeof STAGES)[number];
 
