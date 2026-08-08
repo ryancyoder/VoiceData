@@ -239,11 +239,17 @@ rather than keep a standalone tool:
 
 ## 7. Phasing & rough effort
 
-1. **Port only** — PerspectivePhoto runs at `/design` inside VoiceData, still on
-   IndexedDB, no schema changes. Konva behind `next/dynamic ssr:false`. Proves
-   the framework port in isolation. *(~1 day, low risk)*
-2. **Library → Supabase** — `pp_library_items` + `pp-library` bucket; rewrite the
-   two library stores from IndexedDB to the API. *(~1 day)*
+1. **Port only — DONE.** PerspectivePhoto runs at `/design` inside VoiceData,
+   still on IndexedDB, no schema changes. Konva behind `next/dynamic ssr:false`.
+   Proves the framework port in isolation. *(~1 day, low risk)*
+2. **Library → Supabase — DONE.** `pp_library_items` table + `pp-library` bucket
+   (both with the standard open RLS / storage policies); `api/design/library`
+   (GET/POST) + `api/design/library/[id]` (PATCH/DELETE); the two library stores
+   now load/persist via that API with images in Storage, converting Storage URLs
+   back to base64 `dataUrl` on load so the canvas export stays untainted and no
+   components changed. Any Phase‑1 IndexedDB library is migrated up on first
+   load. `saveProjectState`/`loadProjectState` stay on IndexedDB (that's Phase 3).
+   *(~1 day)*
 3. **Projects + images → Supabase** — `pp_projects` + `pp-designs` bucket; the
    design list; **all base64 → Storage paths**; rework the autosave. This is the
    bulk. *(~2–3 days)*

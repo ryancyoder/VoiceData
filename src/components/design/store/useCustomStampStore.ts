@@ -8,7 +8,17 @@ const STORE_NAME = 'custom-stamps';
 const PLAN_STORE_NAME = 'plan-symbols';
 const PROJECT_STORE_NAME = 'project-state';
 
-// ---- IndexedDB helpers ----
+const LIBRARY_API = '/api/design/library';
+
+type LibraryKind = 'perspective-stamp' | 'plan-symbol';
+
+// ---- IndexedDB (project-state persistence + one-time library migration) ----
+//
+// Phase 2 moves the two stamp libraries to Supabase (pp_library_items +
+// pp-library bucket). The active project blob still lives in IndexedDB here
+// (that migration is Phase 3), so openDB and the project-state helpers stay.
+// The library object stores are only touched now to migrate any stamps a user
+// built while the app was still IndexedDB-only.
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -30,20 +40,13 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-async function dbGetAll(storeName: string): Promise<CustomStamp[]> {
+async function idbGetAll(storeName: string): Promise<CustomStamp[]> {
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readonly');
-      const store = tx.objectStore(storeName);
-      const req = store.getAll();
-      req.onsuccess = () => {
-        const stamps = (req.result as any[]).map((s) => ({
-          ...s,
-          category: s.category || 'custom',
-        }));
-        resolve(stamps);
-      };
+      const req = tx.objectStore(storeName).getAll();
+      req.onsuccess = () => resolve((req.result as CustomStamp[]) ?? []);
       req.onerror = () => reject(req.error);
     });
   } catch {
@@ -51,59 +54,188 @@ async function dbGetAll(storeName: string): Promise<CustomStamp[]> {
   }
 }
 
-async function dbPut(stamp: CustomStamp, storeName: string): Promise<void> {
+async function idbClear(storeName: string): Promise<void> {
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      const req = store.put(stamp);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.objectStore(storeName).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
     });
+  } catch { /* silent */ }
+}
+
+// ---- Image <-> Storage helpers ----
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+// Fetch a public Storage URL and inline it as a base64 data URL, so the rest of
+// the app keeps treating stamp.dataUrl as a data URL (thumbnails, and — via the
+// crossOrigin canvas paths — an untainted export). Falls back to the raw URL if
+// the fetch fails.
+async function urlToDataUrl(url: string): Promise<string> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return url;
+    return await blobToDataUrl(await res.blob());
   } catch {
-    console.warn('Failed to save stamp to IndexedDB');
+    return url;
   }
 }
 
-async function dbDelete(id: string, storeName: string): Promise<void> {
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(',');
+  const header = dataUrl.slice(0, comma);
+  const mime = /:(.*?);/.exec(header)?.[1] || 'image/png';
+  const bin = atob(dataUrl.slice(comma + 1));
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+// The jsonb `data` document is a CustomStamp minus its id and image bytes.
+function stampToData(stamp: CustomStamp): Record<string, unknown> {
+  const { id, dataUrl, ...data } = stamp;
+  void id;
+  void dataUrl;
+  return data;
+}
+
+// ---- Library API ----
+
+interface LibraryRow {
+  id: string;
+  kind: LibraryKind;
+  data: Record<string, unknown>;
+  image_path: string | null;
+  imageUrl: string | null;
+}
+
+async function apiListLibrary(): Promise<LibraryRow[]> {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      const req = store.delete(id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
+    const res = await fetch(LIBRARY_API);
+    if (!res.ok) return [];
+    const json = (await res.json()) as { items?: LibraryRow[] };
+    return json.items ?? [];
   } catch {
-    console.warn('Failed to delete stamp from IndexedDB');
+    return [];
   }
 }
 
-// ---- Migrate from localStorage if any exist ----
-
-async function migrateFromLocalStorage(): Promise<CustomStamp[]> {
+// Create a library row: upload the image and persist the metadata. Fire-and-
+// forget from the caller's perspective (matching the app's optimistic UI), but
+// awaitable for the migration path.
+async function apiCreateLibraryItem(
+  kind: LibraryKind,
+  stamp: CustomStamp,
+  file: Blob,
+  fileName: string,
+): Promise<boolean> {
   try {
-    const raw = localStorage.getItem('perspectivephoto-custom-stamps');
-    if (!raw) return [];
-    const stamps: CustomStamp[] = JSON.parse(raw).map((s: any) => ({
-      ...s,
-      category: s.category || 'custom',
-    }));
-    // Save each to IndexedDB
-    for (const stamp of stamps) {
-      await dbPut(stamp, STORE_NAME);
+    const form = new FormData();
+    form.append('file', file, fileName);
+    form.append('id', stamp.id);
+    form.append('kind', kind);
+    form.append('data', JSON.stringify(stampToData(stamp)));
+    const res = await fetch(LIBRARY_API, { method: 'POST', body: form });
+    if (!res.ok) {
+      console.warn('Failed to save library item to Supabase');
+      return false;
     }
-    // Clear localStorage
-    localStorage.removeItem('perspectivephoto-custom-stamps');
-    return stamps;
+    return true;
   } catch {
-    return [];
+    console.warn('Failed to save library item to Supabase');
+    return false;
   }
 }
 
-// ---- Store ----
+function apiUpdateLibraryItem(stamp: CustomStamp): void {
+  fetch(`${LIBRARY_API}/${encodeURIComponent(stamp.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: stampToData(stamp) }),
+  }).catch(() => console.warn('Failed to update library item'));
+}
+
+function apiDeleteLibraryItem(id: string): void {
+  fetch(`${LIBRARY_API}/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() =>
+    console.warn('Failed to delete library item'),
+  );
+}
+
+// Load one library kind from Supabase, converting Storage URLs back to data
+// URLs. On first run, migrates any pre-existing IndexedDB stamps up to Supabase.
+async function loadLibraryKind(kind: LibraryKind, idbStore: string): Promise<CustomStamp[]> {
+  const rows = (await apiListLibrary()).filter((r) => r.kind === kind);
+
+  if (rows.length === 0) {
+    const legacy = await idbGetAll(idbStore);
+    if (legacy.length > 0) {
+      let migrated = 0;
+      for (const s of legacy) {
+        const stamp: CustomStamp = { ...s, category: s.category || 'custom' };
+        if (!stamp.dataUrl) continue;
+        const ok = await apiCreateLibraryItem(kind, stamp, dataUrlToBlob(stamp.dataUrl), `${stamp.id}.png`);
+        if (ok) migrated++;
+      }
+      // Only clear the local copy once everything made it up.
+      if (migrated === legacy.filter((s) => s.dataUrl).length) {
+        await idbClear(idbStore);
+      }
+      return legacy.map((s) => ({ ...s, category: s.category || 'custom' }));
+    }
+    return [];
+  }
+
+  return Promise.all(
+    rows.map(async (row) => {
+      const d = row.data as Partial<CustomStamp>;
+      return {
+        id: row.id,
+        name: d.name || 'Stamp',
+        category: (d.category as StampCategory) || 'custom',
+        dataUrl: row.imageUrl ? await urlToDataUrl(row.imageUrl) : '',
+        naturalWidth: d.naturalWidth || 100,
+        naturalHeight: d.naturalHeight || 100,
+        createdAt: d.createdAt || Date.now(),
+        defaultScale: d.defaultScale,
+        botanicalName: d.botanicalName,
+        commonName: d.commonName,
+        notes: d.notes,
+      } as CustomStamp;
+    }),
+  );
+}
+
+// Read an image File into a CustomStamp shell (dataUrl + natural dimensions).
+function fileToStampBase(file: File): Promise<{ dataUrl: string; naturalWidth: number; naturalHeight: number }> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('File must be an image'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      const img = new Image();
+      img.onload = () => resolve({ dataUrl, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = dataUrl;
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// ---- Custom stamp store (perspective view) ----
 
 interface CustomStampLibrary {
   stamps: CustomStamp[];
@@ -125,47 +257,24 @@ export const useCustomStampStore = create<CustomStampLibrary>((set, get) => ({
 
   loadStamps: async () => {
     if (get().loaded) return;
-    // Try migrate from localStorage first
-    const migrated = await migrateFromLocalStorage();
-    if (migrated.length > 0) {
-      set({ stamps: migrated, loaded: true });
-      return;
-    }
-    // Load from IndexedDB
-    const stamps = await dbGetAll(STORE_NAME);
+    const stamps = await loadLibraryKind('perspective-stamp', STORE_NAME);
     set({ stamps, loaded: true });
   },
 
   addStampWithCategory: async (file, category) => {
-    return new Promise((resolve, reject) => {
-      if (!file.type.startsWith('image/')) {
-        reject(new Error('File must be an image'));
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          const stamp: CustomStamp = {
-            id: `custom-${uuid()}`,
-            name: file.name.replace(/\.[^.]+$/, ''),
-            category,
-            dataUrl,
-            naturalWidth: img.naturalWidth,
-            naturalHeight: img.naturalHeight,
-            createdAt: Date.now(),
-          };
-          set((state) => ({ stamps: [...state.stamps, stamp] }));
-          dbPut(stamp, STORE_NAME);
-          resolve(stamp.id);
-        };
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = dataUrl;
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
+    const { dataUrl, naturalWidth, naturalHeight } = await fileToStampBase(file);
+    const stamp: CustomStamp = {
+      id: `custom-${uuid()}`,
+      name: file.name.replace(/\.[^.]+$/, ''),
+      category,
+      dataUrl,
+      naturalWidth,
+      naturalHeight,
+      createdAt: Date.now(),
+    };
+    set((state) => ({ stamps: [...state.stamps, stamp] }));
+    void apiCreateLibraryItem('perspective-stamp', stamp, file, file.name);
+    return stamp.id;
   },
 
   addStampFromDataUrl: (name, dataUrl, width, height, category = 'custom') => {
@@ -179,13 +288,13 @@ export const useCustomStampStore = create<CustomStampLibrary>((set, get) => ({
       createdAt: Date.now(),
     };
     set((state) => ({ stamps: [...state.stamps, stamp] }));
-    dbPut(stamp, STORE_NAME);
+    void apiCreateLibraryItem('perspective-stamp', stamp, dataUrlToBlob(dataUrl), `${stamp.id}.png`);
     return stamp.id;
   },
 
   removeStamp: (id) => {
     set((state) => ({ stamps: state.stamps.filter((s) => s.id !== id) }));
-    dbDelete(id, STORE_NAME);
+    apiDeleteLibraryItem(id);
   },
 
   renameStamp: (id, name) => {
@@ -193,7 +302,7 @@ export const useCustomStampStore = create<CustomStampLibrary>((set, get) => ({
       stamps: state.stamps.map((s) => (s.id === id ? { ...s, name } : s)),
     }));
     const stamp = get().stamps.find((s) => s.id === id);
-    if (stamp) dbPut(stamp, STORE_NAME);
+    if (stamp) apiUpdateLibraryItem(stamp);
   },
 
   updateStampMeta: (id, meta) => {
@@ -201,7 +310,7 @@ export const useCustomStampStore = create<CustomStampLibrary>((set, get) => ({
       stamps: state.stamps.map((s) => (s.id === id ? { ...s, ...meta } : s)),
     }));
     const stamp = get().stamps.find((s) => s.id === id);
-    if (stamp) dbPut(stamp, STORE_NAME);
+    if (stamp) apiUpdateLibraryItem(stamp);
   },
 
   getStamp: (id) => get().stamps.find((s) => s.id === id),
@@ -227,13 +336,12 @@ export const useCustomStampStore = create<CustomStampLibrary>((set, get) => ({
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = async (ev) => {
+      reader.onload = (ev) => {
         try {
           const stamps: CustomStamp[] = JSON.parse(ev.target?.result as string);
           if (!Array.isArray(stamps)) return;
           for (const stamp of stamps) {
             if (!stamp.id || !stamp.dataUrl) continue;
-            // Skip if already exists
             if (get().stamps.find((s) => s.id === stamp.id)) continue;
             const s: CustomStamp = {
               id: stamp.id,
@@ -245,7 +353,7 @@ export const useCustomStampStore = create<CustomStampLibrary>((set, get) => ({
               createdAt: stamp.createdAt || Date.now(),
             };
             set((state) => ({ stamps: [...state.stamps, s] }));
-            await dbPut(s, STORE_NAME);
+            void apiCreateLibraryItem('perspective-stamp', s, dataUrlToBlob(s.dataUrl), `${s.id}.png`);
           }
         } catch {
           console.warn('Failed to import library');
@@ -257,31 +365,29 @@ export const useCustomStampStore = create<CustomStampLibrary>((set, get) => ({
   },
 }));
 
-// Auto-load on import
+// Auto-load on import (client-only; the design tree is loaded via ssr:false).
 useCustomStampStore.getState().loadStamps();
 
-// ---- Project State Persistence ----
+// ---- Project State Persistence (still IndexedDB in Phase 2) ----
 
-export async function saveProjectState(state: Record<string, any>): Promise<void> {
+export async function saveProjectState(state: Record<string, unknown>): Promise<void> {
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(PROJECT_STORE_NAME, 'readwrite');
-      const store = tx.objectStore(PROJECT_STORE_NAME);
-      store.put(state, 'current');
+      tx.objectStore(PROJECT_STORE_NAME).put(state, 'current');
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   } catch { /* silent */ }
 }
 
-export async function loadProjectState(): Promise<Record<string, any> | null> {
+export async function loadProjectState(): Promise<Record<string, unknown> | null> {
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(PROJECT_STORE_NAME, 'readonly');
-      const store = tx.objectStore(PROJECT_STORE_NAME);
-      const req = store.get('current');
+      const req = tx.objectStore(PROJECT_STORE_NAME).get('current');
       req.onsuccess = () => resolve(req.result ?? null);
       req.onerror = () => reject(req.error);
     });
@@ -290,7 +396,7 @@ export async function loadProjectState(): Promise<Record<string, any> | null> {
   }
 }
 
-// ---- Plan Symbols Store (2D plan view symbols, same categories, separate DB) ----
+// ---- Plan Symbols store (2D plan view symbols, same shape, separate kind) ----
 
 interface PlanSymbolLibrary {
   symbols: CustomStamp[];
@@ -312,37 +418,24 @@ export const usePlanSymbolStore = create<PlanSymbolLibrary>((set, get) => ({
 
   loadSymbols: async () => {
     if (get().loaded) return;
-    const symbols = await dbGetAll(PLAN_STORE_NAME);
+    const symbols = await loadLibraryKind('plan-symbol', PLAN_STORE_NAME);
     set({ symbols, loaded: true });
   },
 
   addSymbolWithCategory: async (file, category) => {
-    return new Promise((resolve, reject) => {
-      if (!file.type.startsWith('image/')) { reject(new Error('File must be an image')); return; }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          const sym: CustomStamp = {
-            id: `plan-${uuid()}`,
-            name: file.name.replace(/\.[^.]+$/, ''),
-            category,
-            dataUrl,
-            naturalWidth: img.naturalWidth,
-            naturalHeight: img.naturalHeight,
-            createdAt: Date.now(),
-          };
-          set((state) => ({ symbols: [...state.symbols, sym] }));
-          dbPut(sym, PLAN_STORE_NAME);
-          resolve(sym.id);
-        };
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = dataUrl;
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
+    const { dataUrl, naturalWidth, naturalHeight } = await fileToStampBase(file);
+    const sym: CustomStamp = {
+      id: `plan-${uuid()}`,
+      name: file.name.replace(/\.[^.]+$/, ''),
+      category,
+      dataUrl,
+      naturalWidth,
+      naturalHeight,
+      createdAt: Date.now(),
+    };
+    set((state) => ({ symbols: [...state.symbols, sym] }));
+    void apiCreateLibraryItem('plan-symbol', sym, file, file.name);
+    return sym.id;
   },
 
   addSymbolFromDataUrl: (name, dataUrl, width, height, category = 'custom') => {
@@ -356,13 +449,13 @@ export const usePlanSymbolStore = create<PlanSymbolLibrary>((set, get) => ({
       createdAt: Date.now(),
     };
     set((state) => ({ symbols: [...state.symbols, sym] }));
-    dbPut(sym, PLAN_STORE_NAME);
+    void apiCreateLibraryItem('plan-symbol', sym, dataUrlToBlob(dataUrl), `${sym.id}.png`);
     return sym.id;
   },
 
   removeSymbol: (id) => {
     set((state) => ({ symbols: state.symbols.filter((s) => s.id !== id) }));
-    dbDelete(id, PLAN_STORE_NAME);
+    apiDeleteLibraryItem(id);
   },
 
   updateSymbolMeta: (id, meta) => {
@@ -370,7 +463,7 @@ export const usePlanSymbolStore = create<PlanSymbolLibrary>((set, get) => ({
       symbols: state.symbols.map((s) => (s.id === id ? { ...s, ...meta } : s)),
     }));
     const sym = get().symbols.find((s) => s.id === id);
-    if (sym) dbPut(sym, PLAN_STORE_NAME);
+    if (sym) apiUpdateLibraryItem(sym);
   },
 
   getSymbol: (id) => get().symbols.find((s) => s.id === id),
@@ -380,7 +473,7 @@ export const usePlanSymbolStore = create<PlanSymbolLibrary>((set, get) => ({
       symbols: state.symbols.map((s) => (s.id === id ? { ...s, defaultScale: scale } : s)),
     }));
     const sym = get().symbols.find((s) => s.id === id);
-    if (sym) dbPut(sym, PLAN_STORE_NAME);
+    if (sym) apiUpdateLibraryItem(sym);
   },
 
   exportLibrary: () => {
@@ -403,7 +496,7 @@ export const usePlanSymbolStore = create<PlanSymbolLibrary>((set, get) => ({
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = async (ev) => {
+      reader.onload = (ev) => {
         try {
           const symbols: CustomStamp[] = JSON.parse(ev.target?.result as string);
           if (!Array.isArray(symbols)) return;
@@ -420,9 +513,11 @@ export const usePlanSymbolStore = create<PlanSymbolLibrary>((set, get) => ({
               createdAt: sym.createdAt || Date.now(),
             };
             set((state) => ({ symbols: [...state.symbols, s] }));
-            await dbPut(s, PLAN_STORE_NAME);
+            void apiCreateLibraryItem('plan-symbol', s, dataUrlToBlob(s.dataUrl), `${s.id}.png`);
           }
-        } catch { console.warn('Failed to import plan symbols'); }
+        } catch {
+          console.warn('Failed to import plan symbols');
+        }
       };
       reader.readAsText(file);
     };
