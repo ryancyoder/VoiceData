@@ -543,6 +543,20 @@ a.timeline-node {
   opacity: 1;
 }
 
+/* A device whose primary input has no real hover state (touchscreens)
+   would never trigger the rule above — show dates permanently there
+   instead. Deliberately a CSS media feature, not JS touch-detection: a
+   JS check reads differently on the server (no navigator) than on a
+   touch client, which is a hydration mismatch React won't patch up,
+   silently leaving the server's "hide it" version stuck even on real
+   touch devices. A media query is resolved purely client-side per
+   render, so there's no server/client value to disagree over. */
+@media (hover: none) {
+  .timeline-date {
+    opacity: 1;
+  }
+}
+
 .toast {
   position: fixed;
   bottom: 24px;
