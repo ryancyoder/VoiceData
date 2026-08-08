@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Trash2, LayoutGrid, Rows3 } from "lucide-react";
+import { Trash2, LayoutGrid, Rows3, Search } from "lucide-react";
 import type { LibraryItemData, LibraryKind } from "@/lib/design/library";
 import {
   TOP_LEVEL_CATEGORIES,
@@ -67,6 +67,8 @@ export function PlantDatabaseClient() {
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<LibraryKind>("perspective-stamp");
   const [layout, setLayout] = useState<"gallery" | "table">("gallery");
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [adding, setAdding] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -91,7 +93,9 @@ export function PlantDatabaseClient() {
     };
   }, []);
 
-  const shown = useMemo(
+  // All items of the current kind (excluding textures) — the pool the filter
+  // bar and search narrow down.
+  const kindItems = useMemo(
     () =>
       items.filter(
         (i) =>
@@ -101,6 +105,30 @@ export function PlantDatabaseClient() {
       ),
     [items, kind],
   );
+
+  // Categories actually present in this kind, with counts, for the filter bar.
+  const categoriesPresent = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const it of kindItems) {
+      const c = it.data?.category || "custom";
+      counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([id, count]) => ({ id, count, label: CATEGORY_OPTIONS.find((c) => c.id === id)?.label ?? id }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [kindItems]);
+
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return kindItems.filter((it) => {
+      if (categoryFilter !== "all" && (it.data?.category || "custom") !== categoryFilter) return false;
+      if (!q) return true;
+      const d = it.data ?? ({} as LibraryItemData);
+      return [d.name, d.botanicalName, d.commonName, d.notes].some((v) =>
+        (v ?? "").toLowerCase().includes(q),
+      );
+    });
+  }, [kindItems, categoryFilter, search]);
 
   // Persist a metadata change: merge the patch into the item's data and PATCH
   // the whole data object (the route replaces data).
@@ -286,7 +314,10 @@ export function PlantDatabaseClient() {
             {KINDS.map((k) => (
               <button
                 key={k.id}
-                onClick={() => setKind(k.id)}
+                onClick={() => {
+                  setKind(k.id);
+                  setCategoryFilter("all");
+                }}
                 className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                   kind === k.id
                     ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-100"
@@ -353,13 +384,56 @@ export function PlantDatabaseClient() {
         </div>
       </div>
 
+      {/* Search + category filter bar */}
+      {!loading && kindItems.length > 0 && (
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="relative max-w-sm">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, botanical, notes…"
+              className="w-full rounded-full border border-zinc-300 bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            />
+          </div>
+          {categoriesPresent.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              <FilterChip label="All" count={kindItems.length} active={categoryFilter === "all"} onClick={() => setCategoryFilter("all")} />
+              {categoriesPresent.map((c) => (
+                <FilterChip
+                  key={c.id}
+                  label={c.label}
+                  count={c.count}
+                  active={categoryFilter === c.id}
+                  onClick={() => setCategoryFilter(c.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-zinc-400">Loading library…</p>
       ) : shown.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-zinc-300 px-6 py-16 text-center dark:border-zinc-700">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            No {kind === "plan-symbol" ? "symbols" : "plants"} yet.
+            {kindItems.length === 0
+              ? `No ${kind === "plan-symbol" ? "symbols" : "plants"} yet.`
+              : "No matches."}
           </p>
+          {kindItems.length > 0 && (
+            <button
+              onClick={() => {
+                setSearch("");
+                setCategoryFilter("all");
+              }}
+              className="mt-3 text-sm font-medium text-zinc-600 underline underline-offset-2 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+            >
+              Clear search &amp; filters
+            </button>
+          )}
         </div>
       ) : layout === "table" ? (
         <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
@@ -400,6 +474,31 @@ export function PlantDatabaseClient() {
         </ul>
       )}
     </main>
+  );
+}
+
+function FilterChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+        active
+          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+          : "border border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+      }`}
+    >
+      {label} <span className="opacity-60">{count}</span>
+    </button>
   );
 }
 
