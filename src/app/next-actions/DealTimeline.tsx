@@ -20,6 +20,15 @@ const TIMELINE_MILESTONES: { type: MilestoneEventType; icon: string }[] = [
 
 const MILESTONE_EVENT_TYPE_SET = new Set<string>(MILESTONE_EVENT_TYPES);
 
+// Mirrors the CSS: .timeline-icon is 34px, and .timeline-lead/.timeline-slot
+// are each a fixed 115px (34px icon + 81px trailing space) — kept in sync
+// here so the connecting line's JS-computed position lines up with the
+// milestone icons' CSS-driven one. This fixed slot width is exactly what
+// keeps milestones a constant distance apart regardless of how many
+// non-milestone events land in the slot alongside them.
+const SLOT_WIDTH = 115;
+const ICON_CENTER = 17;
+
 // Calendar event types that get their own icon instead of a plain dot.
 const EVENT_ICONS: Partial<Record<EventType, string>> = {
   Appointment: "🏠",
@@ -90,8 +99,8 @@ export default function DealTimeline({ events }: { events: TimelineEvent[] }) {
 
   // eventsAfter[i] holds every event whose slot is right after milestone i;
   // eventsBefore holds ones that predate every dated milestone.
-  const eventsAfter: TimelineNode[][] = milestoneNodes.map(() => []);
-  const eventsBefore: TimelineNode[] = [];
+  const eventsAfter: (TimelineNode & { kind: "event" })[][] = milestoneNodes.map(() => []);
+  const eventsBefore: (TimelineNode & { kind: "event" })[] = [];
 
   for (const event of eventNodes) {
     const eventTime = new Date(event.date).getTime();
@@ -103,45 +112,56 @@ export default function DealTimeline({ events }: { events: TimelineEvent[] }) {
     (slot === -1 ? eventsBefore : eventsAfter[slot]).push(event);
   }
 
-  const nodes: TimelineNode[] = [...eventsBefore];
-  milestoneNodes.forEach((milestone, i) => {
-    nodes.push(milestone, ...eventsAfter[i]);
-  });
+  function renderEventNode(node: TimelineNode & { kind: "event" }) {
+    return (
+      <Link key={node.key} href={node.href} className={styles["timeline-node"]} title={`${node.title} — ${formatNodeDate(node.date)}`}>
+        {node.icon ? (
+          <span className={`${styles["timeline-icon"]} ${styles["is-fulfilled"]}`}>{node.icon}</span>
+        ) : (
+          <span className={styles["timeline-dot"]} />
+        )}
+        <span className={styles["timeline-date"]}>{formatNodeDate(node.date)}</span>
+      </Link>
+    );
+  }
+
+  function renderMilestoneNode(node: TimelineNode & { kind: "milestone" }) {
+    const milestoneTitle = `${node.type}${node.date ? ` — ${formatNodeDate(node.date)}` : " — not yet reached"}`;
+    const milestoneIcon = (
+      <span className={`${styles["timeline-icon"]} ${node.fulfilled ? styles["is-fulfilled"] : styles["is-pending"]}`}>
+        {node.icon}
+      </span>
+    );
+    const milestoneDate = node.date && <span className={styles["timeline-date"]}>{formatNodeDate(node.date)}</span>;
+    return node.href ? (
+      <Link key={node.key} href={node.href} className={styles["timeline-node"]} title={milestoneTitle}>
+        {milestoneIcon}
+        {milestoneDate}
+      </Link>
+    ) : (
+      <div key={node.key} className={styles["timeline-node"]} title={milestoneTitle}>
+        {milestoneIcon}
+        {milestoneDate}
+      </div>
+    );
+  }
 
   return (
     <div className={styles.timeline}>
-      {nodes.map((node) => {
-        if (node.kind === "milestone") {
-          const milestoneTitle = `${node.type}${node.date ? ` — ${formatNodeDate(node.date)}` : " — not yet reached"}`;
-          const milestoneIcon = (
-            <span className={`${styles["timeline-icon"]} ${node.fulfilled ? styles["is-fulfilled"] : styles["is-pending"]}`}>
-              {node.icon}
-            </span>
-          );
-          const milestoneDate = node.date && <span className={styles["timeline-date"]}>{formatNodeDate(node.date)}</span>;
-          return node.href ? (
-            <Link key={node.key} href={node.href} className={styles["timeline-node"]} title={milestoneTitle}>
-              {milestoneIcon}
-              {milestoneDate}
-            </Link>
-          ) : (
-            <div key={node.key} className={styles["timeline-node"]} title={milestoneTitle}>
-              {milestoneIcon}
-              {milestoneDate}
-            </div>
-          );
-        }
-        return (
-          <Link key={node.key} href={node.href} className={styles["timeline-node"]} title={`${node.title} — ${formatNodeDate(node.date)}`}>
-            {node.icon ? (
-              <span className={`${styles["timeline-icon"]} ${styles["is-fulfilled"]}`}>{node.icon}</span>
-            ) : (
-              <span className={styles["timeline-dot"]} />
-            )}
-            <span className={styles["timeline-date"]}>{formatNodeDate(node.date)}</span>
-          </Link>
-        );
-      })}
+      <div
+        className={styles["timeline-line"]}
+        style={{ left: SLOT_WIDTH + ICON_CENTER, width: (milestoneNodes.length - 1) * SLOT_WIDTH }}
+      />
+      {/* A fixed-width lead-in slot for events that predate every dated
+          milestone — always reserved, even when empty, so milestone 0's
+          position never shifts based on whether any exist. */}
+      <div className={styles["timeline-lead"]}>{eventsBefore.map(renderEventNode)}</div>
+      {milestoneNodes.map((milestone, i) => (
+        <div key={milestone.key} className={styles["timeline-slot"]}>
+          {renderMilestoneNode(milestone)}
+          {eventsAfter[i].map(renderEventNode)}
+        </div>
+      ))}
     </div>
   );
 }

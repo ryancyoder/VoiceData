@@ -410,20 +410,43 @@
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 81px;
   padding-top: 4px;
   width: max-content;
 }
 
-.timeline::before {
-  content: "";
+.timeline-line {
   position: absolute;
   top: 17px;
-  left: 17px;
-  right: 17px;
   height: 2px;
   background: var(--border);
   z-index: 0;
+}
+
+/* Each milestone (and the leading slot for events that predate the first
+   milestone) gets a FIXED-width slot — this is what keeps milestones a
+   constant distance apart no matter how many non-milestone events land
+   in between them. Events after a milestone render inside its own slot,
+   never as siblings of the milestones themselves, so they can never
+   widen the gap to the next one. */
+.timeline-lead,
+.timeline-slot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex: 0 0 115px;
+  /* Without this, flex's default min-width:auto lets overflowing content
+     (a slot with several events crammed in) force the box itself wider
+     than its 115px basis, which is exactly what would push the next
+     milestone out of its fixed position — the bug this layout exists to
+     avoid. Overflowing dots spill past the edge instead, which is the
+     acceptable trade-off. */
+  min-width: 0;
+  gap: 10px;
+}
+
+.timeline-lead {
+  justify-content: flex-end;
 }
 
 .timeline-node {
