@@ -436,19 +436,29 @@ export default function PhotoAnnotator({
     redrawStraightened(lastPointerRef.current ?? P2);
   }
 
-  // Leave Alt-bend: KEEP the bowed curve. Freeze its through-point (so the
-  // cursor stops reshaping it) and treat the endpoint as the curve's locked end,
-  // so a following hold/Shift drops the vertex there with the curve preserved.
+  // Leave Alt-bend: KEEP the bowed curve, then drop the corner vertex right at
+  // the curve's endpoint and open the next segment there. Committing on release
+  // (rather than waiting for a follow-up hold) makes the vertex land reliably on
+  // the endpoint and flashes the feedback pulse there. The old hold-after-release
+  // path depended on a timer surviving the pointer stream, which on iPad could be
+  // interrupted (a modifier keyup can coincide with a pointercancel), leaving the
+  // vertex to fall on the cursor with no pulse.
   function disengageAltCurve() {
     if (!altCurveRef.current) return;
     altCurveRef.current = false;
     const end = arcP2Ref.current ?? lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1];
-    curveApexRef.current = lastPointerRef.current ?? end; // freeze the apex the user set
-    lastPointerRef.current = end; // endpoint = the curve's end, not the apex
-    redrawStraightened(end);
-    // Re-arm hold-to-lock at the endpoint so holding still after releasing Alt
-    // drops the vertex there.
-    if (toolRef.current === "pen" && end) armLockTimer(end);
+    // Freeze the apex the user set so the final curve is repainted (not reverted
+    // to a straight line) before we bake it into the committed segment.
+    curveApexRef.current = lastPointerRef.current ?? end;
+    lastPointerRef.current = end ?? null;
+    if (end) redrawStraightened(end);
+    // Pen: releasing Alt keeps the curve AND drops the vertex at its endpoint,
+    // starting the next segment from there. commitPolygonVertex sees the kept
+    // curve (curveApexRef set + arcP2Ref set) and anchors on arcP2, not the
+    // cursor. For fill/curve-pen, leave the kept edge for Shift/lift to close.
+    if (toolRef.current === "pen" && end && strokeActiveRef.current) {
+      commitPolygonVertex();
+    }
   }
 
   // Show a brief pulse at a just-dropped vertex (visual counterpart to the
@@ -1051,7 +1061,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "pen" ? styles.active : ""}`}
-          title="Pen — hold still to snap to a straight line; keep holding in place to drop a polygon vertex (or tap Shift); hold Option/Alt to bow an edge, release to keep the curve, then hold to lock the vertex"
+          title="Pen — hold still to snap to a straight line; keep holding in place to drop a polygon vertex (or tap Shift); hold Option/Alt to bow an edge, release to keep the curve and drop the vertex at its end"
           onClick={() => selectTool("pen")}
         >
           ✏
