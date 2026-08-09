@@ -147,6 +147,7 @@ export default function PhotoAnnotator({
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const pointsRef = useRef<Pt[]>([]);
   const undoStackRef = useRef<ImageData[]>([]);
+  const redoStackRef = useRef<ImageData[]>([]);
   const penExpiryRef = useRef(0);
   const preStrokeRef = useRef<ImageData | null>(null);
   const straightenedRef = useRef(false);
@@ -205,10 +206,13 @@ export default function PhotoAnnotator({
   const viewRef = useRef({ scale: 1, tx: 0, ty: 0 });
   const penDownRef = useRef(false); // pencil in contact → suppress finger gestures
   const touchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchRef = useRef<{ d0: number; scale0: number; cx: number; cy: number; lux: number; luy: number } | null>(null);
-  const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number; moved: boolean } | null>(null);
-  const tapRef = useRef<{ x: number; y: number; t: number } | null>(null); // in-progress single-finger tap
-  const lastTapRef = useRef({ x: 0, y: 0, t: 0 }); // previous tap, for double-tap-undo
+  const pinchRef = useRef<{ d0: number; scale0: number; cx: number; cy: number; lux: number; luy: number; m0x: number; m0y: number } | null>(null);
+  const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number } | null>(null);
+  // Multi-finger tap detection: tapRef tracks the current touch sequence (peak
+  // finger count + whether it moved); lastTapRef is the previous completed tap,
+  // so two quick N-finger taps → undo (2 fingers) / redo (3 fingers).
+  const tapRef = useRef<{ startT: number; maxFingers: number; moved: boolean } | null>(null);
+  const lastTapRef = useRef({ n: 0, t: 0 });
 
   // Each floating text/sticker registers a getter for its current data, so the
   // save composite reads live positions/text without the parent mutating props.
@@ -351,11 +355,24 @@ export default function PhotoAnnotator({
     if (!canvas || !ctx) return;
     if (undoStackRef.current.length >= MAX_UNDO) undoStackRef.current.shift();
     undoStackRef.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    redoStackRef.current = []; // a new action breaks the redo chain
   }
   function undo() {
+    const canvas = canvasRef.current;
     const ctx = ctxRef.current;
-    if (!ctx || !undoStackRef.current.length) return;
+    if (!ctx || !canvas || !undoStackRef.current.length) return;
+    // Remember the current state so it can be redone.
+    if (redoStackRef.current.length >= MAX_UNDO) redoStackRef.current.shift();
+    redoStackRef.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
     ctx.putImageData(undoStackRef.current.pop()!, 0, 0);
+  }
+  function redo() {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!ctx || !canvas || !redoStackRef.current.length) return;
+    if (undoStackRef.current.length >= MAX_UNDO) undoStackRef.current.shift();
+    undoStackRef.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    ctx.putImageData(redoStackRef.current.pop()!, 0, 0);
   }
 
   function getPos(e: PointerEvent): Pt {
@@ -395,16 +412,18 @@ export default function PhotoAnnotator({
   function gestureDown(e: PointerEvent) {
     if (penDownRef.current) return; // pencil is drawing — ignore fingers
     e.preventDefault();
+    const first = touchesRef.current.size === 0;
     touchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const n = touchesRef.current.size;
+    // Start / grow the tap candidate (peak finger count over the sequence).
+    if (first) tapRef.current = { startT: e.timeStamp, maxFingers: 1, moved: false };
+    else if (tapRef.current) tapRef.current.maxFingers = Math.max(tapRef.current.maxFingers, n);
     if (n === 2) {
       panRef.current = null;
-      tapRef.current = null;
       startPinch();
     } else if (n === 1) {
       const v = viewRef.current;
-      panRef.current = { x0: e.clientX, y0: e.clientY, tx0: v.tx, ty0: v.ty, moved: false };
-      tapRef.current = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+      panRef.current = { x0: e.clientX, y0: e.clientY, tx0: v.tx, ty0: v.ty };
     }
   }
   function gestureMove(e: PointerEvent) {
@@ -418,7 +437,7 @@ export default function PhotoAnnotator({
       const p = panRef.current;
       const dx = e.clientX - p.x0;
       const dy = e.clientY - p.y0;
-      if (Math.hypot(dx, dy) > 6) p.moved = true;
+      if (Math.hypot(dx, dy) > 10 && tapRef.current) tapRef.current.moved = true;
       if (viewRef.current.scale > 1.001) {
         viewRef.current.tx = p.tx0 + dx;
         viewRef.current.ty = p.ty0 + dy;
@@ -431,22 +450,23 @@ export default function PhotoAnnotator({
     const had = touchesRef.current.delete(e.pointerId);
     if (!had) return;
     if (touchesRef.current.size < 2) pinchRef.current = null;
-    if (touchesRef.current.size === 0) {
-      // A quick single-finger tap that didn't pan → candidate for double-tap undo.
-      const tap = tapRef.current;
-      const panned = panRef.current?.moved;
-      tapRef.current = null;
-      panRef.current = null;
-      if (tap && !panned && e.timeStamp - tap.t < 300) {
-        const last = lastTapRef.current;
-        if (e.timeStamp - last.t < 350 && Math.hypot(tap.x - last.x, tap.y - last.y) < 44) {
-          undo();
-          navigator.vibrate?.(10);
-          lastTapRef.current = { x: 0, y: 0, t: 0 }; // consume, so a 3rd tap doesn't re-fire
-        } else {
-          lastTapRef.current = { x: tap.x, y: tap.y, t: e.timeStamp };
-        }
-      }
+    if (touchesRef.current.size > 0) return; // wait for all fingers to lift
+    // All fingers up — evaluate the tap. A quick 2- or 3-finger tap with no
+    // pan/pinch movement is a double-tap candidate (undo / redo respectively).
+    const tap = tapRef.current;
+    tapRef.current = null;
+    panRef.current = null;
+    if (!tap || tap.moved || e.timeStamp - tap.startT > 350) return;
+    const n = tap.maxFingers;
+    if (n !== 2 && n !== 3) return;
+    const last = lastTapRef.current;
+    if (last.n === n && e.timeStamp - last.t < 400) {
+      if (n === 2) undo();
+      else redo();
+      navigator.vibrate?.(10);
+      lastTapRef.current = { n: 0, t: 0 }; // consume so a 3rd tap doesn't re-fire
+    } else {
+      lastTapRef.current = { n, t: e.timeStamp };
     }
   }
   function startPinch() {
@@ -463,7 +483,7 @@ export default function PhotoAnnotator({
     const v = viewRef.current;
     // Layout center (constant) = transformed center − translate; the local point
     // under the pinch midpoint stays fixed as we scale.
-    pinchRef.current = { d0, scale0: v.scale, cx: cx - v.tx, cy: cy - v.ty, lux: (m0x - cx) / v.scale, luy: (m0y - cy) / v.scale };
+    pinchRef.current = { d0, scale0: v.scale, cx: cx - v.tx, cy: cy - v.ty, lux: (m0x - cx) / v.scale, luy: (m0y - cy) / v.scale, m0x, m0y };
   }
   function updatePinch() {
     const p = pinchRef.current;
@@ -473,6 +493,9 @@ export default function PhotoAnnotator({
     const d1 = Math.hypot(a.x - b.x, a.y - b.y);
     const m1x = (a.x + b.x) / 2;
     const m1y = (a.y + b.y) / 2;
+    // A real spread or drag disqualifies this as a tap (so 2/3-finger taps that
+    // don't move still register as undo/redo).
+    if (tapRef.current && (Math.abs(d1 - p.d0) > 12 || Math.hypot(m1x - p.m0x, m1y - p.m0y) > 12)) tapRef.current.moved = true;
     const v = viewRef.current;
     v.scale = Math.min(5, Math.max(1, p.scale0 * (d1 / p.d0)));
     v.tx = m1x - p.cx - p.lux * v.scale;
@@ -1644,11 +1667,14 @@ export default function PhotoAnnotator({
           </>
         )}
         <div className={styles.sep} />
-        <button type="button" className={styles.toolBtn} title="Add image / sticker" onClick={() => fileInputRef.current?.click()}>
+        <button type="button" className={styles.utilBtn} title="Add image / sticker" onClick={() => fileInputRef.current?.click()}>
           ⊕
         </button>
-        <button type="button" className={styles.toolBtn} title="Undo" onClick={undo}>
+        <button type="button" className={styles.utilBtn} title="Undo (or two-finger double-tap)" onClick={undo}>
           ↩
+        </button>
+        <button type="button" className={styles.utilBtn} title="Redo (or three-finger double-tap)" onClick={redo}>
+          ↪
         </button>
         {/* Finish controls live in the toolbar so they're always visible beside
             the tools (the top header can sit under iPad Safari's own toolbar). */}
