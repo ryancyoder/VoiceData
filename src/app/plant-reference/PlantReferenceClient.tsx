@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, X, ExternalLink } from "lucide-react";
+import { Search, X, ExternalLink, LayoutGrid, Rows3, Leaf } from "lucide-react";
 import {
   PLANT_CATEGORIES,
   SUN_OPTIONS,
   MOISTURE_OPTIONS,
   formatInches,
+  plantImageUrl,
   type Plant,
   type PlantQueryResult,
 } from "@/lib/plants";
@@ -24,6 +25,7 @@ export function PlantReferenceClient() {
   const [result, setResult] = useState<PlantQueryResult>({ plants: [], total: 0, page: 1, pageSize: 50 });
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Plant | null>(null);
+  const [layout, setLayout] = useState<"gallery" | "table">("gallery");
 
   // Debounced search; typing resets to page 1.
   useEffect(() => {
@@ -84,12 +86,31 @@ export function PlantReferenceClient() {
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Plant Reference</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Horticultural catalog — search and filter {result.total ? result.total.toLocaleString() : ""} plants by
-          conditions, size, and traits.
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Plant Reference</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Horticultural catalog — search and filter {result.total ? result.total.toLocaleString() : ""} plants by
+            conditions, size, and traits.
+          </p>
+        </div>
+        <div className="flex shrink-0 rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
+          {(["gallery", "table"] as const).map((l) => (
+            <button
+              key={l}
+              onClick={() => setLayout(l)}
+              title={l === "gallery" ? "Gallery view" : "Table view"}
+              aria-label={l === "gallery" ? "Gallery view" : "Table view"}
+              className={`flex items-center justify-center rounded-full px-3 py-1.5 transition-colors ${
+                layout === l
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+              }`}
+            >
+              {l === "gallery" ? <LayoutGrid size={16} /> : <Rows3 size={16} />}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Filters */}
@@ -138,46 +159,70 @@ export function PlantReferenceClient() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-50 text-left text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Botanical</th>
-                  <th className="px-3 py-2 font-medium">Common</th>
-                  <th className="px-3 py-2 font-medium">Category</th>
-                  <th className="px-3 py-2 font-medium">Zone</th>
-                  <th className="px-3 py-2 font-medium">Sun</th>
-                  <th className="px-3 py-2 font-medium">Height</th>
-                  <th className="px-3 py-2 font-medium">Bloom</th>
-                  <th className="px-3 py-2 font-medium">Traits</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.plants.map((p) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => setSelected(p)}
-                    className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
-                  >
-                    <td className="px-3 py-2 font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "—"}</td>
-                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.common || "—"}</td>
-                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.category || "—"}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.zone || "—"}</td>
-                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.sun?.join(", ") || "—"}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-zinc-600 dark:text-zinc-400">{formatInches(p.height_in)}</td>
-                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.bloom_color?.join(", ") || "—"}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-1">
-                        {p.native && <Badge>Native</Badge>}
-                        {p.evergreen && <Badge>Evergreen</Badge>}
-                        {p.deer_resistant && <Badge>Deer-res.</Badge>}
-                      </div>
-                    </td>
+          {layout === "gallery" ? (
+            <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {result.plants.map((p) => (
+                <li
+                  key={p.id}
+                  onClick={() => setSelected(p)}
+                  className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  <div className="relative aspect-square">
+                    <PlantImg image={p.image} alt={p.botanical ?? ""} className="h-full w-full object-cover" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-3 pb-2 pt-8">
+                      <p className="truncate text-sm font-medium italic text-white drop-shadow-sm">{p.botanical || "Unknown"}</p>
+                      {p.common && <p className="truncate text-xs text-white/80">{p.common}</p>}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-50 text-left text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                  <tr>
+                    <th className="w-14 px-3 py-2 font-medium"></th>
+                    <th className="px-3 py-2 font-medium">Botanical</th>
+                    <th className="px-3 py-2 font-medium">Common</th>
+                    <th className="px-3 py-2 font-medium">Category</th>
+                    <th className="px-3 py-2 font-medium">Zone</th>
+                    <th className="px-3 py-2 font-medium">Sun</th>
+                    <th className="px-3 py-2 font-medium">Height</th>
+                    <th className="px-3 py-2 font-medium">Bloom</th>
+                    <th className="px-3 py-2 font-medium">Traits</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {result.plants.map((p) => (
+                    <tr
+                      key={p.id}
+                      onClick={() => setSelected(p)}
+                      className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
+                    >
+                      <td className="px-3 py-1.5">
+                        <PlantImg image={p.image} alt="" className="h-10 w-10 rounded object-cover" small />
+                      </td>
+                      <td className="px-3 py-2 font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "—"}</td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.common || "—"}</td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.category || "—"}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.zone || "—"}</td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.sun?.join(", ") || "—"}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-zinc-600 dark:text-zinc-400">{formatInches(p.height_in)}</td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.bloom_color?.join(", ") || "—"}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {p.native && <Badge>Native</Badge>}
+                          {p.evergreen && <Badge>Evergreen</Badge>}
+                          {p.deer_resistant && <Badge>Deer-res.</Badge>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Pagination */}
           <div className="mt-4 flex items-center justify-between text-sm text-zinc-500 dark:text-zinc-400">
@@ -278,6 +323,34 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Renders a plant's album-cover image, falling back to a leaf placeholder when
+// there's no image path or the file isn't in the bucket yet (404).
+function PlantImg({
+  image,
+  alt,
+  className,
+  small,
+}: {
+  image: string | null;
+  alt: string;
+  className: string;
+  small?: boolean;
+}) {
+  const url = plantImageUrl(image);
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return (
+      <div className={`flex items-center justify-center bg-zinc-100 text-zinc-300 dark:bg-zinc-800 dark:text-zinc-600 ${className}`}>
+        <Leaf size={small ? 16 : 28} />
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt={alt} loading="lazy" className={className} onError={() => setFailed(true)} />
+  );
+}
+
 function PlantDetail({ plant, onClose }: { plant: Plant; onClose: () => void }) {
   const rows: { label: string; value: string }[] = useMemo(() => {
     const arr = (a: string[] | null | undefined) => (a && a.length ? a.join(", ") : "—");
@@ -329,6 +402,11 @@ function PlantDetail({ plant, onClose }: { plant: Plant; onClose: () => void }) 
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {plant.image && (
+            <div className="mb-4 overflow-hidden rounded-xl border border-zinc-100 dark:border-zinc-800">
+              <PlantImg image={plant.image} alt={plant.botanical ?? ""} className="max-h-72 w-full object-cover" />
+            </div>
+          )}
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
             {rows.map((r) => (
               <div key={r.label} className="flex justify-between gap-4 border-b border-zinc-50 py-1 dark:border-zinc-800/60">
