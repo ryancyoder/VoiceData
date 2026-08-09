@@ -313,6 +313,33 @@
   }
 }
 
+/* Yellow "you can curve now" cue: a steady, gently pulsing dot shown while the
+   pen's curve window is open (move to bend, or keep holding to lock straight). */
+.curveCue {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: #ffcc00;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 2px rgba(255, 204, 0, 0.9), 0 0 14px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: curveCuePulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes curveCuePulse {
+  from {
+    transform: scale(0.85);
+    opacity: 0.85;
+  }
+  to {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
 /* ── Floating text labels ───────────────────────────────────────────────── */
 .textWrap {
   position: absolute;
