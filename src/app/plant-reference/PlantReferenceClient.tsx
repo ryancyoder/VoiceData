@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, X, ExternalLink, LayoutGrid, Rows3, Leaf } from "lucide-react";
+import { Search, X, ExternalLink, LayoutGrid, Rows3, Leaf, ChevronLeft, Layers } from "lucide-react";
 import {
   PLANT_CATEGORIES,
   SUN_OPTIONS,
@@ -10,6 +10,8 @@ import {
   plantImageUrl,
   type Plant,
   type PlantQueryResult,
+  type PlantAlbum,
+  type PlantAlbumsResult,
 } from "@/lib/plants";
 
 export function PlantReferenceClient() {
@@ -22,10 +24,16 @@ export function PlantReferenceClient() {
   const [deer, setDeer] = useState(false);
   const [evergreen, setEvergreen] = useState(false);
   const [page, setPage] = useState(1);
-  const [result, setResult] = useState<PlantQueryResult>({ plants: [], total: 0, page: 1, pageSize: 50 });
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Plant | null>(null);
+  const [groupMode, setGroupMode] = useState<"albums" | "all">("albums");
+  const [drill, setDrill] = useState<PlantAlbum | null>(null);
   const [layout, setLayout] = useState<"gallery" | "table">("gallery");
+  const [loading, setLoading] = useState(true);
+  const [plantResult, setPlantResult] = useState<PlantQueryResult>({ plants: [], total: 0, page: 1, pageSize: 50 });
+  const [albumResult, setAlbumResult] = useState<PlantAlbumsResult>({ albums: [], total: 0, page: 1, pageSize: 50 });
+  const [selected, setSelected] = useState<Plant | null>(null);
+
+  // Showing the album grid (grouped mode, not drilled into a species).
+  const inAlbumList = groupMode === "albums" && !drill;
 
   // Debounced search; typing resets to page 1.
   useEffect(() => {
@@ -48,24 +56,46 @@ export function PlantReferenceClient() {
     if (deer) params.set("deer", "1");
     if (evergreen) params.set("evergreen", "1");
     params.set("page", String(page));
-    fetch(`/api/plants?${params.toString()}`)
-      .then((r) => (r.ok ? r.json() : { plants: [], total: 0, page, pageSize: 50 }))
-      .then((d: PlantQueryResult) => {
-        if (active) {
-          setResult(d);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setResult({ plants: [], total: 0, page, pageSize: 50 });
-          setLoading(false);
-        }
-      });
+
+    if (inAlbumList) {
+      fetch(`/api/plants/albums?${params.toString()}`)
+        .then((r) => (r.ok ? r.json() : { albums: [], total: 0, page, pageSize: 50 }))
+        .then((d: PlantAlbumsResult) => {
+          if (active) {
+            setAlbumResult(d);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setAlbumResult({ albums: [], total: 0, page, pageSize: 50 });
+            setLoading(false);
+          }
+        });
+    } else {
+      if (drill) {
+        params.set("genus", drill.genus ?? "");
+        params.set("species", drill.species ?? "");
+      }
+      fetch(`/api/plants?${params.toString()}`)
+        .then((r) => (r.ok ? r.json() : { plants: [], total: 0, page, pageSize: 50 }))
+        .then((d: PlantQueryResult) => {
+          if (active) {
+            setPlantResult(d);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setPlantResult({ plants: [], total: 0, page, pageSize: 50 });
+            setLoading(false);
+          }
+        });
+    }
     return () => {
       active = false;
     };
-  }, [q, category, sun, moisture, native, deer, evergreen, page]);
+  }, [q, category, sun, moisture, native, deer, evergreen, page, inAlbumList, drill]);
 
   const anyFilter = !!(q || category || sun || moisture || native || deer || evergreen);
   const clearAll = useCallback(() => {
@@ -80,9 +110,25 @@ export function PlantReferenceClient() {
     setPage(1);
   }, []);
 
-  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
-  const rangeFrom = result.total === 0 ? 0 : (result.page - 1) * result.pageSize + 1;
-  const rangeTo = Math.min(result.total, result.page * result.pageSize);
+  const openDrill = useCallback((album: PlantAlbum) => {
+    setDrill(album);
+    setPage(1);
+  }, []);
+  const closeDrill = useCallback(() => {
+    setDrill(null);
+    setPage(1);
+  }, []);
+  const switchGroup = useCallback((mode: "albums" | "all") => {
+    setGroupMode(mode);
+    setDrill(null);
+    setPage(1);
+  }, []);
+
+  const active = inAlbumList ? albumResult : plantResult;
+  const totalPages = Math.max(1, Math.ceil(active.total / active.pageSize));
+  const rangeFrom = active.total === 0 ? 0 : (active.page - 1) * active.pageSize + 1;
+  const rangeTo = Math.min(active.total, active.page * active.pageSize);
+  const noun = inAlbumList ? "species" : "plants";
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
@@ -90,7 +136,7 @@ export function PlantReferenceClient() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Plant Reference</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Horticultural catalog — search and filter {result.total ? result.total.toLocaleString() : ""} plants by
+            Horticultural catalog — {active.total ? active.total.toLocaleString() : ""} {noun}, searchable by
             conditions, size, and traits.
           </p>
         </div>
@@ -111,6 +157,26 @@ export function PlantReferenceClient() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Grouping toggle / breadcrumb */}
+      <div className="mb-3">
+        {drill ? (
+          <button
+            onClick={closeDrill}
+            className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            <ChevronLeft size={16} /> Albums
+            <span className="ml-1 text-zinc-400">/</span>
+            <span className="italic">{drill.album_key}</span>
+            {drill.common ? <span className="text-zinc-400">· {drill.common}</span> : null}
+          </button>
+        ) : (
+          <div className="inline-flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
+            <GroupBtn label="Albums" active={groupMode === "albums"} onClick={() => switchGroup("albums")} />
+            <GroupBtn label="All plants" active={groupMode === "all"} onClick={() => switchGroup("all")} />
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -147,113 +213,190 @@ export function PlantReferenceClient() {
 
       {/* Results */}
       {loading ? (
-        <p className="text-sm text-zinc-400">Loading plants…</p>
-      ) : result.plants.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-zinc-300 px-6 py-16 text-center dark:border-zinc-700">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">No plants match these filters.</p>
-          {anyFilter && (
-            <button onClick={clearAll} className="mt-3 text-sm font-medium text-zinc-600 underline underline-offset-2 hover:text-zinc-900 dark:text-zinc-300">
-              Clear search &amp; filters
-            </button>
-          )}
-        </div>
+        <p className="text-sm text-zinc-400">Loading…</p>
+      ) : inAlbumList ? (
+        albumResult.albums.length === 0 ? (
+          <Empty anyFilter={anyFilter} onClear={clearAll} noun="species" />
+        ) : layout === "gallery" ? (
+          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {albumResult.albums.map((a) => (
+              <li
+                key={a.album_key}
+                onClick={() => openDrill(a)}
+                className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                <div className="relative aspect-square">
+                  <PlantImg image={a.image} alt={a.album_key} className="h-full w-full object-cover" />
+                  {a.cultivars > 1 && (
+                    <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
+                      <Layers size={12} /> {a.cultivars}
+                    </span>
+                  )}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-3 pb-2 pt-8">
+                    <p className="truncate text-sm font-medium italic text-white drop-shadow-sm">{a.album_key}</p>
+                    {a.common && <p className="truncate text-xs text-white/80">{a.common}</p>}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 text-left text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                <tr>
+                  <th className="w-14 px-3 py-2 font-medium"></th>
+                  <th className="px-3 py-2 font-medium">Species</th>
+                  <th className="px-3 py-2 font-medium">Common</th>
+                  <th className="px-3 py-2 font-medium">Category</th>
+                  <th className="px-3 py-2 font-medium">Cultivars</th>
+                </tr>
+              </thead>
+              <tbody>
+                {albumResult.albums.map((a) => (
+                  <tr
+                    key={a.album_key}
+                    onClick={() => openDrill(a)}
+                    className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
+                  >
+                    <td className="px-3 py-1.5">
+                      <PlantImg image={a.image} alt="" className="h-10 w-10 rounded object-cover" small />
+                    </td>
+                    <td className="px-3 py-2 font-medium italic text-zinc-800 dark:text-zinc-200">{a.album_key}</td>
+                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{a.common || "—"}</td>
+                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{a.category || "—"}</td>
+                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{a.cultivars}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : plantResult.plants.length === 0 ? (
+        <Empty anyFilter={anyFilter} onClear={clearAll} noun="plants" />
+      ) : layout === "gallery" ? (
+        <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {plantResult.plants.map((p) => (
+            <li
+              key={p.id}
+              onClick={() => setSelected(p)}
+              className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <div className="relative aspect-square">
+                <PlantImg image={p.image} alt={p.botanical ?? ""} className="h-full w-full object-cover" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-3 pb-2 pt-8">
+                  <p className="truncate text-sm font-medium italic text-white drop-shadow-sm">{p.botanical || "Unknown"}</p>
+                  {p.common && <p className="truncate text-xs text-white/80">{p.common}</p>}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : (
-        <>
-          {layout === "gallery" ? (
-            <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {result.plants.map((p) => (
-                <li
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-left text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+              <tr>
+                <th className="w-14 px-3 py-2 font-medium"></th>
+                <th className="px-3 py-2 font-medium">Botanical</th>
+                <th className="px-3 py-2 font-medium">Common</th>
+                <th className="px-3 py-2 font-medium">Category</th>
+                <th className="px-3 py-2 font-medium">Zone</th>
+                <th className="px-3 py-2 font-medium">Sun</th>
+                <th className="px-3 py-2 font-medium">Height</th>
+                <th className="px-3 py-2 font-medium">Bloom</th>
+                <th className="px-3 py-2 font-medium">Traits</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plantResult.plants.map((p) => (
+                <tr
                   key={p.id}
                   onClick={() => setSelected(p)}
-                  className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+                  className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
                 >
-                  <div className="relative aspect-square">
-                    <PlantImg image={p.image} alt={p.botanical ?? ""} className="h-full w-full object-cover" />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-3 pb-2 pt-8">
-                      <p className="truncate text-sm font-medium italic text-white drop-shadow-sm">{p.botanical || "Unknown"}</p>
-                      {p.common && <p className="truncate text-xs text-white/80">{p.common}</p>}
+                  <td className="px-3 py-1.5">
+                    <PlantImg image={p.image} alt="" className="h-10 w-10 rounded object-cover" small />
+                  </td>
+                  <td className="px-3 py-2 font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "—"}</td>
+                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.common || "—"}</td>
+                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.category || "—"}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.zone || "—"}</td>
+                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.sun?.join(", ") || "—"}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-zinc-600 dark:text-zinc-400">{formatInches(p.height_in)}</td>
+                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.bloom_color?.join(", ") || "—"}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {p.native && <Badge>Native</Badge>}
+                      {p.evergreen && <Badge>Evergreen</Badge>}
+                      {p.deer_resistant && <Badge>Deer-res.</Badge>}
                     </div>
-                  </div>
-                </li>
+                  </td>
+                </tr>
               ))}
-            </ul>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-              <table className="w-full text-sm">
-                <thead className="bg-zinc-50 text-left text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-                  <tr>
-                    <th className="w-14 px-3 py-2 font-medium"></th>
-                    <th className="px-3 py-2 font-medium">Botanical</th>
-                    <th className="px-3 py-2 font-medium">Common</th>
-                    <th className="px-3 py-2 font-medium">Category</th>
-                    <th className="px-3 py-2 font-medium">Zone</th>
-                    <th className="px-3 py-2 font-medium">Sun</th>
-                    <th className="px-3 py-2 font-medium">Height</th>
-                    <th className="px-3 py-2 font-medium">Bloom</th>
-                    <th className="px-3 py-2 font-medium">Traits</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.plants.map((p) => (
-                    <tr
-                      key={p.id}
-                      onClick={() => setSelected(p)}
-                      className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
-                    >
-                      <td className="px-3 py-1.5">
-                        <PlantImg image={p.image} alt="" className="h-10 w-10 rounded object-cover" small />
-                      </td>
-                      <td className="px-3 py-2 font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "—"}</td>
-                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.common || "—"}</td>
-                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.category || "—"}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.zone || "—"}</td>
-                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.sun?.join(", ") || "—"}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-zinc-600 dark:text-zinc-400">{formatInches(p.height_in)}</td>
-                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.bloom_color?.join(", ") || "—"}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {p.native && <Badge>Native</Badge>}
-                          {p.evergreen && <Badge>Evergreen</Badge>}
-                          {p.deer_resistant && <Badge>Deer-res.</Badge>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-          {/* Pagination */}
-          <div className="mt-4 flex items-center justify-between text-sm text-zinc-500 dark:text-zinc-400">
+      {/* Pagination */}
+      {!loading && (inAlbumList ? albumResult.albums.length : plantResult.plants.length) > 0 && (
+        <div className="mt-4 flex items-center justify-between text-sm text-zinc-500 dark:text-zinc-400">
+          <span>
+            {rangeFrom.toLocaleString()}–{rangeTo.toLocaleString()} of {active.total.toLocaleString()} {noun}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={active.page <= 1}
+              className="rounded-full border border-zinc-300 px-3 py-1 font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-200"
+            >
+              Prev
+            </button>
             <span>
-              {rangeFrom.toLocaleString()}–{rangeTo.toLocaleString()} of {result.total.toLocaleString()}
+              Page {active.page} / {totalPages}
             </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={result.page <= 1}
-                className="rounded-full border border-zinc-300 px-3 py-1 font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-200"
-              >
-                Prev
-              </button>
-              <span>
-                Page {result.page} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={result.page >= totalPages}
-                className="rounded-full border border-zinc-300 px-3 py-1 font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-200"
-              >
-                Next
-              </button>
-            </div>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={active.page >= totalPages}
+              className="rounded-full border border-zinc-300 px-3 py-1 font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-200"
+            >
+              Next
+            </button>
           </div>
-        </>
+        </div>
       )}
 
       {selected && <PlantDetail plant={selected} onClose={() => setSelected(null)} />}
     </main>
+  );
+}
+
+function Empty({ anyFilter, onClear, noun }: { anyFilter: boolean; onClear: () => void; noun: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-zinc-300 px-6 py-16 text-center dark:border-zinc-700">
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">No {noun} match these filters.</p>
+      {anyFilter && (
+        <button onClick={onClear} className="mt-3 text-sm font-medium text-zinc-600 underline underline-offset-2 hover:text-zinc-900 dark:text-zinc-300">
+          Clear search &amp; filters
+        </button>
+      )}
+    </div>
+  );
+}
+
+function GroupBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+        active
+          ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-100"
+          : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

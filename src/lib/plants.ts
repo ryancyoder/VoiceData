@@ -67,6 +67,24 @@ export interface PlantQueryResult {
   pageSize: number;
 }
 
+// A species "album" — cultivars of one genus+species collapsed into one entry.
+export interface PlantAlbum {
+  album_key: string;
+  genus: string | null;
+  species: string | null;
+  common: string | null;
+  category: string | null;
+  cultivars: number;
+  image: string | null;
+}
+
+export interface PlantAlbumsResult {
+  albums: PlantAlbum[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 // Inches → a compact feet/inches label (e.g. 26 → 2'2").
 export function formatInches(inches: number | null | undefined): string {
   if (inches == null) return "—";
