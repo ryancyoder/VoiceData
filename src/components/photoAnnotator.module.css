@@ -141,6 +141,22 @@
   border-color: #4a9eff;
   background: rgba(74, 158, 255, 0.16);
 }
+/* Utility buttons (add / undo / redo) — sized so all three fit one panel row. */
+.utilBtn {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 21px;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: #1c1c1e;
+  color: #fff;
+  -webkit-tap-highlight-color: transparent;
+}
 .toolBtn.textMove {
   border-color: #007aff;
   color: #4a9eff;
