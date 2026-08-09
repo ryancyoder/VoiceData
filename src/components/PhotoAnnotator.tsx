@@ -75,9 +75,17 @@ export default function PhotoAnnotator({
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const bgRef = useRef<HTMLImageElement>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The full-resolution original, kept off-DOM. It is drawn once into the small
+  // display-resolution background canvas for editing, and used again at save
+  // time to composite at full quality — but it is never a visible/composited
+  // layer, so the iPad GPU isn't re-sampling a 12MP texture on every stroke
+  // (the per-update cost that made the high-rate Apple Pencil lag).
+  const fullImgRef = useRef<HTMLImageElement | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [ready, setReady] = useState(false);
 
   // Mirror the live tool/color/size into refs so the deferred straighten timer
   // (scheduled inside a pointer handler) reads current values, not stale ones.
@@ -129,37 +137,76 @@ export default function PhotoAnnotator({
   }, []);
 
   // ── Canvas sizing ─────────────────────────────────────────────────────────
-  const initCanvas = useCallback(() => {
-    const bg = bgRef.current;
+  // Size the container + both canvases to the on-screen fit, draw the photo into
+  // the background canvas at display resolution, and (re)initialize the drawing
+  // context. Rerunning it (e.g. on rotate) resets the drawing surface.
+  const setup = useCallback(() => {
+    const full = fullImgRef.current;
     const body = bodyRef.current;
     const container = containerRef.current;
+    const bgCanvas = bgCanvasRef.current;
     const canvas = canvasRef.current;
-    if (!bg || !body || !container || !canvas || !bg.naturalWidth) return;
-    const scale = Math.min(body.clientWidth / bg.naturalWidth, body.clientHeight / bg.naturalHeight, 1);
-    const dW = Math.round(bg.naturalWidth * scale);
-    const dH = Math.round(bg.naturalHeight * scale);
+    if (!full || !full.naturalWidth || !body || !container || !bgCanvas || !canvas) return;
+    const scale = Math.min(body.clientWidth / full.naturalWidth, body.clientHeight / full.naturalHeight, 1);
+    const dW = Math.max(1, Math.round(full.naturalWidth * scale));
+    const dH = Math.max(1, Math.round(full.naturalHeight * scale));
+    const dpr = window.devicePixelRatio || 1;
     container.style.width = dW + "px";
     container.style.height = dH + "px";
-    bg.style.width = dW + "px";
-    bg.style.height = dH + "px";
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = dW * dpr;
-    canvas.height = dH * dpr;
+
+    // Background: the photo downscaled to exactly the pixels the screen shows —
+    // a few megapixels instead of the original 12MP+, so compositing it under
+    // the live drawing layer is cheap even at the Apple Pencil's high rate.
+    bgCanvas.width = Math.round(dW * dpr);
+    bgCanvas.height = Math.round(dH * dpr);
+    bgCanvas.style.width = dW + "px";
+    bgCanvas.style.height = dH + "px";
+    const bctx = bgCanvas.getContext("2d");
+    if (bctx) {
+      bctx.imageSmoothingQuality = "high";
+      bctx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+      bctx.drawImage(full, 0, 0, bgCanvas.width, bgCanvas.height);
+    }
+
+    // Drawing layer: same display size, kept at full dpr for crisp ink.
+    canvas.width = Math.round(dW * dpr);
+    canvas.height = Math.round(dH * dpr);
     canvas.style.width = dW + "px";
     canvas.style.height = dH + "px";
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctxRef.current = ctx;
+    undoStackRef.current = [];
   }, []);
 
+  // Load the full-resolution original off-DOM, then build the display surfaces.
   useEffect(() => {
-    const onResize = () => initCanvas();
+    const full = new Image();
+    full.crossOrigin = "anonymous";
+    full.onload = () => {
+      fullImgRef.current = full;
+      setup();
+      setReady(true);
+    };
+    full.onerror = () => setLoadError(true);
+    // Distinct query param so this CORS-enabled request doesn't collide with the
+    // lightbox's non-CORS cached copy (which would taint the canvas at save).
+    full.src = `${dealPhotoUrl(photo.storage_path)}?annotate=1`;
+    return () => {
+      full.onload = null;
+      full.onerror = null;
+    };
+  }, [photo.storage_path, setup]);
+
+  useEffect(() => {
+    const onResize = () => setup();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [initCanvas]);
+  }, [setup]);
 
   useEffect(() => {
     return () => {
@@ -465,18 +512,21 @@ export default function PhotoAnnotator({
 
   // ── Save (composite + upload) ─────────────────────────────────────────────
   async function save() {
-    const bg = bgRef.current;
+    const full = fullImgRef.current;
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!bg || !canvas || !container) return;
+    if (!full || !canvas || !container) return;
     setSaving(true);
     try {
+      // Composite at the ORIGINAL full resolution: the display background was a
+      // downscaled copy, but the saved output uses the full-res source so no
+      // quality is lost.
       const out = document.createElement("canvas");
-      out.width = bg.naturalWidth;
-      out.height = bg.naturalHeight;
+      out.width = full.naturalWidth;
+      out.height = full.naturalHeight;
       const ctx = out.getContext("2d");
       if (!ctx) throw new Error("Canvas not supported");
-      ctx.drawImage(bg, 0, 0);
+      ctx.drawImage(full, 0, 0);
       ctx.drawImage(canvas, 0, 0, out.width, out.height);
 
       const scaleX = out.width / container.clientWidth;
@@ -576,18 +626,10 @@ export default function PhotoAnnotator({
 
       <div className={styles.body} ref={bodyRef}>
         <div className={styles.imgContainer} ref={containerRef}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            ref={bgRef}
-            className={styles.bg}
-            crossOrigin="anonymous"
-            alt={photo.caption ?? "Photo"}
-            // Distinct query param so this CORS-enabled request doesn't collide
-            // with the lightbox's non-CORS cached copy (which would taint the
-            // canvas and break toBlob on save).
-            src={`${dealPhotoUrl(photo.storage_path)}?annotate=1`}
-            onLoad={initCanvas}
-          />
+          {/* Display-resolution copy of the photo (drawn in setup()). Using a
+              small canvas rather than the full-res <img> keeps the iPad from
+              recompositing a 12MP texture under the live drawing layer. */}
+          <canvas ref={bgCanvasRef} className={styles.bg} />
           {/* Pointer listeners are attached natively (passive:false) in an
               effect above — not as React props — for input responsiveness. */}
           <canvas ref={canvasRef} className={styles.canvas} />
@@ -606,6 +648,8 @@ export default function PhotoAnnotator({
             />
           ))}
         </div>
+        {!ready && !loadError && <div className={styles.spinner}>Loading…</div>}
+        {loadError && <div className={styles.spinner}>Couldn’t load the photo.</div>}
       </div>
 
       <div className={styles.toolbar}>
