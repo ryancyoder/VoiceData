@@ -28,6 +28,11 @@ export async function GET(req: NextRequest) {
     }
   }
   if (category) query = query.eq("category", category);
+  // Drill into a species album. Empty string means the null bucket.
+  const genus = sp.get("genus");
+  const species = sp.get("species");
+  if (genus !== null) query = genus === "" ? query.is("genus", null) : query.eq("genus", genus);
+  if (species !== null) query = species === "" ? query.is("species", null) : query.eq("species", species);
   if (sun) query = query.contains("sun", [sun]);
   if (moisture) query = query.contains("moisture", [moisture]);
   if (native) query = query.eq("native", true);
