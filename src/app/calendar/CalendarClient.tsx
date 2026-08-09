@@ -10,6 +10,8 @@ import PhotoUpload from "./PhotoUpload";
 import EventMediaUpload from "./EventMediaUpload";
 import EventPhotoUpload from "./EventPhotoUpload";
 import ImportOutlookEvent from "./ImportOutlookEvent";
+import PhotoAnnotator from "@/components/PhotoAnnotator";
+import type { DealPhoto } from "@/lib/salesBoard";
 
 export interface GeoPhoto {
   id: number;
@@ -24,6 +26,7 @@ export interface GeoPhoto {
   media_type: "photo" | "video";
   poster_path: string | null;
   is_outlier: boolean;
+  original_storage_path?: string | null;
 }
 
 export interface CalendarEvent {
@@ -218,6 +221,8 @@ export default function CalendarClient({
   const [workWeek, setWorkWeek] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(() => findLinkedEvent());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [annotatingPhoto, setAnnotatingPhoto] = useState<GeoPhoto | null>(null);
+  const [revertingPhotoId, setRevertingPhotoId] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -686,6 +691,38 @@ export default function CalendarClient({
   const rangeLabel = `${weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDays[weekDays.length - 1].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
   const activePhoto = selectedEvent && lightboxIndex != null ? selectedEvent.photos[lightboxIndex] ?? null : null;
+
+  // Fold a server-returned deal_photos row (after annotate/revert) back into the
+  // open event's photo list in place, so the lightbox re-points at the new file.
+  function applyPhotoUpdate(updated: DealPhoto) {
+    setSelectedEvent((cur) =>
+      cur
+        ? {
+            ...cur,
+            photos: cur.photos.map((p) =>
+              p.id === updated.id
+                ? { ...p, storage_path: updated.storage_path, original_storage_path: updated.original_storage_path ?? null, caption: updated.caption }
+                : p
+            ),
+          }
+        : cur
+    );
+  }
+
+  async function handleRevertPhoto(photo: GeoPhoto) {
+    if (!confirm("Revert to the original photo? The annotated version will be discarded.")) return;
+    setRevertingPhotoId(photo.id);
+    try {
+      const res = await fetch(`/api/photos/${photo.id}/annotate`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to revert photo");
+      applyPhotoUpdate(data.photo as DealPhoto);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to revert photo");
+    } finally {
+      setRevertingPhotoId(null);
+    }
+  }
 
   useEffect(() => {
     if (lightboxIndex == null || !selectedEvent) return;
@@ -1205,12 +1242,35 @@ export default function CalendarClient({
               >
                 Next ›
               </button>
+              {activePhoto.media_type !== "video" && (
+                <button type="button" className={styles["lightbox-nav"]} onClick={() => setAnnotatingPhoto(activePhoto)}>
+                  ✏ Annotate
+                </button>
+              )}
+              {activePhoto.original_storage_path && (
+                <button
+                  type="button"
+                  className={styles["lightbox-nav"]}
+                  disabled={revertingPhotoId === activePhoto.id}
+                  onClick={() => handleRevertPhoto(activePhoto)}
+                >
+                  {revertingPhotoId === activePhoto.id ? "Reverting…" : "↩ Revert to original"}
+                </button>
+              )}
               <button type="button" className={styles["lightbox-nav"]} onClick={() => setLightboxIndex(null)}>
                 Back to event
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {annotatingPhoto && (
+        <PhotoAnnotator
+          photo={annotatingPhoto}
+          onClose={() => setAnnotatingPhoto(null)}
+          onSaved={(updated) => applyPhotoUpdate(updated)}
+        />
       )}
 
       {newEventOpen && (

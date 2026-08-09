@@ -35,6 +35,10 @@ export interface DealPhoto {
   poster_path: string | null;
   is_outlier: boolean;
   photo_type: PhotoType;
+  // When set, storage_path points at an annotated composite and this holds the
+  // un-annotated original (so the annotation can be reverted). Null = never
+  // annotated. Added by the photo-annotation feature; older rows are null.
+  original_storage_path?: string | null;
 }
 
 // A PO or receipt attached directly to a deal — unlike DealPhoto, never

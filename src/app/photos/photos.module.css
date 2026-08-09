@@ -455,6 +455,17 @@
 .lightbox-cover:hover { color: var(--text); border-color: var(--text-faint); }
 .lightbox-cover.is-cover { border-color: #E0A020; color: #E0A020; }
 
+.lightbox-annotate {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.lightbox-annotate:hover { color: var(--text); border-color: var(--text-faint); }
+
 .lightbox-close {
   background: none;
   border: none;

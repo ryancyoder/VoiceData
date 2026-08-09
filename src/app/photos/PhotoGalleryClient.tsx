@@ -9,6 +9,7 @@ import type { EventType } from "@/lib/events";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import { readClientExif } from "@/lib/clientExif";
 import { compressImage } from "@/lib/compressImage";
+import PhotoAnnotator from "@/components/PhotoAnnotator";
 
 const UPLOAD_TIMEOUT_MS = 60000;
 
@@ -73,6 +74,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const [events, setEvents] = useState<GalleryEvent[]>(initialEvents);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [annotating, setAnnotating] = useState<DealPhoto | null>(null);
+  const [revertingId, setRevertingId] = useState<number | null>(null);
   // Overlay captions on the fronts of the images — a viewing preference,
   // persisted per browser.
   const [showCaptions, setShowCaptions] = useState(false);
@@ -253,6 +256,28 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       alert(err instanceof Error ? err.message : "Failed to save caption");
     } finally {
       setSavingCaptionId(null);
+    }
+  }
+
+  // Fold a server-returned photo (after annotate or revert) back into the
+  // events tree in place — its storage_path changes, so the thumbnail and
+  // lightbox re-point at the new file automatically.
+  function applyPhotoUpdate(updated: DealPhoto) {
+    setEvents((es) => es.map((e) => ({ ...e, photos: e.photos.map((p) => (p.id === updated.id ? updated : p)) })));
+  }
+
+  async function handleRevert(photo: DealPhoto) {
+    if (!confirm("Revert to the original photo? The annotated version will be discarded.")) return;
+    setRevertingId(photo.id);
+    try {
+      const res = await fetch(`/api/photos/${photo.id}/annotate`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to revert photo");
+      applyPhotoUpdate(data.photo as DealPhoto);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to revert photo");
+    } finally {
+      setRevertingId(null);
     }
   }
 
@@ -721,6 +746,21 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                     {activePhoto.id === activeProperty.coverPhotoId ? "★ Cover photo" : "☆ Set as cover"}
                   </button>
                 )}
+                {activePhoto.media_type !== "video" && (
+                  <button type="button" className={styles["lightbox-annotate"]} onClick={() => setAnnotating(activePhoto)}>
+                    ✏ Annotate
+                  </button>
+                )}
+                {activePhoto.original_storage_path && (
+                  <button
+                    type="button"
+                    className={styles["lightbox-annotate"]}
+                    disabled={revertingId === activePhoto.id}
+                    onClick={() => handleRevert(activePhoto)}
+                  >
+                    {revertingId === activePhoto.id ? "Reverting…" : "↩ Revert to original"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={styles["lightbox-delete"]}
@@ -736,6 +776,10 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
             </div>
           </div>
         </div>
+      )}
+
+      {annotating && (
+        <PhotoAnnotator photo={annotating} onClose={() => setAnnotating(null)} onSaved={(updated) => applyPhotoUpdate(updated)} />
       )}
     </div>
   );
