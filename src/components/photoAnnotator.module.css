@@ -68,23 +68,17 @@
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
-  /* Own compositor layer: the full-res source photo is rasterized once and
-     never re-downscaled when the canvas above it is drawn on. Without this the
-     big background image repaints on every pen stroke — the main cause of the
-     drawing lag versus VoiceMap (whose backgrounds are small data URLs). */
-  transform: translateZ(0);
-  will-change: transform;
-  backface-visibility: hidden;
 }
 .canvas {
   position: absolute;
   inset: 0;
   touch-action: none;
   cursor: crosshair;
-  /* Keep the drawing surface on its own layer too, so stroke updates only
-     re-upload this (display-sized) texture, not the photo underneath. */
-  transform: translateZ(0);
-  will-change: transform;
+  /* Deliberately NOT GPU-promoted (no will-change/translateZ). On iOS Safari,
+     compositing an actively-drawn canvas turns the per-stroke getImageData undo
+     snapshot into a slow GPU→CPU readback and re-uploads the texture every
+     frame — negligible for a mouse, but it made Apple Pencil drawing lag.
+     VoiceMap doesn't promote it either, and is smooth. */
 }
 
 /* ── Toolbar ────────────────────────────────────────────────────────────── */

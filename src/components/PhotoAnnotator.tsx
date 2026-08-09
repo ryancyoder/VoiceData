@@ -360,13 +360,10 @@ export default function PhotoAnnotator({
       return;
     }
 
-    // Replay every sub-frame sample the browser coalesced into this event.
-    const samples = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : null;
-    if (samples && samples.length) {
-      for (const ev of samples) pushFreehand(getPos(ev));
-    } else {
-      pushFreehand(getPos(e));
-    }
+    // One draw per pointermove — exactly like the original VoiceMap editor.
+    // (Replaying getCoalescedEvents() multiplied per-event work by the Apple
+    // Pencil's high sample rate, which made drawing lag only on the iPad.)
+    pushFreehand(getPos(e));
   }
 
   function onPointerUp(e: PointerEvent) {
