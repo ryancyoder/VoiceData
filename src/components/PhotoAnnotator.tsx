@@ -432,7 +432,7 @@ export default function PhotoAnnotator({
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
     const tool = toolRef.current;
-    if (!ctx || !canvas || (tool !== "pen" && tool !== "fill") || !strokeActiveRef.current) return;
+    if (!ctx || !canvas || (tool !== "pen" && tool !== "fill" && tool !== "curvepen") || !strokeActiveRef.current) return;
     if (pointsRef.current.length < 1) return;
     if (straightenTimerRef.current) {
       clearTimeout(straightenTimerRef.current);
@@ -440,6 +440,30 @@ export default function PhotoAnnotator({
     }
     const pos = lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1];
     if (!pos) return;
+
+    // Curve pen: lock the current curve segment and restart freehand from its
+    // endpoint, so the next segment is drawn and auto-smoothed into a curve just
+    // like the first — chaining a run of connected curves.
+    if (tool === "curvepen") {
+      if (!straightenedRef.current && pointsRef.current.length >= 2) straighten(); // snap freehand → curve
+      const endpoint: Pt = straightenedRef.current && arcP2Ref.current ? { ...arcP2Ref.current } : { ...pos };
+      preStrokeRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height); // freeze what's drawn
+      pointsRef.current = [{ ...endpoint }];
+      straightenedRef.current = false;
+      altCurveRef.current = false;
+      arcP0Ref.current = null;
+      arcP2Ref.current = null;
+      lastPointerRef.current = null;
+      straightenOriginRef.current = { ...endpoint };
+      straightenTimerRef.current = setTimeout(straighten, 600);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = colorRef.current;
+      ctx.fillStyle = colorRef.current;
+      ctx.beginPath();
+      ctx.moveTo(endpoint.x, endpoint.y);
+      navigator.vibrate?.(8);
+      return;
+    }
 
     // Fill: append the current edge's endpoint (and its curve control point) to
     // the shape, then start the next edge there. No pixel bake — the whole fill
@@ -869,7 +893,8 @@ export default function PhotoAnnotator({
       } else if (e.key === "Shift") {
         if (shiftProcessedRef.current) return; // ignore key auto-repeat
         shiftProcessedRef.current = true;
-        if ((toolRef.current === "pen" || toolRef.current === "fill") && strokeActiveRef.current && pointsRef.current.length >= 1) {
+        const t = toolRef.current;
+        if ((t === "pen" || t === "fill" || t === "curvepen") && strokeActiveRef.current && pointsRef.current.length >= 1) {
           e.preventDefault();
           keyApiRef.current.commit();
         }
@@ -943,7 +968,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "curvepen" ? styles.active : ""}`}
-          title="Curve pen (hold still to smooth)"
+          title="Curve pen — draw and hold still to smooth into a curve; tap Shift while drawing to lock a vertex and chain another curve"
           onClick={() => selectTool("curvepen")}
         >
           ⌣
