@@ -18,6 +18,7 @@ const TEXT_SIZES: Record<number, number> = { 3: 16, 7: 22, 15: 32 };
 
 const MAX_UNDO = 20;
 const PEN_LOCK = 1000; // ms of palm-rejection after an Apple Pencil stroke lifts
+const VERTEX_LOCK_DELAY = 600; // ms of continued stillness (after a line snaps) that drops a polygon vertex
 
 interface Pt {
   x: number;
@@ -136,6 +137,12 @@ export default function PhotoAnnotator({
   // = a pen stroke is in progress; shiftProcessedRef debounces key auto-repeat
   // so one physical press drops exactly one vertex.
   const strokeActiveRef = useRef(false);
+  // Pen polygon: a "long hold" in one spot drops a vertex (an alternative to
+  // Shift). lockTimerRef fires after the pointer has been still for
+  // VERTEX_LOCK_DELAY once the line has snapped; lockOriginRef is the position
+  // it was last armed at, so ordinary drag jitter doesn't keep resetting it.
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockOriginRef = useRef<Pt | null>(null);
   // Polygon fill: committed vertices of the shape being drawn. Each vertex holds
   // the control point (cp) of the curved edge leading into it, or null for a
   // straight edge. Index 0 is the start; the shape is auto-closed on lift.
@@ -262,6 +269,7 @@ export default function PhotoAnnotator({
   useEffect(() => {
     return () => {
       if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
+      if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
     };
   }, []);
 
@@ -438,6 +446,10 @@ export default function PhotoAnnotator({
       clearTimeout(straightenTimerRef.current);
       straightenTimerRef.current = null;
     }
+    if (lockTimerRef.current) {
+      clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
     const pos = lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1];
     if (!pos) return;
 
@@ -503,8 +515,32 @@ export default function PhotoAnnotator({
     arcP0Ref.current = null;
     arcP2Ref.current = null;
     lastPointerRef.current = { ...endpoint };
+    // Don't re-arm the hold-to-lock timer here (that would drop repeated
+    // vertices while holding at the same spot). Moving away re-arms it.
+    lockOriginRef.current = { ...endpoint };
     navigator.vibrate?.(8);
     // If Alt is still held, bend the new segment as soon as the drag moves.
+  }
+
+  // Re-arm the "hold in place to drop a vertex" timer for the pen polygon.
+  function armLockTimer(pos: Pt) {
+    lockOriginRef.current = pos;
+    if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+    lockTimerRef.current = setTimeout(lockVertex, VERTEX_LOCK_DELAY);
+  }
+  function clearLockTimer() {
+    if (lockTimerRef.current) {
+      clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+    lockOriginRef.current = null;
+  }
+  // Fired once the pen has been held still long enough after the line snapped:
+  // drop a vertex and start the next segment (same effect as tapping Shift).
+  function lockVertex() {
+    lockTimerRef.current = null;
+    if (toolRef.current !== "pen" || !straightenedRef.current || !strokeActiveRef.current) return;
+    commitPolygonVertex();
   }
 
   // Hold-still-to-snap: straight line (pen/eraser) or smooth arch (curve pen).
@@ -544,6 +580,9 @@ export default function PhotoAnnotator({
     navigator.vibrate?.(12);
     // If Option/Alt is already held when the pen line snaps, start bending now.
     if (toolRef.current === "pen" && altDownRef.current) engageAltCurve();
+    // Pen: begin the "hold in place to drop a vertex" countdown now that the
+    // line has snapped. Continuing to hold locks the vertex; moving re-arms it.
+    if (toolRef.current === "pen") armLockTimer(pts[pts.length - 1]);
   }
 
   // ── Canvas pointer handlers ───────────────────────────────────────────────
@@ -569,6 +608,7 @@ export default function PhotoAnnotator({
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
     e.preventDefault();
     if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
+    clearLockTimer();
     straightenedRef.current = false;
     preStrokeRef.current = null;
     straightenOriginRef.current = null;
@@ -650,6 +690,12 @@ export default function PhotoAnnotator({
       const pos = getPos(e);
       lastPointerRef.current = pos;
       redrawStraightened(pos);
+      // Pen: while adjusting a snapped segment, re-arm the hold-to-lock timer on
+      // real movement so it only fires once you settle on a spot.
+      if (toolRef.current === "pen") {
+        const o = lockOriginRef.current;
+        if (!o || Math.hypot(pos.x - o.x, pos.y - o.y) > 4) armLockTimer(pos);
+      }
       return;
     }
 
@@ -663,6 +709,7 @@ export default function PhotoAnnotator({
     const ctx = ctxRef.current;
     if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
     straightenTimerRef.current = null;
+    clearLockTimer();
     strokeActiveRef.current = false;
     if (!ctx) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
@@ -960,7 +1007,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "pen" ? styles.active : ""}`}
-          title="Pen — hold still to snap to a straight line; hold Option/Alt to bend it into a curve; tap Shift while drawing to drop polygon vertices"
+          title="Pen — hold still to snap to a straight line; keep holding in place to drop a polygon vertex and continue (or tap Shift); hold Option/Alt to bend an edge into a curve"
           onClick={() => selectTool("pen")}
         >
           ✏
