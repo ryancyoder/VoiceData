@@ -84,6 +84,7 @@ export default function PhotoAnnotator({
   // layer, so the iPad GPU isn't re-sampling a 12MP texture on every stroke
   // (the per-update cost that made the high-rate Apple Pencil lag).
   const fullImgRef = useRef<HTMLImageElement | null>(null);
+  const lastSizeRef = useRef({ w: 0, h: 0 });
   const [loadError, setLoadError] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -147,9 +148,19 @@ export default function PhotoAnnotator({
     const bgCanvas = bgCanvasRef.current;
     const canvas = canvasRef.current;
     if (!full || !full.naturalWidth || !body || !container || !bgCanvas || !canvas) return;
-    const scale = Math.min(body.clientWidth / full.naturalWidth, body.clientHeight / full.naturalHeight, 1);
+    // Layout may not have sized the body yet when the image finishes loading —
+    // computing a fit against a 0-width body produced a 1px canvas, which is the
+    // intermittent "photo didn't render" bug. Bail; the ResizeObserver re-runs
+    // setup once the body has a real size.
+    const bw = body.clientWidth;
+    const bh = body.clientHeight;
+    if (bw === 0 || bh === 0) return;
+    const scale = Math.min(bw / full.naturalWidth, bh / full.naturalHeight, 1);
     const dW = Math.max(1, Math.round(full.naturalWidth * scale));
     const dH = Math.max(1, Math.round(full.naturalHeight * scale));
+    // Nothing changed → don't rebuild (rebuilding clears the in-progress drawing).
+    if (ctxRef.current && dW === lastSizeRef.current.w && dH === lastSizeRef.current.h) return;
+    lastSizeRef.current = { w: dW, h: dH };
     const dpr = window.devicePixelRatio || 1;
     container.style.width = dW + "px";
     container.style.height = dH + "px";
@@ -202,10 +213,19 @@ export default function PhotoAnnotator({
     };
   }, [photo.storage_path, setup]);
 
+  // Drive (re)layout off the body's actual size, not just window resize — this
+  // fixes the load race: whichever settles last (image decode or first layout)
+  // triggers a correct setup, and the size guard makes redundant fires no-ops.
   useEffect(() => {
-    const onResize = () => setup();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const body = bodyRef.current;
+    if (!body || typeof ResizeObserver === "undefined") {
+      const onResize = () => setup();
+      window.addEventListener("resize", onResize);
+      return () => window.removeEventListener("resize", onResize);
+    }
+    const ro = new ResizeObserver(() => setup());
+    ro.observe(body);
+    return () => ro.disconnect();
   }, [setup]);
 
   useEffect(() => {
@@ -619,8 +639,8 @@ export default function PhotoAnnotator({
           Cancel
         </button>
         <span className={styles.title}>Annotate Photo</span>
-        <button type="button" className={`${styles.headerBtn} ${styles.saveBtn}`} onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
+        <button type="button" className={`${styles.headerBtn} ${styles.saveBtn}`} onClick={save} disabled={saving || !ready}>
+          {saving ? "Saving…" : "Save & Close"}
         </button>
       </div>
 
