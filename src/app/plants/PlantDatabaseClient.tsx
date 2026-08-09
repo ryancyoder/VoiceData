@@ -484,10 +484,20 @@ export function PlantDatabaseClient() {
           currentName={items.find((i) => i.id === linkingId)?.data?.referencePlantName ?? items.find((i) => i.id === linkingId)?.data?.botanicalName}
           onClose={() => setLinkingId(null)}
           onPick={(plant: Plant) => {
-            updateItem(linkingId, {
+            const current = items.find((i) => i.id === linkingId);
+            // Link + autofill the stamp's names from the reference entry. The
+            // reference is authoritative, so botanical/common are (re)filled; the
+            // display name is only set when it's currently blank.
+            const patch: Partial<LibraryItemData> = {
               referencePlantId: plant.id,
               referencePlantName: plant.botanical ?? plant.common ?? undefined,
-            });
+              botanicalName: plant.botanical ?? undefined,
+              commonName: plant.common ?? undefined,
+            };
+            if (!current?.data?.name?.trim()) {
+              patch.name = plant.common ?? plant.botanical ?? undefined;
+            }
+            updateItem(linkingId, patch);
             setLinkingId(null);
           }}
         />
