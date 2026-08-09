@@ -94,6 +94,7 @@ export default function PhotoAnnotator({
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const altBtnRef = useRef<HTMLDivElement>(null);
+  const altTapRef = useRef(0); // dedupe: touchstart + pointerdown fire for one tap
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The full-resolution original, kept off-DOM. It is drawn once into the small
   // display-resolution background canvas for editing, and used again at save
@@ -595,6 +596,15 @@ export default function PhotoAnnotator({
     altDownRef.current = false;
     setAltActive(false);
     if (altCurveRef.current) disengageAltCurve();
+  }
+  // Toggle the modifier — used by the on-screen button. iPad palm-rejection
+  // blocks a finger while the pencil is in contact, so a hold-while-drawing
+  // button can't work; instead you TAP to arm "bend mode" between strokes
+  // (pencil up), then any straight line you draw bows as you drag and keeps the
+  // curve on lift. Tap again to turn it off.
+  function toggleAlt() {
+    if (altDownRef.current) releaseAlt();
+    else pressAlt();
   }
 
   // Show a brief pulse at a just-dropped vertex (visual counterpart to the
@@ -1195,9 +1205,9 @@ export default function PhotoAnnotator({
   // Keyboard modifiers: Option/Alt bends a snapped pen line into a curve; Shift
   // drops a polygon vertex mid-stroke. A ref keeps the document listeners
   // pointed at the latest closures.
-  const keyApiRef = useRef({ pressAlt, releaseAlt, commit: commitPolygonVertex });
+  const keyApiRef = useRef({ pressAlt, releaseAlt, toggleAlt, commit: commitPolygonVertex });
   useEffect(() => {
-    keyApiRef.current = { pressAlt, releaseAlt, commit: commitPolygonVertex };
+    keyApiRef.current = { pressAlt, releaseAlt, toggleAlt, commit: commitPolygonVertex };
   });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1232,48 +1242,26 @@ export default function PhotoAnnotator({
 
   // Bend button is only mounted for tools where bending applies.
   const bendToolActive = tool === "pen" || tool === "fill" || tool === "prism";
-  // Attach the Bend button's activation handlers NATIVELY ({ passive: false }).
-  // We listen for BOTH touch and pointer events: on iPad the Apple Pencil did
-  // not activate the button via pointer events (React synthetic OR native), but
-  // it does generate touch events — and touch events implicitly capture to their
-  // start target, so drift-off still releases. pressAlt()/releaseAlt() are
-  // idempotent, so touch + pointer both firing (finger) just no-ops the dupes.
+  // The Bend button is a TOGGLE, not a hold: iPad palm-rejection blocks a finger
+  // while the pencil is in contact, so you can't hold it and draw at the same
+  // time. Tapping it (between strokes) arms/disarms "bend mode." Handlers are
+  // native ({ passive: false }) and listen for both touch and pointer, since the
+  // Apple Pencil delivers touch events even where its pointer events don't fire.
+  // A short time-guard dedupes the touch + pointer pair from a single tap.
   useEffect(() => {
     const btn = altBtnRef.current;
     if (!btn) return;
-    const press = (e: Event) => {
-      keyApiRef.current.pressAlt();
-      e.preventDefault(); // stop scroll/selection and the synthetic click
-      // Mouse/desktop: capture so drift-off still releases. Touch events already
-      // capture implicitly to their start target; the pencil path uses touch.
-      if ("pointerId" in e) {
-        try {
-          btn.setPointerCapture((e as PointerEvent).pointerId);
-        } catch {
-          /* fast tap: pointer may already be gone — capture is optional */
-        }
-      }
+    const onTap = (e: Event) => {
+      e.preventDefault(); // stop scroll/selection, synthetic click, and drawing-through
+      if (e.timeStamp - altTapRef.current < 400) return; // one physical tap → one toggle
+      altTapRef.current = e.timeStamp;
+      keyApiRef.current.toggleAlt();
     };
-    const release = (e: Event) => {
-      e.preventDefault();
-      keyApiRef.current.releaseAlt();
-    };
-    const cancel = () => keyApiRef.current.releaseAlt();
-    btn.addEventListener("touchstart", press, { passive: false });
-    btn.addEventListener("touchend", release, { passive: false });
-    btn.addEventListener("touchcancel", cancel, { passive: false });
-    btn.addEventListener("pointerdown", press, { passive: false });
-    btn.addEventListener("pointerup", release, { passive: false });
-    btn.addEventListener("pointercancel", cancel);
-    btn.addEventListener("lostpointercapture", cancel);
+    btn.addEventListener("touchstart", onTap, { passive: false });
+    btn.addEventListener("pointerdown", onTap, { passive: false });
     return () => {
-      btn.removeEventListener("touchstart", press);
-      btn.removeEventListener("touchend", release);
-      btn.removeEventListener("touchcancel", cancel);
-      btn.removeEventListener("pointerdown", press);
-      btn.removeEventListener("pointerup", release);
-      btn.removeEventListener("pointercancel", cancel);
-      btn.removeEventListener("lostpointercapture", cancel);
+      btn.removeEventListener("touchstart", onTap);
+      btn.removeEventListener("pointerdown", onTap);
     };
   }, [bendToolActive]);
 
@@ -1447,12 +1435,13 @@ export default function PhotoAnnotator({
           ref={altBtnRef}
           role="button"
           tabIndex={-1}
+          aria-pressed={altActive}
           className={`${styles.altBtn} ${altActive ? styles.altBtnActive : ""}`}
-          title="Bend — hold while drawing a straight line to bow it into a curve (on-screen Option/Alt); release to keep the curve"
-          aria-label="Bend (hold)"
+          title="Bend mode — tap to turn on, then any straight line you draw bows into a curve as you drag (lift to keep it); tap again to turn off"
+          aria-label="Bend mode"
         >
           <span className={styles.altGlyph}>⌥</span>
-          <span className={styles.altLabel}>Bend</span>
+          <span className={styles.altLabel}>{altActive ? "Bend ✓" : "Bend"}</span>
         </div>
       )}
 
