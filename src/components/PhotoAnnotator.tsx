@@ -730,16 +730,16 @@ export default function PhotoAnnotator({
     }
     lockOriginRef.current = null;
   }
-  // Fired once the pointer has been held still long enough (pen: after the line
-  // snapped; fill: edges are straight from the start): drop a vertex and start
-  // the next segment/edge (same effect as tapping Shift). Suppressed while Alt is
-  // held so bowing a curve never locks the vertex — you release Alt (which keeps
-  // the curve) and then hold to lock.
+  // Fired once the pointer has been held still long enough after a segment
+  // formed (pen line snapped / fill edge / curve smoothed): drop a vertex and
+  // start the next segment (same effect as tapping Shift). For pen/fill the Alt
+  // hold suppresses it (you release Alt then hold to lock); the curve pen has no
+  // bend, so its long-hold lock is never suppressed.
   function lockVertex() {
     lockTimerRef.current = null;
-    if (altDownRef.current) return;
     const t = toolRef.current;
-    if ((t !== "pen" && !isFillDraw()) || !straightenedRef.current || !strokeActiveRef.current) return;
+    if (altDownRef.current && t !== "curvepen") return;
+    if ((t !== "pen" && t !== "curvepen" && !isFillDraw()) || !straightenedRef.current || !strokeActiveRef.current) return;
     commitPolygonVertex();
   }
 
@@ -782,9 +782,11 @@ export default function PhotoAnnotator({
     navigator.vibrate?.(12);
     // If Option/Alt is already held when the pen line snaps, start bending now.
     if (toolRef.current === "pen" && altDownRef.current) engageAltCurve();
-    // Pen: begin the "hold in place to drop a vertex" countdown now that the
-    // line has snapped. Continuing to hold locks the vertex; moving re-arms it.
-    if (toolRef.current === "pen") armLockTimer(pts[pts.length - 1]);
+    // Pen & curve pen: begin the "hold in place to drop a vertex" countdown now
+    // that the segment has formed. Continuing to hold locks the vertex and starts
+    // the next segment (chaining); moving re-arms it. For the curve pen this lets
+    // you chain another curve with a long hold — no Shift/keyboard needed.
+    if (toolRef.current === "pen" || toolRef.current === "curvepen") armLockTimer(pts[pts.length - 1]);
   }
 
   // ── Canvas pointer handlers ───────────────────────────────────────────────
@@ -929,9 +931,10 @@ export default function PhotoAnnotator({
         engageAltCurve();
       }
       redrawStraightened(pos);
-      // Pen/fill: while adjusting a straight edge, re-arm the hold-to-lock timer
-      // on real movement so it only fires once you settle on a spot.
-      if (toolRef.current === "pen" || isFillDraw()) {
+      // Pen/fill/curve: while adjusting the segment (curve pen: shaping the arc's
+      // bulge), re-arm the hold-to-lock timer on real movement so it only fires
+      // once you settle on a spot.
+      if (toolRef.current === "pen" || toolRef.current === "curvepen" || isFillDraw()) {
         const o = lockOriginRef.current;
         if (!o || Math.hypot(pos.x - o.x, pos.y - o.y) > 4) armLockTimer(pos);
       }
@@ -1009,7 +1012,10 @@ export default function PhotoAnnotator({
       ctx.globalCompositeOperation = "source-over";
       return;
     }
-    if (pointsRef.current.length === 1 && toolRef.current !== "text") {
+    // A leftover single point becomes a dot (a deliberate tap) — except for the
+    // curve pen, where a 1-point segment is just the start the last lock chained
+    // to; lifting there should leave the drawn curve, not a stray dot.
+    if (pointsRef.current.length === 1 && toolRef.current !== "text" && toolRef.current !== "curvepen") {
       const pos = pointsRef.current[0];
       const base = toolRef.current === "eraser" ? sizeRef.current * 6 : sizeRef.current;
       ctx.lineWidth = base;
@@ -1320,7 +1326,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "curvepen" ? styles.active : ""}`}
-          title="Curve pen — draw and hold still to smooth into a curve; tap Shift while drawing to lock a vertex and chain another curve"
+          title="Curve pen — draw and hold still to smooth into a curve, optionally drag to shape it, then keep holding in place to lock it and chain another curve (or tap Shift)"
           onClick={() => selectTool("curvepen")}
         >
           ⌣
