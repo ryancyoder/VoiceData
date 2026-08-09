@@ -70,6 +70,7 @@ export function PlantReferenceClient() {
   // the drilled-into album.
   const [stamps, setStamps] = useState<LibraryItem[]>([]);
   const [stampsLoading, setStampsLoading] = useState(false);
+  const [selectedStamp, setSelectedStamp] = useState<LibraryItem | null>(null);
 
   // Showing the album grid (grouped mode, not drilled into a species).
   const inAlbumList = groupMode === "albums" && !drill;
@@ -451,7 +452,7 @@ export function PlantReferenceClient() {
           ) : (
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {stamps.map((s) => (
-                <StampCard key={s.id} item={s} />
+                <StampCard key={s.id} item={s} onClick={() => setSelectedStamp(s)} />
               ))}
             </ul>
           )}
@@ -691,6 +692,7 @@ export function PlantReferenceClient() {
         <CombinationDetail combo={selectedCombo} onClose={() => setSelectedCombo(null)} onPlantClick={openAlbumForPlant} />
       )}
       {selected && <PlantDetail plant={selected} onClose={() => setSelected(null)} />}
+      {selectedStamp && <StampDetail item={selectedStamp} onClose={() => setSelectedStamp(null)} />}
       {editingCombo && (
         <CombinationEditor
           combo={editingCombo === "new" ? null : editingCombo}
@@ -1206,39 +1208,89 @@ function PlantEditor({
 // Combinations: multi-plant photos that surface in each linked species' album.
 // ---------------------------------------------------------------------------
 
+function stampKindLabel(item: LibraryItem): string {
+  return item.kind === "plan-symbol" ? "2D plan" : "Perspective";
+}
+function stampLabel(item: LibraryItem): string {
+  return item.data.referencePlantName || item.data.botanicalName || item.data.name || "Untitled";
+}
+
 // A design library symbol (perspective stamp / 2D plan symbol) linked to a
-// plant in the current album. Display-only; images are transparent PNGs so they
-// sit on a neutral tile with object-contain.
-function StampCard({ item }: { item: LibraryItem }) {
+// plant in the current album. Clicking opens a larger view. Images are
+// transparent PNGs so they sit on a neutral tile with object-contain.
+function StampCard({ item, onClick }: { item: LibraryItem; onClick: () => void }) {
   const [failed, setFailed] = useState(false);
-  const kindLabel = item.kind === "plan-symbol" ? "2D plan" : "Perspective";
-  const label = item.data.referencePlantName || item.data.botanicalName || item.data.name || "Untitled";
+  const kindLabel = stampKindLabel(item);
+  const label = stampLabel(item);
   return (
-    <li
-      className="group relative overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-      title={`${label} · ${kindLabel}`}
-    >
-      <div className="relative flex aspect-square items-center justify-center bg-zinc-50 p-3 dark:bg-zinc-950">
-        {item.imageUrl && !failed ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.imageUrl}
-            alt={label}
-            loading="lazy"
-            className="max-h-full max-w-full object-contain"
-            onError={() => setFailed(true)}
-          />
-        ) : (
-          <Shapes size={28} className="text-zinc-300 dark:text-zinc-600" />
-        )}
-        <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
-          {kindLabel}
-        </span>
-      </div>
-      <div className="border-t border-zinc-100 px-2 py-1.5 dark:border-zinc-800">
-        <p className="truncate text-xs italic text-zinc-600 dark:text-zinc-300">{label}</p>
-      </div>
+    <li className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <button onClick={onClick} className="group block w-full text-left" title={`${label} · ${kindLabel} — click to enlarge`}>
+        <div className="relative flex aspect-square items-center justify-center bg-zinc-50 p-3 dark:bg-zinc-950">
+          {item.imageUrl && !failed ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.imageUrl}
+              alt={label}
+              loading="lazy"
+              className="max-h-full max-w-full object-contain transition-transform group-hover:scale-105"
+              onError={() => setFailed(true)}
+            />
+          ) : (
+            <Shapes size={28} className="text-zinc-300 dark:text-zinc-600" />
+          )}
+          <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+            {kindLabel}
+          </span>
+        </div>
+        <div className="border-t border-zinc-100 px-2 py-1.5 dark:border-zinc-800">
+          <p className="truncate text-xs italic text-zinc-600 dark:text-zinc-300">{label}</p>
+        </div>
+      </button>
     </li>
+  );
+}
+
+// Enlarged view of a single design symbol.
+function StampDetail({ item, onClose }: { item: LibraryItem; onClose: () => void }) {
+  const [failed, setFailed] = useState(false);
+  const kindLabel = stampKindLabel(item);
+  const label = stampLabel(item);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
+          <div className="flex items-center gap-2">
+            <Shapes size={16} className="text-indigo-600" />
+            <div>
+              <h2 className="text-base font-semibold italic text-zinc-900 dark:text-zinc-50">{label}</h2>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{kindLabel} symbol</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-zinc-50 p-6 dark:bg-zinc-950">
+          {item.imageUrl && !failed ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.imageUrl}
+              alt={label}
+              className="max-h-[70vh] max-w-full object-contain"
+              onError={() => setFailed(true)}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-16 text-zinc-300 dark:text-zinc-600">
+              <Shapes size={40} />
+              <span className="text-sm">Image unavailable</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
