@@ -219,6 +219,25 @@
   accent-color: #4a9eff;
   cursor: pointer;
 }
+/* Fill/prism edge-mode toggle (Curves ⇄ Corners). */
+.modeToggle {
+  flex-basis: 100%;
+  width: 100%;
+  padding: 10px 8px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  background: #1c1c1e;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.modeToggle.active {
+  border-color: #4a9eff;
+  background: rgba(74, 158, 255, 0.16);
+}
 .swatch {
   width: 36px;
   height: 36px;
