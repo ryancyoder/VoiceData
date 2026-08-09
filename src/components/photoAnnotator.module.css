@@ -50,6 +50,16 @@
   text-align: center;
 }
 
+/* Row that holds the image area and the tool panel. Column on narrow screens
+   (toolbar sits under the image); becomes a row on tablet/landscape (toolbar
+   docks to the right) via the media query below. */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
 .body {
   flex: 1;
   display: flex;
@@ -57,6 +67,7 @@
   justify-content: center;
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
   position: relative;
 }
 .imgContainer {
@@ -122,27 +133,34 @@
   cursor: default;
 }
 
-/* ── Toolbar ────────────────────────────────────────────────────────────── */
+/* ── Toolbar ────────────────────────────────────────────────────────────────
+   A wrapping grid of controls. `.sep` is a full-width break so each group
+   starts a new row. Narrow screens: a bottom bar spanning the width. Tablet/
+   landscape (media query below): a fixed-width panel docked to the right. */
 .toolbar {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  flex-flow: row wrap;
+  align-content: flex-start;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
   border-top: 0.5px solid rgba(255, 255, 255, 0.14);
   flex-shrink: 0;
-  overflow-x: auto;
   background: #111;
+  overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 .toolBtn {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 26px;
   cursor: pointer;
   flex-shrink: 0;
   background: #1c1c1e;
@@ -158,40 +176,42 @@
   color: #4a9eff;
 }
 .sep {
-  width: 1px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.18);
-  flex-shrink: 0;
+  flex-basis: 100%;
+  width: 100%;
+  height: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  margin: 3px 0;
 }
 .opacityWrap {
+  flex-basis: 100%;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
   color: #fff;
 }
 .opacityLabel {
-  font-size: 13px;
-  opacity: 0.75;
+  font-size: 14px;
+  opacity: 0.8;
+  text-align: center;
 }
 .opacityVal {
-  font-size: 12px;
-  opacity: 0.75;
-  width: 34px;
-  text-align: right;
+  font-size: 13px;
+  opacity: 0.8;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 .opacitySlider {
-  width: 110px;
+  width: 100%;
   accent-color: #4a9eff;
   cursor: pointer;
 }
 .swatch {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   flex-shrink: 0;
-  border: 2.5px solid transparent;
+  border: 3px solid transparent;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: border-color 0.12s;
@@ -202,10 +222,10 @@
   box-shadow: 0 0 0 2px #000;
 }
 .sizeBtn {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -219,6 +239,22 @@
   border-color: #4a9eff;
   background: rgba(74, 158, 255, 0.16);
 }
+
+/* Tablet / landscape: dock the toolbar to the right as a vertical panel. */
+@media (min-width: 820px) {
+  .main {
+    flex-direction: row;
+  }
+  .toolbar {
+    width: 168px;
+    flex-shrink: 0;
+    border-top: none;
+    border-left: 0.5px solid rgba(255, 255, 255, 0.14);
+    padding: 14px 12px;
+    padding-right: calc(12px + env(safe-area-inset-right));
+    padding-bottom: 14px;
+  }
+}
 .sizeDot {
   background: currentColor;
   border-radius: 50%;
@@ -228,7 +264,7 @@
    is set inline to preview the stroke. */
 .lineGlyph {
   display: block;
-  width: 20px;
+  width: 24px;
   height: 0;
   border-top: 3px solid currentColor;
 }

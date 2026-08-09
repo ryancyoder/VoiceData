@@ -1214,6 +1214,7 @@ export default function PhotoAnnotator({
         </button>
       </div>
 
+      <div className={styles.main}>
       <div className={styles.body} ref={bodyRef}>
         <div className={styles.imgContainer} ref={containerRef}>
           {/* Display-resolution copy of the photo (drawn in setup()). Using a
@@ -1357,6 +1358,7 @@ export default function PhotoAnnotator({
         <button type="button" className={styles.toolBtn} title="Undo" onClick={undo}>
           ↩
         </button>
+      </div>
       </div>
 
       {/* Bottom action bar. The top header can sit under iPad Safari's toolbar,
