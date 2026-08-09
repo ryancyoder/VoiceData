@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { dealPhotoUrl, type DealPhoto } from "@/lib/salesBoard";
 import styles from "./photoAnnotator.module.css";
 
-type Tool = "pen" | "curvepen" | "text" | "eraser" | "fill";
+type Tool = "pen" | "curvepen" | "text" | "eraser" | "fill" | "prism";
 
 const SWATCHES = ["#ff3b30", "#ffcc00", "#30d158", "#007aff", "#ffffff", "#1a1a1a"];
 const SIZES = [3, 7, 15] as const;
@@ -155,6 +155,14 @@ export default function PhotoAnnotator({
   // straight edge. Index 0 is the start; the shape is auto-closed on lift.
   const fillVertsRef = useRef<{ x: number; y: number; cp: { x: number; y: number } | null }[]>([]);
   const shiftProcessedRef = useRef(false);
+  // Prism tool: phase 1 ("draw") builds a polygon exactly like fill; on lift the
+  // closed ring is parked in prismBaseRef and the tool auto-enters phase 2
+  // ("extrude"), where a press-and-drag up/down duplicates the ring vertically
+  // and connects the vertices with verticals. extrudeStartYRef is the y where the
+  // extrude drag began; the live offset is (cursor.y − start.y).
+  const prismPhaseRef = useRef<"draw" | "extrude">("draw");
+  const prismBaseRef = useRef<{ x: number; y: number; cp: { x: number; y: number } | null }[]>([]);
+  const extrudeStartYRef = useRef(0);
   // Canvas rect cached for the duration of a stroke. getBoundingClientRect()
   // forces a synchronous reflow, and it was being called for every coalesced
   // pointer sample (up to ~10×/move at 120Hz) — measure once per stroke instead.
@@ -340,6 +348,71 @@ export default function PhotoAnnotator({
     ctx.stroke();
   }
 
+  // True while the current stroke should behave like the fill polygon builder:
+  // the fill tool itself, or the prism tool during its draw phase (before it
+  // switches to extruding). Lets the fill logic serve both tools.
+  function isFillDraw(): boolean {
+    const t = toolRef.current;
+    return t === "fill" || (t === "prism" && prismPhaseRef.current === "draw");
+  }
+
+  // Extrude preview: repaint the pre-polygon base, then stroke the base ring, a
+  // copy offset vertically by `dy`, and a vertical connector at every vertex.
+  // Wireframe only (no faces), re-rendered from the base each frame like the fill.
+  function renderPrism(dy: number) {
+    const ctx = ctxRef.current;
+    if (!ctx || !preStrokeRef.current) return;
+    const verts = prismBaseRef.current;
+    if (verts.length < 2) return;
+    ctx.putImageData(preStrokeRef.current, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = colorRef.current;
+    ctx.lineWidth = sizeRef.current * 1.5;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    const traceRing = (oy: number) => {
+      ctx.moveTo(verts[0].x, verts[0].y + oy);
+      for (let i = 1; i < verts.length; i++) {
+        const v = verts[i];
+        if (v.cp) ctx.quadraticCurveTo(v.cp.x, v.cp.y + oy, v.x, v.y + oy);
+        else ctx.lineTo(v.x, v.y + oy);
+      }
+      ctx.closePath();
+    };
+    ctx.beginPath();
+    traceRing(0); // base ring
+    ctx.stroke();
+    ctx.beginPath();
+    traceRing(dy); // extruded ring
+    ctx.stroke();
+    ctx.beginPath();
+    for (const v of verts) {
+      ctx.moveTo(v.x, v.y);
+      ctx.lineTo(v.x, v.y + dy); // vertical connector
+    }
+    ctx.stroke();
+  }
+
+  // Turn the in-progress fill polygon into a closed ring for extrusion. Appends
+  // the final live-edge endpoint (honoring an in-progress/kept bow) so the ring
+  // includes the last corner the user dragged to; skips it if it coincides with
+  // the previous vertex.
+  function finalizePrismRing(): { x: number; y: number; cp: { x: number; y: number } | null }[] {
+    const verts = fillVertsRef.current;
+    const q = lastPointerRef.current;
+    if (q && verts.length >= 1) {
+      const lastV = verts[verts.length - 1];
+      const bent = (altCurveRef.current || curveApexRef.current != null) && arcP2Ref.current;
+      const end = bent ? arcP2Ref.current! : q;
+      const through = curveApexRef.current ?? q;
+      const cp = bent && lastV ? arcControlPoint(lastV, arcP2Ref.current!, through) : null;
+      if (!lastV || Math.hypot(end.x - lastV.x, end.y - lastV.y) > 2) {
+        verts.push({ x: end.x, y: end.y, cp });
+      }
+    }
+    return verts.slice();
+  }
+
   // Render the polygon-fill shape from the pre-stroke base each frame:
   // translucent fill of the closed region + a solid outline. `cursor` is the
   // live drag position; `closeOutline` strokes the closing edge back to the
@@ -391,7 +464,7 @@ export default function PhotoAnnotator({
     const ctx = ctxRef.current;
     if (!ctx || !preStrokeRef.current) return;
     const t = toolRef.current;
-    if (t === "fill") {
+    if (isFillDraw()) {
       // A straight edge tracks the cursor; a bent one keeps its locked endpoint.
       if (!altCurveRef.current) pointsRef.current[pointsRef.current.length - 1] = pos;
       renderFill(pos, false);
@@ -424,7 +497,7 @@ export default function PhotoAnnotator({
   // controls its bulge. Only meaningful for a snapped pen line.
   function engageAltCurve() {
     const tool = toolRef.current;
-    if ((tool !== "pen" && tool !== "fill") || !straightenedRef.current || altCurveRef.current) return;
+    if ((tool !== "pen" && !isFillDraw()) || !straightenedRef.current || altCurveRef.current) return;
     const pts = pointsRef.current;
     if (pts.length < 1) return;
     const P0 = pts[0];
@@ -457,7 +530,7 @@ export default function PhotoAnnotator({
     // sees the kept curve (curveApexRef set + arcP2Ref set) and anchors on arcP2
     // with the bow preserved, not a straight edge to the cursor.
     const t = toolRef.current;
-    if ((t === "pen" || t === "fill") && end && strokeActiveRef.current) {
+    if ((t === "pen" || isFillDraw()) && end && strokeActiveRef.current) {
       commitPolygonVertex();
     }
   }
@@ -475,7 +548,7 @@ export default function PhotoAnnotator({
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
     const tool = toolRef.current;
-    if (!ctx || !canvas || (tool !== "pen" && tool !== "fill" && tool !== "curvepen") || !strokeActiveRef.current) return;
+    if (!ctx || !canvas || (tool !== "pen" && tool !== "curvepen" && !isFillDraw()) || !strokeActiveRef.current) return;
     if (pointsRef.current.length < 1) return;
     if (straightenTimerRef.current) {
       clearTimeout(straightenTimerRef.current);
@@ -516,7 +589,7 @@ export default function PhotoAnnotator({
     // Fill: append the current edge's endpoint (and its curve control point) to
     // the shape, then start the next edge there. No pixel bake — the whole fill
     // is re-rendered from the pre-stroke base each frame.
-    if (tool === "fill") {
+    if (isFillDraw()) {
       const lastV = fillVertsRef.current[fillVertsRef.current.length - 1];
       // Bent while Alt is held (curveApex null, cursor is the through-point) OR a
       // kept curve after Alt release (curveApex frozen). Either way anchor on the
@@ -594,7 +667,7 @@ export default function PhotoAnnotator({
     lockTimerRef.current = null;
     if (altDownRef.current) return;
     const t = toolRef.current;
-    if ((t !== "pen" && t !== "fill") || !straightenedRef.current || !strokeActiveRef.current) return;
+    if ((t !== "pen" && !isFillDraw()) || !straightenedRef.current || !strokeActiveRef.current) return;
     commitPolygonVertex();
   }
 
@@ -662,6 +735,19 @@ export default function PhotoAnnotator({
     if (e.pointerType === "touch" && e.timeStamp < penExpiryRef.current) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
     e.preventDefault();
+
+    // Prism phase 2: a second press-and-drag extrudes the finished polygon.
+    // Reuse the phase-1 undo snapshot (no new saveUndo) so the whole prism is a
+    // single undo step, and keep preStrokeRef (the pre-polygon image) to redraw on.
+    if (toolRef.current === "prism" && prismPhaseRef.current === "extrude") {
+      const pos = getPos(e);
+      extrudeStartYRef.current = pos.y;
+      lastPointerRef.current = pos;
+      strokeActiveRef.current = true;
+      renderPrism(0);
+      return;
+    }
+
     if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
     clearLockTimer();
     straightenedRef.current = false;
@@ -675,9 +761,10 @@ export default function PhotoAnnotator({
     saveUndo();
     preStrokeRef.current = undoStackRef.current[undoStackRef.current.length - 1];
     const pos = getPos(e);
-    if (toolRef.current === "fill") {
-      // Fill edges are straight from the start (no freehand/snap); Shift or a
-      // hold-in-place drops vertices, Alt bows an edge, lift closes and fills.
+    if (isFillDraw()) {
+      // Fill/prism edges are straight from the start (no freehand/snap); Shift or
+      // a hold-in-place drops vertices, Alt bows an edge. Fill closes+fills on
+      // lift; prism parks the ring and enters its extrude phase.
       fillVertsRef.current = [{ x: pos.x, y: pos.y, cp: null }];
       pointsRef.current = [pos, { ...pos }];
       strokeActiveRef.current = true;
@@ -741,6 +828,17 @@ export default function PhotoAnnotator({
     if (!ctx) return;
     if (toolRef.current === "text") return;
     if (e.pointerType === "touch" && e.timeStamp < penExpiryRef.current) return;
+
+    // Prism extrude drag: vertical distance from the press sets the extrusion.
+    if (toolRef.current === "prism" && prismPhaseRef.current === "extrude") {
+      if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
+      e.preventDefault();
+      const pos = getPos(e);
+      lastPointerRef.current = pos;
+      renderPrism(pos.y - extrudeStartYRef.current);
+      return;
+    }
+
     if (!pointsRef.current.length) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
     e.preventDefault();
@@ -751,7 +849,7 @@ export default function PhotoAnnotator({
       redrawStraightened(pos);
       // Pen/fill: while adjusting a straight edge, re-arm the hold-to-lock timer
       // on real movement so it only fires once you settle on a spot.
-      if (toolRef.current === "pen" || toolRef.current === "fill") {
+      if (toolRef.current === "pen" || isFillDraw()) {
         const o = lockOriginRef.current;
         if (!o || Math.hypot(pos.x - o.x, pos.y - o.y) > 4) armLockTimer(pos);
       }
@@ -772,6 +870,39 @@ export default function PhotoAnnotator({
     strokeActiveRef.current = false;
     if (!ctx) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
+    if (toolRef.current === "prism") {
+      if (prismPhaseRef.current === "draw") {
+        // Phase 1 done: close the polygon into a ring and auto-enter extrude.
+        const ring = finalizePrismRing();
+        fillVertsRef.current = [];
+        pointsRef.current = [];
+        straightenedRef.current = false;
+        altCurveRef.current = false;
+        curveApexRef.current = null;
+        arcP0Ref.current = null;
+        arcP2Ref.current = null;
+        lastPointerRef.current = null;
+        if (ring.length >= 2 && preStrokeRef.current) {
+          prismBaseRef.current = ring;
+          prismPhaseRef.current = "extrude";
+          renderPrism(0); // show the flat polygon; a press-drag now extrudes it
+        } else {
+          // Not enough for a prism (e.g. a stray tap) — discard, nothing baked.
+          prismBaseRef.current = [];
+          if (preStrokeRef.current) ctx.putImageData(preStrokeRef.current, 0, 0);
+          preStrokeRef.current = null;
+        }
+        ctx.globalCompositeOperation = "source-over";
+        return;
+      }
+      // Phase 2 done: the last renderPrism left the final prism on the canvas.
+      prismBaseRef.current = [];
+      prismPhaseRef.current = "draw";
+      preStrokeRef.current = null;
+      lastPointerRef.current = null;
+      ctx.globalCompositeOperation = "source-over";
+      return;
+    }
     if (toolRef.current === "fill") {
       const q = lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1] ?? null;
       if (q && fillVertsRef.current.length >= 1) renderFill(q, true); // close + fill
@@ -864,6 +995,13 @@ export default function PhotoAnnotator({
 
   // Tool selection helper (mirrors VoiceMap: picking a swatch also jumps to pen).
   function selectTool(next: Tool) {
+    // Abandon a pending prism extrude when switching tools: the flat polygon is
+    // already on the canvas; just drop the extrude state so it doesn't carry over.
+    if (prismPhaseRef.current === "extrude") {
+      prismPhaseRef.current = "draw";
+      prismBaseRef.current = [];
+      preStrokeRef.current = null;
+    }
     setTool(next);
     if (next !== "text") document.querySelector<HTMLElement>(`.${styles.textInput}:focus`)?.blur();
   }
@@ -993,7 +1131,7 @@ export default function PhotoAnnotator({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Alt") {
         altDownRef.current = true;
-        if (!e.repeat && straightenedRef.current && (toolRef.current === "pen" || toolRef.current === "fill") && !altCurveRef.current) {
+        if (!e.repeat && straightenedRef.current && (toolRef.current === "pen" || isFillDraw()) && !altCurveRef.current) {
           e.preventDefault();
           keyApiRef.current.engage();
         }
@@ -1001,7 +1139,7 @@ export default function PhotoAnnotator({
         if (shiftProcessedRef.current) return; // ignore key auto-repeat
         shiftProcessedRef.current = true;
         const t = toolRef.current;
-        if ((t === "pen" || t === "fill" || t === "curvepen") && strokeActiveRef.current && pointsRef.current.length >= 1) {
+        if ((t === "pen" || t === "curvepen" || isFillDraw()) && strokeActiveRef.current && pointsRef.current.length >= 1) {
           e.preventDefault();
           keyApiRef.current.commit();
         }
@@ -1106,6 +1244,14 @@ export default function PhotoAnnotator({
           onClick={() => selectTool("fill")}
         >
           ⬢
+        </button>
+        <button
+          type="button"
+          className={`${styles.toolBtn} ${tool === "prism" ? styles.active : ""}`}
+          title="Prism — draw a polygon like fill (hold/Shift for corners, Option/Alt to bow), lift to finish, then press and drag up or down to extrude it into a prism"
+          onClick={() => selectTool("prism")}
+        >
+          ⧉
         </button>
         <div className={styles.sep} />
         {SWATCHES.map((c) => (
