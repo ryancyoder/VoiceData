@@ -28,8 +28,8 @@ const PEN_LOCK = 1000; // ms of palm-rejection after an Apple Pencil stroke lift
 const VERTEX_LOCK_DELAY = 600; // ms of continued stillness (after a line snaps) that drops a polygon vertex (fill/curve pen)
 // Pen straight-line hold has two stages: a yellow "you can curve now" cue, then
 // the blue vertex lock. Moving between them bends the line instead of locking.
-const PEN_CURVE_CUE_DELAY = 320; // ms after settle → yellow cue appears
-const PEN_VERTEX_LOCK_DELAY = 960; // ms after settle → blue vertex lock (window = ~640ms)
+const PEN_CURVE_CUE_DELAY = 500; // ms after settle → yellow cue appears
+const PEN_VERTEX_LOCK_DELAY = 1140; // ms after settle → blue vertex lock (window = ~640ms)
 
 interface Pt {
   x: number;
