@@ -118,7 +118,6 @@ export default function PhotoAnnotator({
   const straightenOriginRef = useRef<Pt | null>(null);
   const arcP0Ref = useRef<Pt | null>(null);
   const arcP2Ref = useRef<Pt | null>(null);
-  const arcPerpRef = useRef<{ x: number; y: number } | null>(null);
   // Alt-to-bend: while a straight (pen) line is snapped, holding Option/Alt
   // locks the endpoint and turns the drag into curve-pen arc control; releasing
   // Alt reverts to the straight line. altDownRef = physical key state,
@@ -288,12 +287,31 @@ export default function PhotoAnnotator({
     return { x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure > 0 ? e.pressure : 0.5 };
   }
 
-  function drawArch(ctx: CanvasRenderingContext2D, P0: Pt, P2: Pt, perp: { x: number; y: number }, bulge: number) {
-    const mid = { x: (P0.x + P2.x) / 2, y: (P0.y + P2.y) / 2 };
-    const cp = { x: mid.x + perp.x * bulge * 2, y: mid.y + perp.y * bulge * 2 };
+  // Quadratic arc from P0 to P2 that passes through Q. Q's perpendicular
+  // distance from the P0→P2 line sets the arch height; how far Q projects
+  // ALONG the line skews the apex toward the start or end (drag sideways for a
+  // symmetric arch, drag toward an endpoint to lean the peak that way).
+  function drawArch(ctx: CanvasRenderingContext2D, P0: Pt, P2: Pt, Q: { x: number; y: number }) {
+    const ax = P2.x - P0.x;
+    const ay = P2.y - P0.y;
+    const len2 = ax * ax + ay * ay;
     ctx.beginPath();
     ctx.moveTo(P0.x, P0.y);
-    ctx.quadraticCurveTo(cp.x, cp.y, P2.x, P2.y);
+    if (len2 < 1e-6) {
+      ctx.lineTo(P2.x, P2.y);
+      ctx.stroke();
+      return;
+    }
+    // Parameter where Q sits along the axis (0 = start, 1 = end), kept off the
+    // ends so the control point stays finite.
+    let t = ((Q.x - P0.x) * ax + (Q.y - P0.y) * ay) / len2;
+    t = Math.min(0.95, Math.max(0.05, t));
+    const mt = 1 - t;
+    const denom = 2 * mt * t;
+    // Control point that makes the quadratic pass through Q at parameter t.
+    const cpx = (Q.x - mt * mt * P0.x - t * t * P2.x) / denom;
+    const cpy = (Q.y - mt * mt * P0.y - t * t * P2.y) / denom;
+    ctx.quadraticCurveTo(cpx, cpy, P2.x, P2.y);
     ctx.stroke();
   }
 
@@ -310,12 +328,10 @@ export default function PhotoAnnotator({
     ctx.strokeStyle = colorRef.current;
     ctx.lineWidth = base * 1.5;
     const arcMode = t === "curvepen" || (t === "pen" && altCurveRef.current);
-    if (arcMode && arcP0Ref.current && arcP2Ref.current && arcPerpRef.current) {
-      const P0 = arcP0Ref.current;
-      const P2 = arcP2Ref.current;
-      const mid = { x: (P0.x + P2.x) / 2, y: (P0.y + P2.y) / 2 };
-      const bulge = (pos.x - mid.x) * arcPerpRef.current.x + (pos.y - mid.y) * arcPerpRef.current.y;
-      drawArch(ctx, P0, P2, arcPerpRef.current, bulge);
+    if (arcMode && arcP0Ref.current && arcP2Ref.current) {
+      // The cursor itself is the point the arc passes through, so its position
+      // sets both the height and the skew of the curve.
+      drawArch(ctx, arcP0Ref.current, arcP2Ref.current, pos);
     } else {
       const p1 = pointsRef.current[0];
       ctx.beginPath();
@@ -335,12 +351,8 @@ export default function PhotoAnnotator({
     if (pts.length < 1) return;
     const P0 = pts[0];
     const P2 = pts[pts.length - 1]; // current endpoint = where the line ends now
-    const dx = P2.x - P0.x;
-    const dy = P2.y - P0.y;
-    const len = Math.hypot(dx, dy) || 1;
     arcP0Ref.current = P0;
     arcP2Ref.current = { ...P2 };
-    arcPerpRef.current = { x: -dy / len, y: dx / len };
     altCurveRef.current = true;
     redrawStraightened(lastPointerRef.current ?? P2);
   }
@@ -372,7 +384,6 @@ export default function PhotoAnnotator({
       altCurveRef.current = false;
       arcP0Ref.current = null;
       arcP2Ref.current = null;
-      arcPerpRef.current = null;
       redrawStraightened(pos);
     }
     const endpoint: Pt = altCurveRef.current && arcP2Ref.current ? { ...arcP2Ref.current } : { ...pos };
@@ -385,7 +396,6 @@ export default function PhotoAnnotator({
     altCurveRef.current = false;
     arcP0Ref.current = null;
     arcP2Ref.current = null;
-    arcPerpRef.current = null;
     lastPointerRef.current = { ...endpoint };
     navigator.vibrate?.(8);
     // If Alt is still held, bend the new segment as soon as the drag moves.
@@ -401,20 +411,15 @@ export default function PhotoAnnotator({
     if (t === "curvepen") {
       const P0 = pts[0];
       const P2 = pts[pts.length - 1];
-      const M = pts[Math.floor(pts.length / 2)];
-      const axDx = P2.x - P0.x;
-      const axDy = P2.y - P0.y;
-      const axLen = Math.hypot(axDx, axDy) || 1;
-      const perp = { x: -axDy / axLen, y: axDx / axLen };
-      const mid = { x: (P0.x + P2.x) / 2, y: (P0.y + P2.y) / 2 };
-      const baseBulge = (M.x - mid.x) * perp.x + (M.y - mid.y) * perp.y;
+      const M = pts[Math.floor(pts.length / 2)]; // representative midpoint of the freehand stroke
       arcP0Ref.current = P0;
       arcP2Ref.current = P2;
-      arcPerpRef.current = perp;
       ctx.globalCompositeOperation = "source-over";
       ctx.strokeStyle = colorRef.current;
       ctx.lineWidth = sizeRef.current * 1.5;
-      drawArch(ctx, P0, P2, perp, baseBulge);
+      // Pass the arc through the stroke's midpoint so the initial snap keeps any
+      // skew the user drew; dragging then moves the point the arc passes through.
+      drawArch(ctx, P0, P2, M);
     } else {
       const p1 = pts[0];
       const p2 = pts[pts.length - 1];
@@ -463,7 +468,6 @@ export default function PhotoAnnotator({
     straightenOriginRef.current = null;
     arcP0Ref.current = null;
     arcP2Ref.current = null;
-    arcPerpRef.current = null;
     altCurveRef.current = false;
     lastPointerRef.current = null;
     saveUndo();
