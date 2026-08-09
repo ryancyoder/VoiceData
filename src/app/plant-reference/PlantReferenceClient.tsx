@@ -17,6 +17,7 @@ import {
   Loader2,
   Plus,
   Images,
+  Shapes,
 } from "lucide-react";
 import {
   PLANT_CATEGORIES,
@@ -30,6 +31,7 @@ import {
   type PlantAlbumsResult,
 } from "@/lib/plants";
 import type { Combination, CombinationPlant } from "@/lib/combinations";
+import type { LibraryItem } from "@/lib/design/library";
 import { ReferencePlantPicker } from "@/app/plants/ReferencePlantPicker";
 
 export function PlantReferenceClient() {
@@ -64,6 +66,10 @@ export function PlantReferenceClient() {
   const [comboLoading, setComboLoading] = useState(false);
   const [selectedCombo, setSelectedCombo] = useState<Combination | null>(null);
   const [editingCombo, setEditingCombo] = useState<Combination | "new" | null>(null);
+  // Design library items (perspective stamps / 2D symbols) linked to plants in
+  // the drilled-into album.
+  const [stamps, setStamps] = useState<LibraryItem[]>([]);
+  const [stampsLoading, setStampsLoading] = useState(false);
 
   // Showing the album grid (grouped mode, not drilled into a species).
   const inAlbumList = groupMode === "albums" && !drill;
@@ -170,6 +176,36 @@ export function PlantReferenceClient() {
       active = false;
     };
   }, [inCombinations, drill, reloadKey]);
+
+  // Design library items linked to plants in the drilled-into album.
+  useEffect(() => {
+    if (!drill) {
+      setStamps([]);
+      return;
+    }
+    let active = true;
+    setStampsLoading(true);
+    const params = new URLSearchParams();
+    params.set("genus", drill.genus ?? "");
+    params.set("species", drill.species ?? "");
+    fetch(`/api/design/library/for-species?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d: { items: LibraryItem[] }) => {
+        if (active) {
+          setStamps(d.items ?? []);
+          setStampsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setStamps([]);
+          setStampsLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [drill, reloadKey]);
 
   const anyFilter = !!(q || category || sun || moisture || native || deer || evergreen);
   const clearAll = useCallback(() => {
@@ -396,6 +432,26 @@ export function PlantReferenceClient() {
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {combos.map((c) => (
                 <CombinationCard key={c.id} combo={c} onClick={() => (locked ? setSelectedCombo(c) : setEditingCombo(c))} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Design library symbols linked to plants in this album. */}
+      {drill && (stampsLoading || stamps.length > 0) && (
+        <div className="mb-6">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            <Shapes size={16} className="text-indigo-600" />
+            Design symbols
+            {!stampsLoading && <span className="font-normal text-zinc-400">({stamps.length})</span>}
+          </div>
+          {stampsLoading ? (
+            <p className="text-sm text-zinc-400">Loading…</p>
+          ) : (
+            <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {stamps.map((s) => (
+                <StampCard key={s.id} item={s} />
               ))}
             </ul>
           )}
@@ -1149,6 +1205,42 @@ function PlantEditor({
 // ---------------------------------------------------------------------------
 // Combinations: multi-plant photos that surface in each linked species' album.
 // ---------------------------------------------------------------------------
+
+// A design library symbol (perspective stamp / 2D plan symbol) linked to a
+// plant in the current album. Display-only; images are transparent PNGs so they
+// sit on a neutral tile with object-contain.
+function StampCard({ item }: { item: LibraryItem }) {
+  const [failed, setFailed] = useState(false);
+  const kindLabel = item.kind === "plan-symbol" ? "2D plan" : "Perspective";
+  const label = item.data.referencePlantName || item.data.botanicalName || item.data.name || "Untitled";
+  return (
+    <li
+      className="group relative overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+      title={`${label} · ${kindLabel}`}
+    >
+      <div className="relative flex aspect-square items-center justify-center bg-zinc-50 p-3 dark:bg-zinc-950">
+        {item.imageUrl && !failed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.imageUrl}
+            alt={label}
+            loading="lazy"
+            className="max-h-full max-w-full object-contain"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <Shapes size={28} className="text-zinc-300 dark:text-zinc-600" />
+        )}
+        <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+          {kindLabel}
+        </span>
+      </div>
+      <div className="border-t border-zinc-100 px-2 py-1.5 dark:border-zinc-800">
+        <p className="truncate text-xs italic text-zinc-600 dark:text-zinc-300">{label}</p>
+      </div>
+    </li>
+  );
+}
 
 function CombinationCard({ combo, onClick }: { combo: Combination; onClick: () => void }) {
   const names = combo.plants.map((p) => p.botanical || p.common).filter(Boolean).join(", ");
