@@ -199,6 +199,16 @@ export default function PhotoAnnotator({
   // forces a synchronous reflow, and it was being called for every coalesced
   // pointer sample (up to ~10×/move at 120Hz) — measure once per stroke instead.
   const rectRef = useRef<DOMRect | null>(null);
+  // Pinch-zoom / pan view (fingers only; pencil draws). Applied as a CSS
+  // transform on the image container — but ONLY while zoomed, so at rest the
+  // drawing canvas is never GPU-promoted (which would reintroduce Pencil lag).
+  const viewRef = useRef({ scale: 1, tx: 0, ty: 0 });
+  const penDownRef = useRef(false); // pencil in contact → suppress finger gestures
+  const touchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{ d0: number; scale0: number; cx: number; cy: number; lux: number; luy: number } | null>(null);
+  const panRef = useRef<{ x0: number; y0: number; tx0: number; ty0: number; moved: boolean } | null>(null);
+  const tapRef = useRef<{ x: number; y: number; t: number } | null>(null); // in-progress single-finger tap
+  const lastTapRef = useRef({ x: 0, y: 0, t: 0 }); // previous tap, for double-tap-undo
 
   // Each floating text/sticker registers a getter for its current data, so the
   // save composite reads live positions/text without the parent mutating props.
@@ -237,6 +247,9 @@ export default function PhotoAnnotator({
     // Nothing changed → don't rebuild (rebuilding clears the in-progress drawing).
     if (ctxRef.current && dW === lastSizeRef.current.w && dH === lastSizeRef.current.h) return;
     lastSizeRef.current = { w: dW, h: dH };
+    // A real resize/rotate resets any pinch-zoom (inline to keep setup dep-free).
+    viewRef.current = { scale: 1, tx: 0, ty: 0 };
+    if (container) container.style.transform = "";
     const dpr = window.devicePixelRatio || 1;
     // Cap the canvas backing-store pixel count. Lag tracked total canvas area,
     // not the photo: a screen-filling standard-aspect photo made a large canvas
@@ -348,8 +361,124 @@ export default function PhotoAnnotator({
   function getPos(e: PointerEvent): Pt {
     // rectRef is refreshed at each pointerdown; fall back only if a move somehow
     // arrives first. Avoids a reflow-inducing getBoundingClientRect per sample.
+    // The rect already reflects any zoom transform; divide by scale to get local
+    // (unzoomed) canvas coordinates so ink lands correctly while zoomed in.
     const rect = rectRef.current ?? canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure > 0 ? e.pressure : 0.5 };
+    const s = viewRef.current.scale || 1;
+    return { x: (e.clientX - rect.left) / s, y: (e.clientY - rect.top) / s, pressure: e.pressure > 0 ? e.pressure : 0.5 };
+  }
+
+  // ── Pinch-zoom / pan (touch gestures) ─────────────────────────────────────
+  function applyView() {
+    const c = containerRef.current;
+    if (!c) return;
+    const v = viewRef.current;
+    // No transform at rest → the canvas stays un-composited and Pencil-fast.
+    if (v.scale <= 1.001 && Math.abs(v.tx) < 0.5 && Math.abs(v.ty) < 0.5) {
+      c.style.transform = "";
+    } else {
+      c.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})`;
+    }
+  }
+  function clampView() {
+    const v = viewRef.current;
+    const body = bodyRef.current;
+    if (!body) return;
+    if (v.scale < 1) v.scale = 1;
+    const { w, h } = lastSizeRef.current;
+    // Keep the (zoomed) image covering the viewport — can't pan it off-screen.
+    const maxTx = Math.max(0, (w * v.scale - body.clientWidth) / 2);
+    const maxTy = Math.max(0, (h * v.scale - body.clientHeight) / 2);
+    v.tx = Math.min(maxTx, Math.max(-maxTx, v.tx));
+    v.ty = Math.min(maxTy, Math.max(-maxTy, v.ty));
+  }
+  function gestureDown(e: PointerEvent) {
+    if (penDownRef.current) return; // pencil is drawing — ignore fingers
+    e.preventDefault();
+    touchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const n = touchesRef.current.size;
+    if (n === 2) {
+      panRef.current = null;
+      tapRef.current = null;
+      startPinch();
+    } else if (n === 1) {
+      const v = viewRef.current;
+      panRef.current = { x0: e.clientX, y0: e.clientY, tx0: v.tx, ty0: v.ty, moved: false };
+      tapRef.current = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    }
+  }
+  function gestureMove(e: PointerEvent) {
+    if (!touchesRef.current.has(e.pointerId)) return;
+    e.preventDefault();
+    touchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const n = touchesRef.current.size;
+    if (n >= 2) {
+      updatePinch();
+    } else if (n === 1 && panRef.current) {
+      const p = panRef.current;
+      const dx = e.clientX - p.x0;
+      const dy = e.clientY - p.y0;
+      if (Math.hypot(dx, dy) > 6) p.moved = true;
+      if (viewRef.current.scale > 1.001) {
+        viewRef.current.tx = p.tx0 + dx;
+        viewRef.current.ty = p.ty0 + dy;
+        clampView();
+        applyView();
+      }
+    }
+  }
+  function gestureUp(e: PointerEvent) {
+    const had = touchesRef.current.delete(e.pointerId);
+    if (!had) return;
+    if (touchesRef.current.size < 2) pinchRef.current = null;
+    if (touchesRef.current.size === 0) {
+      // A quick single-finger tap that didn't pan → candidate for double-tap undo.
+      const tap = tapRef.current;
+      const panned = panRef.current?.moved;
+      tapRef.current = null;
+      panRef.current = null;
+      if (tap && !panned && e.timeStamp - tap.t < 300) {
+        const last = lastTapRef.current;
+        if (e.timeStamp - last.t < 350 && Math.hypot(tap.x - last.x, tap.y - last.y) < 44) {
+          undo();
+          navigator.vibrate?.(10);
+          lastTapRef.current = { x: 0, y: 0, t: 0 }; // consume, so a 3rd tap doesn't re-fire
+        } else {
+          lastTapRef.current = { x: tap.x, y: tap.y, t: e.timeStamp };
+        }
+      }
+    }
+  }
+  function startPinch() {
+    const c = containerRef.current;
+    const pts = [...touchesRef.current.values()];
+    if (!c || pts.length < 2) return;
+    const [a, b] = pts;
+    const d0 = Math.hypot(a.x - b.x, a.y - b.y);
+    const m0x = (a.x + b.x) / 2;
+    const m0y = (a.y + b.y) / 2;
+    const rect = c.getBoundingClientRect();
+    const cx = (rect.left + rect.right) / 2; // transformed container center
+    const cy = (rect.top + rect.bottom) / 2;
+    const v = viewRef.current;
+    // Layout center (constant) = transformed center − translate; the local point
+    // under the pinch midpoint stays fixed as we scale.
+    pinchRef.current = { d0, scale0: v.scale, cx: cx - v.tx, cy: cy - v.ty, lux: (m0x - cx) / v.scale, luy: (m0y - cy) / v.scale };
+  }
+  function updatePinch() {
+    const p = pinchRef.current;
+    const pts = [...touchesRef.current.values()];
+    if (!p || pts.length < 2 || p.d0 < 1) return;
+    const [a, b] = pts;
+    const d1 = Math.hypot(a.x - b.x, a.y - b.y);
+    const m1x = (a.x + b.x) / 2;
+    const m1y = (a.y + b.y) / 2;
+    const v = viewRef.current;
+    v.scale = Math.min(5, Math.max(1, p.scale0 * (d1 / p.d0)));
+    v.tx = m1x - p.cx - p.lux * v.scale;
+    v.ty = m1y - p.cy - p.luy * v.scale;
+    clampView();
+    applyView();
   }
 
   // Control point of the quadratic P0→P2 whose apex sits at the CHORD MIDPOINT,
@@ -1244,21 +1373,64 @@ export default function PhotoAnnotator({
   // jumpy versus the original. A ref keeps the listeners pointed at the latest
   // handler closures without re-attaching on every render. Declared after the
   // handlers so they're referenced, not hoisted-before-definition.
-  const handlersRef = useRef({ down: onPointerDown, move: onPointerMove, up: onPointerUp });
+  const handlersRef = useRef({
+    down: onPointerDown,
+    move: onPointerMove,
+    up: onPointerUp,
+    gDown: gestureDown,
+    gMove: gestureMove,
+    gUp: gestureUp,
+  });
   useEffect(() => {
-    handlersRef.current = { down: onPointerDown, move: onPointerMove, up: onPointerUp };
+    handlersRef.current = {
+      down: onPointerDown,
+      move: onPointerMove,
+      up: onPointerUp,
+      gDown: gestureDown,
+      gMove: gestureMove,
+      gUp: gestureUp,
+    };
   });
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // Pencil (and mouse) draw; fingers (touch) run pan/zoom/undo gestures. This
+    // is the split the user wants: pencil for ink, fingers for navigation.
     const down = (e: PointerEvent) => {
+      if (e.pointerType === "touch") {
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch {
+          /* fast tap: capture optional */
+        }
+        handlersRef.current.gDown(e);
+        return;
+      }
+      if (e.pointerType === "pen") {
+        penDownRef.current = true;
+        // Abandon any in-progress finger gesture the moment the pencil draws.
+        touchesRef.current.clear();
+        pinchRef.current = null;
+        panRef.current = null;
+      }
       canvas.setPointerCapture(e.pointerId);
       handlersRef.current.down(e);
     };
     const move = (e: PointerEvent) => {
+      if (e.pointerType === "touch") {
+        handlersRef.current.gMove(e);
+        return;
+      }
       if (e.buttons) handlersRef.current.move(e);
     };
-    const up = (e: PointerEvent) => handlersRef.current.up(e);
+    const up = (e: PointerEvent) => {
+      if (e.pointerType === "touch") {
+        handlersRef.current.gUp(e);
+        return;
+      }
+      if (e.pointerType === "pen") penDownRef.current = false;
+      handlersRef.current.up(e);
+    };
     canvas.addEventListener("pointerdown", down, { passive: false });
     canvas.addEventListener("pointermove", move, { passive: false });
     canvas.addEventListener("pointerup", up);
