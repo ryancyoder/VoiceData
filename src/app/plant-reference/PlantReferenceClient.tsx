@@ -15,6 +15,8 @@ import {
   Upload,
   Trash2,
   Loader2,
+  Plus,
+  Images,
 } from "lucide-react";
 import {
   PLANT_CATEGORIES,
@@ -27,6 +29,8 @@ import {
   type PlantAlbum,
   type PlantAlbumsResult,
 } from "@/lib/plants";
+import type { Combination, CombinationPlant } from "@/lib/combinations";
+import { ReferencePlantPicker } from "@/app/plants/ReferencePlantPicker";
 
 export function PlantReferenceClient() {
   const [qInput, setQInput] = useState("");
@@ -38,7 +42,7 @@ export function PlantReferenceClient() {
   const [deer, setDeer] = useState(false);
   const [evergreen, setEvergreen] = useState(false);
   const [page, setPage] = useState(1);
-  const [groupMode, setGroupMode] = useState<"albums" | "all">("albums");
+  const [groupMode, setGroupMode] = useState<"albums" | "all" | "combinations">("albums");
   const [drill, setDrill] = useState<PlantAlbum | null>(null);
   const [layout, setLayout] = useState<"gallery" | "table">("gallery");
   const [loading, setLoading] = useState(true);
@@ -51,9 +55,19 @@ export function PlantReferenceClient() {
   const [locked, setLocked] = useState(true);
   const [editing, setEditing] = useState<Plant | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // Combinations: multi-plant photos that surface inside each linked species'
+  // album. `combos` holds either the whole-library list (Combinations tab) or
+  // the subset tied to the drilled species. editingCombo === "new" opens the
+  // builder for a brand-new combination.
+  const [combos, setCombos] = useState<Combination[]>([]);
+  const [comboLoading, setComboLoading] = useState(false);
+  const [selectedCombo, setSelectedCombo] = useState<Combination | null>(null);
+  const [editingCombo, setEditingCombo] = useState<Combination | "new" | null>(null);
 
   // Showing the album grid (grouped mode, not drilled into a species).
   const inAlbumList = groupMode === "albums" && !drill;
+  // Showing the flat combinations list (Combinations tab, not drilled).
+  const inCombinations = groupMode === "combinations" && !drill;
 
   // Debounced search; typing resets to page 1.
   useEffect(() => {
@@ -66,6 +80,11 @@ export function PlantReferenceClient() {
 
   useEffect(() => {
     let active = true;
+    // The Combinations tab is served by its own effect below.
+    if (inCombinations) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -115,7 +134,40 @@ export function PlantReferenceClient() {
     return () => {
       active = false;
     };
-  }, [q, category, sun, moisture, native, deer, evergreen, page, inAlbumList, drill, reloadKey]);
+  }, [q, category, sun, moisture, native, deer, evergreen, page, inAlbumList, inCombinations, drill, reloadKey]);
+
+  // Combinations: fetch the whole-library list (Combinations tab) or the subset
+  // tied to the drilled-into species (shown as a section above the cultivars).
+  useEffect(() => {
+    if (!inCombinations && !drill) {
+      setCombos([]);
+      return;
+    }
+    let active = true;
+    setComboLoading(true);
+    const params = new URLSearchParams();
+    if (drill) {
+      params.set("genus", drill.genus ?? "");
+      params.set("species", drill.species ?? "");
+    }
+    fetch(`/api/combinations?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : { combinations: [] }))
+      .then((d: { combinations: Combination[] }) => {
+        if (active) {
+          setCombos(d.combinations ?? []);
+          setComboLoading(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCombos([]);
+          setComboLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [inCombinations, drill, reloadKey]);
 
   const anyFilter = !!(q || category || sun || moisture || native || deer || evergreen);
   const clearAll = useCallback(() => {
@@ -138,11 +190,29 @@ export function PlantReferenceClient() {
     setDrill(null);
     setPage(1);
   }, []);
-  const switchGroup = useCallback((mode: "albums" | "all") => {
+  const switchGroup = useCallback((mode: "albums" | "all" | "combinations") => {
     setGroupMode(mode);
     setDrill(null);
     setPage(1);
   }, []);
+
+  // Client-side filter for the Combinations tab: match the search term against
+  // the title or any linked plant's names.
+  const visibleCombos = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return combos;
+    return combos.filter((c) => {
+      if (c.title?.toLowerCase().includes(term)) return true;
+      return c.plants.some(
+        (p) =>
+          p.botanical?.toLowerCase().includes(term) ||
+          p.common?.toLowerCase().includes(term) ||
+          p.genus?.toLowerCase().includes(term)
+      );
+    });
+  }, [combos, q]);
+
+  const afterComboChange = useCallback(() => setReloadKey((k) => k + 1), []);
 
   const active = inAlbumList ? albumResult : plantResult;
   const totalPages = Math.max(1, Math.ceil(active.total / active.pageSize));
@@ -156,11 +226,21 @@ export function PlantReferenceClient() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Plant Reference</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Horticultural catalog — {active.total ? active.total.toLocaleString() : ""} {noun}, searchable by
-            conditions, size, and traits.
+            {inCombinations
+              ? `Combinations — ${visibleCombos.length.toLocaleString()} multi-plant photo${visibleCombos.length === 1 ? "" : "s"}.`
+              : `Horticultural catalog — ${active.total ? active.total.toLocaleString() : ""} ${noun}, searchable by conditions, size, and traits.`}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {!locked && (
+            <button
+              onClick={() => setEditingCombo("new")}
+              className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+            >
+              <Plus size={16} />
+              <span className="hidden sm:inline">New combination</span>
+            </button>
+          )}
           <button
             onClick={() => {
               setLocked((v) => !v);
@@ -222,6 +302,7 @@ export function PlantReferenceClient() {
           <div className="inline-flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
             <GroupBtn label="Albums" active={groupMode === "albums"} onClick={() => switchGroup("albums")} />
             <GroupBtn label="All plants" active={groupMode === "all"} onClick={() => switchGroup("all")} />
+            <GroupBtn label="Combinations" active={groupMode === "combinations"} onClick={() => switchGroup("combinations")} />
           </div>
         )}
       </div>
@@ -235,32 +316,115 @@ export function PlantReferenceClient() {
               type="search"
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
-              placeholder="Search botanical, common, or genus…"
+              placeholder={inCombinations ? "Search combinations by title or plant…" : "Search botanical, common, or genus…"}
               className="w-full rounded-full border border-zinc-300 bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             />
           </div>
-          <Select value={sun} onChange={(v) => { setSun(v); setPage(1); }} placeholder="Any sun" options={SUN_OPTIONS} />
-          <Select value={moisture} onChange={(v) => { setMoisture(v); setPage(1); }} placeholder="Any moisture" options={MOISTURE_OPTIONS} />
-          <Toggle label="Native" active={native} onClick={() => { setNative((v) => !v); setPage(1); }} />
-          <Toggle label="Deer-resistant" active={deer} onClick={() => { setDeer((v) => !v); setPage(1); }} />
-          <Toggle label="Evergreen" active={evergreen} onClick={() => { setEvergreen((v) => !v); setPage(1); }} />
-          {anyFilter && (
-            <button onClick={clearAll} className="text-sm font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-800 dark:hover:text-zinc-200">
-              Clear
-            </button>
+          {!inCombinations && (
+            <>
+              <Select value={sun} onChange={(v) => { setSun(v); setPage(1); }} placeholder="Any sun" options={SUN_OPTIONS} />
+              <Select value={moisture} onChange={(v) => { setMoisture(v); setPage(1); }} placeholder="Any moisture" options={MOISTURE_OPTIONS} />
+              <Toggle label="Native" active={native} onClick={() => { setNative((v) => !v); setPage(1); }} />
+              <Toggle label="Deer-resistant" active={deer} onClick={() => { setDeer((v) => !v); setPage(1); }} />
+              <Toggle label="Evergreen" active={evergreen} onClick={() => { setEvergreen((v) => !v); setPage(1); }} />
+              {anyFilter && (
+                <button onClick={clearAll} className="text-sm font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-800 dark:hover:text-zinc-200">
+                  Clear
+                </button>
+              )}
+            </>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Chip label="All" active={category === ""} onClick={() => { setCategory(""); setPage(1); }} />
-          {PLANT_CATEGORIES.map((c) => (
-            <Chip key={c} label={c} active={category === c} onClick={() => { setCategory(c); setPage(1); }} />
-          ))}
-        </div>
+        {!inCombinations && (
+          <div className="flex flex-wrap gap-2">
+            <Chip label="All" active={category === ""} onClick={() => { setCategory(""); setPage(1); }} />
+            {PLANT_CATEGORIES.map((c) => (
+              <Chip key={c} label={c} active={category === c} onClick={() => { setCategory(c); setPage(1); }} />
+            ))}
+          </div>
+        )}
       </div>
 
+      {/* Combinations tied to the drilled-into species (a section above the cultivars). */}
+      {drill && (comboLoading || combos.length > 0) && (
+        <div className="mb-6">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            <Images size={16} className="text-emerald-600" />
+            Combinations
+            {!comboLoading && <span className="font-normal text-zinc-400">({combos.length})</span>}
+          </div>
+          {comboLoading ? (
+            <p className="text-sm text-zinc-400">Loading…</p>
+          ) : (
+            <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {combos.map((c) => (
+                <CombinationCard key={c.id} combo={c} onClick={() => (locked ? setSelectedCombo(c) : setEditingCombo(c))} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {/* Results */}
-      {loading ? (
+      {loading || (inCombinations && comboLoading) ? (
         <p className="text-sm text-zinc-400">Loading…</p>
+      ) : inCombinations ? (
+        visibleCombos.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-zinc-300 px-6 py-16 text-center dark:border-zinc-700">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              {combos.length === 0 ? "No combinations yet." : "No combinations match your search."}
+            </p>
+            {locked ? (
+              <p className="mt-2 text-xs text-zinc-400">Unlock the library to create one.</p>
+            ) : (
+              combos.length === 0 && (
+                <button
+                  onClick={() => setEditingCombo("new")}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+                >
+                  <Plus size={15} /> New combination
+                </button>
+              )
+            )}
+          </div>
+        ) : layout === "gallery" ? (
+          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {visibleCombos.map((c) => (
+              <CombinationCard key={c.id} combo={c} onClick={() => (locked ? setSelectedCombo(c) : setEditingCombo(c))} />
+            ))}
+          </ul>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 text-left text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                <tr>
+                  <th className="w-14 px-3 py-2 font-medium"></th>
+                  <th className="px-3 py-2 font-medium">Title</th>
+                  <th className="px-3 py-2 font-medium">Plants</th>
+                  <th className="px-3 py-2 font-medium">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleCombos.map((c) => (
+                  <tr
+                    key={c.id}
+                    onClick={() => (locked ? setSelectedCombo(c) : setEditingCombo(c))}
+                    className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
+                  >
+                    <td className="px-3 py-1.5">
+                      <PlantImg image={c.image} alt="" className="h-10 w-10 rounded object-cover" small />
+                    </td>
+                    <td className="px-3 py-2 font-medium text-zinc-800 dark:text-zinc-200">{c.title || "Untitled combination"}</td>
+                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
+                      {c.plants.length ? c.plants.map((p) => p.botanical || p.common).filter(Boolean).join(", ") : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{c.plants.length}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
       ) : inAlbumList ? (
         albumResult.albums.length === 0 ? (
           <Empty anyFilter={anyFilter} onClear={clearAll} noun="species" />
@@ -387,7 +551,7 @@ export function PlantReferenceClient() {
       )}
 
       {/* Pagination */}
-      {!loading && (inAlbumList ? albumResult.albums.length : plantResult.plants.length) > 0 && (
+      {!loading && !inCombinations && (inAlbumList ? albumResult.albums.length : plantResult.plants.length) > 0 && (
         <div className="mt-4 flex items-center justify-between text-sm text-zinc-500 dark:text-zinc-400">
           <span>
             {rangeFrom.toLocaleString()}–{rangeTo.toLocaleString()} of {active.total.toLocaleString()} {noun}
@@ -424,6 +588,21 @@ export function PlantReferenceClient() {
             setReloadKey((k) => k + 1);
           }}
           onChanged={() => setReloadKey((k) => k + 1)}
+        />
+      )}
+      {selectedCombo && <CombinationDetail combo={selectedCombo} onClose={() => setSelectedCombo(null)} />}
+      {editingCombo && (
+        <CombinationEditor
+          combo={editingCombo === "new" ? null : editingCombo}
+          onClose={() => setEditingCombo(null)}
+          onSaved={() => {
+            setEditingCombo(null);
+            afterComboChange();
+          }}
+          onDeleted={() => {
+            setEditingCombo(null);
+            afterComboChange();
+          }}
         />
       )}
     </main>
@@ -919,6 +1098,362 @@ function PlantEditor({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Combinations: multi-plant photos that surface in each linked species' album.
+// ---------------------------------------------------------------------------
+
+function CombinationCard({ combo, onClick }: { combo: Combination; onClick: () => void }) {
+  const names = combo.plants.map((p) => p.botanical || p.common).filter(Boolean).join(", ");
+  return (
+    <li
+      onClick={onClick}
+      className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+    >
+      <div className="relative aspect-square">
+        <PlantImg image={combo.image} alt={combo.title ?? "Combination"} className="h-full w-full object-cover" />
+        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-emerald-600/90 px-2 py-0.5 text-xs font-medium text-white">
+          <Images size={12} /> {combo.plants.length}
+        </span>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-3 pb-2 pt-8">
+          <p className="truncate text-sm font-medium text-white drop-shadow-sm">{combo.title || "Combination"}</p>
+          {names && <p className="truncate text-xs italic text-white/80">{names}</p>}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function CombinationDetail({ combo, onClose }: { combo: Combination; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
+          <div className="flex items-center gap-2">
+            <Images size={16} className="text-emerald-600" />
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{combo.title || "Combination"}</h2>
+          </div>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div className="mb-4 overflow-hidden rounded-xl border border-zinc-100 dark:border-zinc-800">
+            <PlantImg image={combo.image} alt={combo.title ?? ""} className="max-h-80 w-full object-cover" />
+          </div>
+          {combo.notes && <p className="mb-4 whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-300">{combo.notes}</p>}
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Plants in this combination ({combo.plants.length})
+          </h3>
+          {combo.plants.length === 0 ? (
+            <p className="text-sm text-zinc-400">No plants linked.</p>
+          ) : (
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {combo.plants.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 py-2">
+                  <span className="h-10 w-10 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
+                    <PlantImg image={p.image} alt="" className="h-full w-full object-cover" small />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "Unknown"}</span>
+                    {p.common && <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{p.common}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CombinationEditor({
+  combo,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  combo: Combination | null; // null = create a new combination
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const isNew = combo === null;
+  const [title, setTitle] = useState(combo?.title ?? "");
+  const [notes, setNotes] = useState(combo?.notes ?? "");
+  const [linked, setLinked] = useState<CombinationPlant[]>(combo?.plants ?? []);
+  const [image, setImage] = useState<string | null>(combo?.image ?? null);
+  const [file, setFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Revoke the object URL for a chosen (not-yet-uploaded) file on cleanup.
+  useEffect(() => {
+    if (!file) {
+      setFilePreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setFilePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const onFile = async (f: File) => {
+    setError(null);
+    if (isNew) {
+      // Defer upload until create; keep it locally for preview.
+      setFile(f);
+      return;
+    }
+    // Existing combination: replace the photo immediately.
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const res = await fetch(`/api/combinations/${combo!.id}/image`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Upload failed (${res.status})`);
+      }
+      const d: { image: string } = await res.json();
+      setImage(d.image);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const addPlant = (p: Plant) => {
+    setLinked((cur) =>
+      cur.some((x) => x.id === p.id)
+        ? cur
+        : [...cur, { id: p.id, botanical: p.botanical, common: p.common, genus: p.genus, species: p.species, image: p.image }]
+    );
+    setPicking(false);
+  };
+  const removePlant = (id: number) => setLinked((cur) => cur.filter((x) => x.id !== id));
+
+  const save = async () => {
+    setError(null);
+    if (isNew && !file) {
+      setError("Add a photo for this combination.");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (isNew) {
+        const fd = new FormData();
+        fd.append("file", file!);
+        fd.append("title", title);
+        fd.append("notes", notes);
+        fd.append("plantIds", JSON.stringify(linked.map((p) => p.id)));
+        const res = await fetch(`/api/combinations`, { method: "POST", body: fd });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || `Save failed (${res.status})`);
+        }
+      } else {
+        const res = await fetch(`/api/combinations/${combo!.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, notes, plantIds: linked.map((p) => p.id) }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || `Save failed (${res.status})`);
+        }
+      }
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+      setSaving(false);
+    }
+  };
+
+  const del = async () => {
+    if (isNew) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/combinations/${combo!.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Delete failed (${res.status})`);
+      }
+      onDeleted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
+          <div className="flex items-center gap-2">
+            <Images size={16} className="text-emerald-600" />
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+              {isNew ? "New combination" : "Edit combination"}
+            </h2>
+          </div>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {/* Photo */}
+          <div className="mb-5 flex items-center gap-4">
+            <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+              {isNew && filePreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={filePreview} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <PlantImg image={image} alt={title || "Combination"} className="h-full w-full object-cover" />
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onFile(f);
+                }}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+              >
+                {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                {isNew ? (file ? "Change photo" : "Add photo") : "Replace photo"}
+              </button>
+              <p className="text-xs text-zinc-400">A combination is one photo showing several plants together.</p>
+            </div>
+          </div>
+
+          {/* Title + notes */}
+          <div className="mb-5 grid grid-cols-1 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">Title</span>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Front border — summer"
+                className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">Notes</span>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+              />
+            </label>
+          </div>
+
+          {/* Linked plants */}
+          <div className="mb-2">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Plants in this combination ({linked.length})</span>
+              <button
+                onClick={() => setPicking(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                <Plus size={13} /> Add plant
+              </button>
+            </div>
+            {linked.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-zinc-300 px-3 py-4 text-center text-xs text-zinc-400 dark:border-zinc-700">
+                No plants linked yet. Add the species shown in this photo.
+              </p>
+            ) : (
+              <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+                {linked.map((p) => (
+                  <li key={p.id} className="flex items-center gap-3 px-3 py-2">
+                    <span className="h-9 w-9 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
+                      <PlantImg image={p.image} alt="" className="h-full w-full object-cover" small />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "Unknown"}</span>
+                      {p.common && <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{p.common}</span>}
+                    </span>
+                    <button
+                      onClick={() => removePlant(p.id)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
+                      aria-label="Remove plant"
+                    >
+                      <X size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
+          <div className="flex min-w-0 items-center gap-3">
+            {!isNew && (
+              <button
+                onClick={del}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/40"
+              >
+                <Trash2 size={15} /> Delete
+              </button>
+            )}
+            <span className="truncate text-xs text-red-600 dark:text-red-400">{error}</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-full px-4 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={saving || uploading}
+              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {saving && <Loader2 size={15} className="animate-spin" />}
+              {isNew ? "Create combination" : "Save changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {picking && (
+        // Stop the picker's backdrop clicks from bubbling to the editor overlay
+        // (which would close the whole editor).
+        <div onClick={(e) => e.stopPropagation()}>
+          <ReferencePlantPicker onClose={() => setPicking(false)} onPick={addPlant} />
+        </div>
+      )}
     </div>
   );
 }
