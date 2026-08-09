@@ -84,6 +84,10 @@ export default function PhotoAnnotator({
   const [lineStyle, setLineStyle] = useState<LineStyle>("solid");
   const [textMode, setTextMode] = useState<"edit" | "move">("edit");
   const [fillOpacity, setFillOpacity] = useState(0.3);
+  // Fill/prism edge mode: true = curve window (yellow cue, slower lock, edges can
+  // bow); false = fast hard corners (quick lock, straight only). Toggled in the
+  // toolbar. The pen always uses the curve window regardless.
+  const [fillCurveMode, setFillCurveMode] = useState(true);
   // On-screen Option/Alt modifier (for keyboardless iPad use). Mirrors the
   // physical Alt key; `altActive` just drives the button's pressed highlight.
   const [altActive, setAltActive] = useState(false);
@@ -121,6 +125,7 @@ export default function PhotoAnnotator({
   const lineStyleRef = useRef(lineStyle);
   const textModeRef = useRef(textMode);
   const fillOpacityRef = useRef(fillOpacity);
+  const fillCurveModeRef = useRef(fillCurveMode);
   useEffect(() => {
     toolRef.current = tool;
   }, [tool]);
@@ -139,6 +144,9 @@ export default function PhotoAnnotator({
   useEffect(() => {
     fillOpacityRef.current = fillOpacity;
   }, [fillOpacity]);
+  useEffect(() => {
+    fillCurveModeRef.current = fillCurveMode;
+  }, [fillCurveMode]);
 
   // Drawing scratch state — refs so pointer moves never trigger re-renders.
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -408,11 +416,12 @@ export default function PhotoAnnotator({
     return t === "fill" || (t === "prism" && prismPhaseRef.current === "draw");
   }
   // Tools that use the yellow "curve window" before the blue vertex lock: the pen
-  // and the polygon fill (incl. the prism's draw phase). A move during the window
-  // bows the edge instead of locking it straight. The curve pen is excluded — it
-  // curves inherently and keeps its own quicker lock.
+  // (always), and the polygon fill / prism draw when their curve mode is on (the
+  // toolbar toggle). A move during the window bows the edge instead of locking it
+  // straight; with fill curve mode off, edges snap to fast hard corners instead.
+  // The curve pen is excluded — it curves inherently and keeps its quicker lock.
   function usesCurveCue(): boolean {
-    return toolRef.current === "pen" || isFillDraw();
+    return toolRef.current === "pen" || (isFillDraw() && fillCurveModeRef.current);
   }
 
   // Extrude preview: repaint the pre-polygon base, then stroke the base ring, a
@@ -1466,6 +1475,24 @@ export default function PhotoAnnotator({
             <span className={styles.lineGlyph} style={{ borderTopStyle: ls.css }} />
           </button>
         ))}
+        {(tool === "fill" || tool === "prism") && (
+          <>
+            <div className={styles.sep} />
+            <button
+              type="button"
+              className={`${styles.modeToggle} ${fillCurveMode ? styles.active : ""}`}
+              aria-pressed={fillCurveMode}
+              title={
+                fillCurveMode
+                  ? "Edge mode: Curves — after an edge settles, a yellow cue lets you move to bow it. Tap for fast hard corners."
+                  : "Edge mode: Corners — edges snap to fast straight corners. Tap to enable the curve window."
+              }
+              onClick={() => setFillCurveMode((m) => !m)}
+            >
+              {fillCurveMode ? "◠ Curves" : "∟ Corners"}
+            </button>
+          </>
+        )}
         {tool === "fill" && (
           <>
             <div className={styles.sep} />
