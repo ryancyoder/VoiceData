@@ -452,11 +452,12 @@ export default function PhotoAnnotator({
     curveApexRef.current = lastPointerRef.current ?? end;
     lastPointerRef.current = end ?? null;
     if (end) redrawStraightened(end);
-    // Pen: releasing Alt keeps the curve AND drops the vertex at its endpoint,
-    // starting the next segment from there. commitPolygonVertex sees the kept
-    // curve (curveApexRef set + arcP2Ref set) and anchors on arcP2, not the
-    // cursor. For fill/curve-pen, leave the kept edge for Shift/lift to close.
-    if (toolRef.current === "pen" && end && strokeActiveRef.current) {
+    // Pen and fill: releasing Alt keeps the curve AND drops the vertex at its
+    // endpoint, starting the next segment/edge from there. commitPolygonVertex
+    // sees the kept curve (curveApexRef set + arcP2Ref set) and anchors on arcP2
+    // with the bow preserved, not a straight edge to the cursor.
+    const t = toolRef.current;
+    if ((t === "pen" || t === "fill") && end && strokeActiveRef.current) {
       commitPolygonVertex();
     }
   }
@@ -517,13 +518,18 @@ export default function PhotoAnnotator({
     // is re-rendered from the pre-stroke base each frame.
     if (tool === "fill") {
       const lastV = fillVertsRef.current[fillVertsRef.current.length - 1];
-      const bent = altCurveRef.current && arcP2Ref.current;
+      // Bent while Alt is held (curveApex null, cursor is the through-point) OR a
+      // kept curve after Alt release (curveApex frozen). Either way anchor on the
+      // curve's endpoint and bow through the apex, not a straight edge to the cursor.
+      const bent = (altCurveRef.current || curveApexRef.current != null) && arcP2Ref.current;
       const endpoint: Pt = bent ? { ...arcP2Ref.current! } : { ...pos };
-      const cp = bent ? arcControlPoint(lastV, arcP2Ref.current!, pos) : null;
+      const through = curveApexRef.current ?? pos;
+      const cp = bent ? arcControlPoint(lastV, arcP2Ref.current!, through) : null;
       fillVertsRef.current.push({ x: endpoint.x, y: endpoint.y, cp });
       pointsRef.current = [{ ...endpoint }, { ...endpoint }];
       straightenedRef.current = true;
       altCurveRef.current = false;
+      curveApexRef.current = null;
       arcP0Ref.current = null;
       arcP2Ref.current = null;
       lastPointerRef.current = { ...endpoint };
@@ -1088,7 +1094,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "fill" ? styles.active : ""}`}
-          title="Polygon fill — draw an edge, tap Shift to drop corners, hold Option/Alt to bow an edge, lift to close and fill"
+          title="Polygon fill — draw an edge, tap Shift to drop corners, hold Option/Alt to bow an edge and release to keep the curve and drop the corner, lift to close and fill"
           onClick={() => selectTool("fill")}
         >
           ⬢
