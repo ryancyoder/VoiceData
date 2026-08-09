@@ -426,11 +426,19 @@ export default function PhotoAnnotator({
     redrawStraightened(lastPointerRef.current ?? P2);
   }
 
-  // Leave Alt-bend: revert to the straight line (endpoint follows the pointer).
+  // Leave Alt-bend: flatten back to a straight line but KEEP the endpoint where
+  // the line ended (the locked point), rather than snapping it to wherever the
+  // cursor drifted while bowing the arc. This way a hold-to-lock or Shift after
+  // bowing drops the vertex at the stroke's end, not out at the apex.
   function disengageAltCurve() {
     if (!altCurveRef.current) return;
     altCurveRef.current = false;
-    redrawStraightened(lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1]);
+    const end = arcP2Ref.current ?? lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1];
+    lastPointerRef.current = end;
+    redrawStraightened(end);
+    // Re-arm hold-to-lock at the (stable) endpoint so holding still after
+    // releasing Alt drops the vertex there.
+    if (toolRef.current === "pen" && end) armLockTimer(end);
   }
 
   // Polygon: drop a vertex mid-stroke. Bake the current segment (snapping a
