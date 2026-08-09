@@ -214,18 +214,28 @@ export function PlantReferenceClient() {
 
   const afterComboChange = useCallback(() => setReloadKey((k) => k + 1), []);
 
-  // Open a plant's detail card from a combination's linked-plant list. The
-  // combination only carries a slim projection, so fetch the full row first.
-  const openPlantById = useCallback(async (id: number) => {
-    try {
-      const res = await fetch(`/api/plants/${id}`);
-      if (!res.ok) return;
-      const d: { plant?: Plant } = await res.json();
-      if (d.plant) setSelected(d.plant);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  // From a combination's linked-plant list, navigate to the album that contains
+  // that cultivar (its genus+species). Clears search/filters so the album isn't
+  // filtered down, closes the combination, and drills in.
+  const openAlbumForPlant = useCallback(
+    (p: CombinationPlant) => {
+      const album: PlantAlbum = {
+        album_key: [p.genus, p.species].filter(Boolean).join(" ") || "Ungrouped",
+        genus: p.genus,
+        species: p.species,
+        common: p.common,
+        category: null,
+        cultivars: 0,
+        image: p.image,
+      };
+      clearAll();
+      setSelectedCombo(null);
+      setSelected(null);
+      setGroupMode("albums");
+      setDrill(album);
+    },
+    [clearAll]
+  );
 
   const active = inAlbumList ? albumResult : plantResult;
   const totalPages = Math.max(1, Math.ceil(active.total / active.pageSize));
@@ -603,9 +613,8 @@ export function PlantReferenceClient() {
         />
       )}
       {selectedCombo && (
-        <CombinationDetail combo={selectedCombo} onClose={() => setSelectedCombo(null)} onPlantClick={openPlantById} />
+        <CombinationDetail combo={selectedCombo} onClose={() => setSelectedCombo(null)} onPlantClick={openAlbumForPlant} />
       )}
-      {/* Rendered last so a plant opened from a combination stacks on top of it. */}
       {selected && <PlantDetail plant={selected} onClose={() => setSelected(null)} />}
       {editingCombo && (
         <CombinationEditor
@@ -1150,7 +1159,7 @@ function CombinationDetail({
 }: {
   combo: Combination;
   onClose: () => void;
-  onPlantClick: (id: number) => void;
+  onPlantClick: (plant: CombinationPlant) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -1182,9 +1191,9 @@ function CombinationDetail({
               {combo.plants.map((p) => (
                 <li key={p.id}>
                   <button
-                    onClick={() => onPlantClick(p.id)}
+                    onClick={() => onPlantClick(p)}
                     className="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
-                    title={`Open ${p.botanical || p.common || "plant"}`}
+                    title={`Go to album: ${[p.genus, p.species].filter(Boolean).join(" ") || p.botanical || "plant"}`}
                   >
                     <span className="h-10 w-10 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
                       <PlantImg image={p.image} alt="" className="h-full w-full object-cover" small />
@@ -1193,7 +1202,7 @@ function CombinationDetail({
                       <span className="block truncate text-sm font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "Unknown"}</span>
                       {p.common && <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{p.common}</span>}
                     </span>
-                    <ExternalLink size={14} className="shrink-0 text-zinc-300 dark:text-zinc-600" />
+                    <Layers size={14} className="shrink-0 text-zinc-300 dark:text-zinc-600" />
                   </button>
                 </li>
               ))}
