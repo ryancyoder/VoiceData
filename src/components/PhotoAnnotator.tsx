@@ -162,14 +162,23 @@ export default function PhotoAnnotator({
     if (ctxRef.current && dW === lastSizeRef.current.w && dH === lastSizeRef.current.h) return;
     lastSizeRef.current = { w: dW, h: dH };
     const dpr = window.devicePixelRatio || 1;
+    // Cap the canvas backing-store pixel count. Lag tracked total canvas area,
+    // not the photo: a screen-filling standard-aspect photo made a large canvas
+    // that iPad Safari re-uploads to the GPU on every one of the Pencil's ~240
+    // events/sec, while extreme crops (small in one dimension) stayed small and
+    // smooth. Normalizing every photo to <= this area keeps standard aspect
+    // ratios in the same cheap range. Ink is drawn at this density and shown/
+    // saved scaled — slightly softer strokes, but consistently smooth. (Text
+    // labels composite separately at full resolution, so they stay crisp.)
+    const MAX_CANVAS_AREA = 1_200_000;
+    const rawArea = dW * dH * dpr * dpr;
+    const pr = rawArea > MAX_CANVAS_AREA ? dpr * Math.sqrt(MAX_CANVAS_AREA / rawArea) : dpr;
     container.style.width = dW + "px";
     container.style.height = dH + "px";
 
-    // Background: the photo downscaled to exactly the pixels the screen shows —
-    // a few megapixels instead of the original 12MP+, so compositing it under
-    // the live drawing layer is cheap even at the Apple Pencil's high rate.
-    bgCanvas.width = Math.round(dW * dpr);
-    bgCanvas.height = Math.round(dH * dpr);
+    // Background: the photo drawn at the (capped) display resolution.
+    bgCanvas.width = Math.max(1, Math.round(dW * pr));
+    bgCanvas.height = Math.max(1, Math.round(dH * pr));
     bgCanvas.style.width = dW + "px";
     bgCanvas.style.height = dH + "px";
     const bctx = bgCanvas.getContext("2d");
@@ -179,15 +188,15 @@ export default function PhotoAnnotator({
       bctx.drawImage(full, 0, 0, bgCanvas.width, bgCanvas.height);
     }
 
-    // Drawing layer: same display size, kept at full dpr for crisp ink.
-    canvas.width = Math.round(dW * dpr);
-    canvas.height = Math.round(dH * dpr);
+    // Drawing layer: same display size, capped backing store.
+    canvas.width = Math.max(1, Math.round(dW * pr));
+    canvas.height = Math.max(1, Math.round(dH * pr));
     canvas.style.width = dW + "px";
     canvas.style.height = dH + "px";
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
+    ctx.scale(pr, pr);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctxRef.current = ctx;
