@@ -79,6 +79,9 @@ export default function PhotoAnnotator({
   const [lineStyle, setLineStyle] = useState<LineStyle>("solid");
   const [textMode, setTextMode] = useState<"edit" | "move">("edit");
   const [fillOpacity, setFillOpacity] = useState(0.3);
+  // On-screen Option/Alt modifier (for keyboardless iPad use). Mirrors the
+  // physical Alt key; `altActive` just drives the button's pressed highlight.
+  const [altActive, setAltActive] = useState(false);
   const [saving, setSaving] = useState(false);
   const [textItems, setTextItems] = useState<TextData[]>([]);
   const [stickerItems, setStickerItems] = useState<StickerData[]>([]);
@@ -571,6 +574,26 @@ export default function PhotoAnnotator({
     if ((t === "pen" || isFillDraw()) && end && strokeActiveRef.current) {
       commitPolygonVertex();
     }
+  }
+
+  // Press/release the Option/Alt modifier. Shared by the physical Alt key and
+  // the on-screen "Bend" button (for keyboardless iPad use). Press bends a
+  // snapped pen/fill/prism line into a curve; release keeps the curve and drops
+  // the vertex at its end. If pressed before the line has snapped, the snap
+  // (straighten) engages the bend then, matching the key.
+  function pressAlt() {
+    if (altDownRef.current) return; // already down — ignore key repeat / re-press
+    altDownRef.current = true;
+    setAltActive(true);
+    if (straightenedRef.current && (toolRef.current === "pen" || isFillDraw()) && !altCurveRef.current) {
+      engageAltCurve();
+    }
+  }
+  function releaseAlt() {
+    if (!altDownRef.current) return;
+    altDownRef.current = false;
+    setAltActive(false);
+    if (altCurveRef.current) disengageAltCurve();
   }
 
   // Show a brief pulse at a just-dropped vertex (visual counterpart to the
@@ -1164,18 +1187,16 @@ export default function PhotoAnnotator({
   // Keyboard modifiers: Option/Alt bends a snapped pen line into a curve; Shift
   // drops a polygon vertex mid-stroke. A ref keeps the document listeners
   // pointed at the latest closures.
-  const keyApiRef = useRef({ engage: engageAltCurve, disengage: disengageAltCurve, commit: commitPolygonVertex });
+  const keyApiRef = useRef({ pressAlt, releaseAlt, commit: commitPolygonVertex });
   useEffect(() => {
-    keyApiRef.current = { engage: engageAltCurve, disengage: disengageAltCurve, commit: commitPolygonVertex };
+    keyApiRef.current = { pressAlt, releaseAlt, commit: commitPolygonVertex };
   });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Alt") {
-        altDownRef.current = true;
-        if (!e.repeat && straightenedRef.current && (toolRef.current === "pen" || isFillDraw()) && !altCurveRef.current) {
-          e.preventDefault();
-          keyApiRef.current.engage();
-        }
+        if (e.repeat) return; // pressAlt is idempotent, but skip the churn
+        e.preventDefault();
+        keyApiRef.current.pressAlt();
       } else if (e.key === "Shift") {
         if (shiftProcessedRef.current) return; // ignore key auto-repeat
         shiftProcessedRef.current = true;
@@ -1188,8 +1209,7 @@ export default function PhotoAnnotator({
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === "Alt") {
-        altDownRef.current = false;
-        if (altCurveRef.current) keyApiRef.current.disengage();
+        keyApiRef.current.releaseAlt();
       } else if (e.key === "Shift") {
         shiftProcessedRef.current = false;
       }
@@ -1205,13 +1225,7 @@ export default function PhotoAnnotator({
   return (
     <div className={styles.overlay}>
       <div className={styles.header}>
-        <button type="button" className={styles.headerBtn} onClick={onClose} disabled={saving}>
-          Cancel
-        </button>
         <span className={styles.title}>Annotate Photo</span>
-        <button type="button" className={`${styles.headerBtn} ${styles.saveBtn}`} onClick={save} disabled={saving || !ready}>
-          {saving ? "Saving…" : "Save & Close"}
-        </button>
       </div>
 
       <div className={styles.main}>
@@ -1358,20 +1372,43 @@ export default function PhotoAnnotator({
         <button type="button" className={styles.toolBtn} title="Undo" onClick={undo}>
           ↩
         </button>
+        {/* Finish controls live in the toolbar so they're always visible beside
+            the tools (the top header can sit under iPad Safari's own toolbar). */}
+        <div className={styles.sep} />
+        <button type="button" className={styles.panelSave} onClick={save} disabled={saving || !ready}>
+          {saving ? "Saving…" : "✓ Save & Close"}
+        </button>
+        <button type="button" className={styles.panelCancel} onClick={onClose} disabled={saving}>
+          Cancel
+        </button>
       </div>
       </div>
 
-      {/* Bottom action bar. The top header can sit under iPad Safari's toolbar,
-          so the primary finish/cancel controls live here where the tool row is
-          reliably visible and reachable. */}
-      <div className={styles.actionBar}>
-        <button type="button" className={styles.actionCancel} onClick={onClose} disabled={saving}>
-          Cancel
+      {/* On-screen Option/Alt for keyboardless iPad use: press-and-hold with the
+          left thumb while the pencil draws to bow a straight line into a curve;
+          release to keep the curve. Only shown where bending applies. */}
+      {(tool === "pen" || tool === "fill" || tool === "prism") && (
+        <button
+          type="button"
+          className={`${styles.altBtn} ${altActive ? styles.altBtnActive : ""}`}
+          title="Bend — hold while drawing a straight line to bow it into a curve (on-screen Option/Alt); release to keep the curve"
+          aria-label="Bend (hold)"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            pressAlt();
+          }}
+          onPointerUp={(e) => {
+            e.preventDefault();
+            releaseAlt();
+          }}
+          onPointerCancel={releaseAlt}
+          onLostPointerCapture={releaseAlt}
+        >
+          <span className={styles.altGlyph}>⌥</span>
+          <span className={styles.altLabel}>Bend</span>
         </button>
-        <button type="button" className={styles.actionSave} onClick={save} disabled={saving || !ready}>
-          {saving ? "Saving…" : "✓ Save & Close"}
-        </button>
-      </div>
+      )}
 
       <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onFilePicked} />
     </div>
