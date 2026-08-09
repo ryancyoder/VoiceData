@@ -24,26 +24,8 @@
   flex-shrink: 0;
   background: #111;
 }
-.headerBtn {
-  font-size: 15px;
-  background: none;
-  border: none;
-  color: #4a9eff;
-  cursor: pointer;
-  padding: 6px 4px;
-  min-width: 64px;
-  text-align: left;
-}
-.headerBtn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.saveBtn {
-  font-weight: 700;
-  text-align: right;
-}
 .title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: #fff;
   flex: 1;
@@ -92,43 +74,31 @@
      VoiceMap doesn't promote it either, and is smooth. */
 }
 
-/* ── Bottom action bar (primary finish/cancel) ──────────────────────────── */
-.actionBar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
-  background: #111;
-  border-top: 0.5px solid rgba(255, 255, 255, 0.14);
-  flex-shrink: 0;
-}
-.actionCancel {
-  flex: 1 1 0;
+/* ── Finish controls (live inside the toolbar panel) ─────────────────────── */
+.panelSave,
+.panelCancel {
+  flex-basis: 100%;
+  width: 100%;
   padding: 13px 12px;
   border-radius: 12px;
-  border: 1.5px solid rgba(255, 255, 255, 0.28);
-  background: #1c1c1e;
-  color: #fff;
   font-size: 16px;
   font-family: inherit;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.actionSave {
-  flex: 2 1 0;
-  padding: 13px 12px;
-  border-radius: 12px;
+.panelSave {
   border: none;
   background: #0a84ff;
   color: #fff;
-  font-size: 16px;
   font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
 }
-.actionSave:disabled {
+.panelCancel {
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  background: #1c1c1e;
+  color: #fff;
+}
+.panelSave:disabled,
+.panelCancel:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -252,7 +222,7 @@
     border-left: 0.5px solid rgba(255, 255, 255, 0.14);
     padding: 14px 12px;
     padding-right: calc(12px + env(safe-area-inset-right));
-    padding-bottom: 14px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
   }
 }
 .sizeDot {

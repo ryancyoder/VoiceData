@@ -1205,13 +1205,7 @@ export default function PhotoAnnotator({
   return (
     <div className={styles.overlay}>
       <div className={styles.header}>
-        <button type="button" className={styles.headerBtn} onClick={onClose} disabled={saving}>
-          Cancel
-        </button>
         <span className={styles.title}>Annotate Photo</span>
-        <button type="button" className={`${styles.headerBtn} ${styles.saveBtn}`} onClick={save} disabled={saving || !ready}>
-          {saving ? "Saving…" : "Save & Close"}
-        </button>
       </div>
 
       <div className={styles.main}>
@@ -1358,19 +1352,16 @@ export default function PhotoAnnotator({
         <button type="button" className={styles.toolBtn} title="Undo" onClick={undo}>
           ↩
         </button>
-      </div>
-      </div>
-
-      {/* Bottom action bar. The top header can sit under iPad Safari's toolbar,
-          so the primary finish/cancel controls live here where the tool row is
-          reliably visible and reachable. */}
-      <div className={styles.actionBar}>
-        <button type="button" className={styles.actionCancel} onClick={onClose} disabled={saving}>
-          Cancel
-        </button>
-        <button type="button" className={styles.actionSave} onClick={save} disabled={saving || !ready}>
+        {/* Finish controls live in the toolbar so they're always visible beside
+            the tools (the top header can sit under iPad Safari's own toolbar). */}
+        <div className={styles.sep} />
+        <button type="button" className={styles.panelSave} onClick={save} disabled={saving || !ready}>
           {saving ? "Saving…" : "✓ Save & Close"}
         </button>
+        <button type="button" className={styles.panelCancel} onClick={onClose} disabled={saving}>
+          Cancel
+        </button>
+      </div>
       </div>
 
       <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onFilePicked} />
