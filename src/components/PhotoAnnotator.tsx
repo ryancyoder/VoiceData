@@ -26,8 +26,9 @@ const LINE_STYLES: { key: LineStyle; css: "solid" | "dashed" | "dotted"; label: 
 const MAX_UNDO = 20;
 const PEN_LOCK = 1000; // ms of palm-rejection after an Apple Pencil stroke lifts
 const VERTEX_LOCK_DELAY = 600; // ms of continued stillness (after a line snaps) that drops a polygon vertex (fill/curve pen)
-// Pen straight-line hold has two stages: a yellow "you can curve now" cue, then
-// the blue vertex lock. Moving between them bends the line instead of locking.
+// Cue-tool (pen / polygon fill) hold has two stages: a yellow "you can curve now"
+// cue, then the blue vertex lock. Moving between them bends the edge into a curve
+// instead of locking it straight.
 const PEN_CURVE_CUE_DELAY = 820; // ms after settle → yellow cue appears
 const PEN_VERTEX_LOCK_DELAY = 1460; // ms after settle → blue vertex lock (window = ~640ms)
 
@@ -406,6 +407,13 @@ export default function PhotoAnnotator({
     const t = toolRef.current;
     return t === "fill" || (t === "prism" && prismPhaseRef.current === "draw");
   }
+  // Tools that use the yellow "curve window" before the blue vertex lock: the pen
+  // and the polygon fill (incl. the prism's draw phase). A move during the window
+  // bows the edge instead of locking it straight. The curve pen is excluded — it
+  // curves inherently and keeps its own quicker lock.
+  function usesCurveCue(): boolean {
+    return toolRef.current === "pen" || isFillDraw();
+  }
 
   // Extrude preview: repaint the pre-polygon base, then stroke the base ring, a
   // copy offset vertically by `dy`, and a vertical connector at every vertex.
@@ -741,18 +749,19 @@ export default function PhotoAnnotator({
     curveWindowRef.current = false;
     setCurveCue((c) => (c ? null : c));
   }
-  // Re-arm the "hold in place to drop a vertex" timer. For the pen straight line
-  // this also (re)starts the yellow curve-cue that precedes the blue lock, so a
-  // move during that window bends the line instead of locking a straight vertex.
+  // Re-arm the "hold in place to drop a vertex" timer. For the cue tools (pen /
+  // polygon fill) this also (re)starts the yellow curve-cue that precedes the
+  // blue lock, so a move during that window bends the edge instead of locking it
+  // straight. Other tools (curve pen) keep the quicker VERTEX_LOCK_DELAY.
   function armLockTimer(pos: Pt) {
     lockOriginRef.current = pos;
-    const t = toolRef.current;
+    const cue = usesCurveCue();
     if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
-    const blueDelay = t === "pen" ? PEN_VERTEX_LOCK_DELAY : VERTEX_LOCK_DELAY;
+    const blueDelay = cue ? PEN_VERTEX_LOCK_DELAY : VERTEX_LOCK_DELAY;
     lockTimerRef.current = setTimeout(lockVertex, blueDelay);
-    // Restart the yellow stage for a straight pen line (not while bending).
+    // Restart the yellow stage for a straight cue-tool edge (not while bending).
     closeCurveWindow();
-    if (t === "pen" && !altCurveRef.current) {
+    if (cue && !altCurveRef.current) {
       yellowTimerRef.current = setTimeout(showYellow, PEN_CURVE_CUE_DELAY);
     }
   }
@@ -768,7 +777,7 @@ export default function PhotoAnnotator({
   // move now bends the line; holding still lets the blue lock fire next.
   function showYellow() {
     yellowTimerRef.current = null;
-    if (toolRef.current !== "pen" || !straightenedRef.current || !strokeActiveRef.current || altCurveRef.current) return;
+    if (!usesCurveCue() || !straightenedRef.current || !strokeActiveRef.current || altCurveRef.current) return;
     curveWindowRef.current = true;
     const p = lockOriginRef.current ?? lastPointerRef.current;
     if (p) setCurveCue({ x: p.x, y: p.y });
@@ -967,11 +976,11 @@ export default function PhotoAnnotator({
 
     if (straightenedRef.current) {
       const pos = getPos(e);
-      // Pen: a deliberate move while the yellow curve window is open bends the
-      // line instead of nudging the straight endpoint. The blue lock is cancelled
-      // and re-armed (below) so it fires on the NEXT settle — now locking the
-      // curved vertex. A >4px threshold ignores Apple Pencil jitter.
-      if (toolRef.current === "pen" && curveWindowRef.current && !altCurveRef.current) {
+      // Cue tools (pen / polygon fill): a deliberate move while the yellow curve
+      // window is open bends the edge instead of nudging the straight endpoint.
+      // The blue lock is cancelled and re-armed (below) so it fires on the NEXT
+      // settle — now locking the curved vertex. >4px ignores Apple Pencil jitter.
+      if (usesCurveCue() && curveWindowRef.current && !altCurveRef.current) {
         const o = lockOriginRef.current;
         if (!o || Math.hypot(pos.x - o.x, pos.y - o.y) > 4) {
           closeCurveWindow();
