@@ -74,55 +74,12 @@
      VoiceMap doesn't promote it either, and is smooth. */
 }
 
-/* ── On-screen Option/Alt ("Bend") — left edge, left-thumb reach ─────────── */
-.altBtn {
-  position: absolute;
-  left: calc(16px + env(safe-area-inset-left));
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 10;
-  width: 96px;
-  height: 104px;
-  border-radius: 22px;
-  border: 2px solid rgba(255, 255, 255, 0.34);
-  background: rgba(28, 28, 30, 0.74);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  color: #fff;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  cursor: pointer;
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
-}
-.altBtnActive {
-  background: #0a84ff;
-  border-color: #0a84ff;
-  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.35), 0 2px 12px rgba(0, 0, 0, 0.45);
-}
-.altGlyph {
-  font-size: 40px;
-  line-height: 1;
-}
-.altLabel {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  opacity: 0.92;
-}
-
 /* ── Finish controls (live inside the toolbar panel) ─────────────────────── */
 .panelSave,
 .panelCancel {
   flex-basis: 100%;
   width: 100%;
-  padding: 13px 12px;
+  padding: 11px 12px;
   border-radius: 12px;
   font-size: 16px;
   font-family: inherit;
@@ -155,9 +112,9 @@
   flex-flow: row wrap;
   align-content: flex-start;
   justify-content: center;
-  gap: 10px;
-  padding: 12px 12px;
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  gap: 8px;
+  padding: 10px 12px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
   border-top: 0.5px solid rgba(255, 255, 255, 0.14);
   flex-shrink: 0;
   background: #111;
@@ -166,14 +123,14 @@
   -webkit-overflow-scrolling: touch;
 }
 .toolBtn {
-  width: 52px;
-  height: 52px;
-  border-radius: 13px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   border: 1.5px solid rgba(255, 255, 255, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 26px;
+  font-size: 24px;
   cursor: pointer;
   flex-shrink: 0;
   background: #1c1c1e;
@@ -193,7 +150,7 @@
   width: 100%;
   height: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.16);
-  margin: 3px 0;
+  margin: 1px 0;
 }
 .opacityWrap {
   flex-basis: 100%;
@@ -223,7 +180,7 @@
 .modeToggle {
   flex-basis: 100%;
   width: 100%;
-  padding: 10px 8px;
+  padding: 8px 8px;
   border-radius: 10px;
   border: 1.5px solid rgba(255, 255, 255, 0.28);
   background: #1c1c1e;
@@ -239,8 +196,8 @@
   background: rgba(74, 158, 255, 0.16);
 }
 .swatch {
-  width: 36px;
-  height: 36px;
+  width: 33px;
+  height: 33px;
   border-radius: 50%;
   flex-shrink: 0;
   border: 3px solid transparent;
@@ -254,9 +211,9 @@
   box-shadow: 0 0 0 2px #000;
 }
 .sizeBtn {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 37px;
+  height: 37px;
+  border-radius: 9px;
   border: 1.5px solid rgba(255, 255, 255, 0.28);
   display: flex;
   align-items: center;
@@ -282,9 +239,9 @@
     flex-shrink: 0;
     border-top: none;
     border-left: 0.5px solid rgba(255, 255, 255, 0.14);
-    padding: 14px 12px;
+    padding: 10px 12px;
     padding-right: calc(12px + env(safe-area-inset-right));
-    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
   }
 }
 .sizeDot {
