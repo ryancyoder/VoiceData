@@ -162,10 +162,22 @@ export async function initProject(projectId: string): Promise<ProjectLink> {
       ]);
 
       updates.backgroundImage = bg;
+      // Merge saved sub-configs onto the store defaults so a partial saved doc
+      // can never drop required fields. (Older/first saves persisted only
+      // `lightingConfig.penMask`; without the default spread, lightingConfig
+      // would lack its `lights` array and the Lighting view would crash.)
+      const defaultPlanView = initial.planView as PlanViewConfig;
       const planViewDoc = (doc.planView as Partial<PlanViewConfig>) ?? {};
-      updates.planView = { ...planViewDoc, image: planImage, selectionImage: planSelection, eraseMask: planEraseMask };
+      updates.planView = {
+        ...defaultPlanView,
+        ...planViewDoc,
+        image: planImage,
+        selectionImage: planSelection,
+        eraseMask: planEraseMask,
+      };
+      const defaultLighting = initial.lightingConfig as LightingConfig;
       const lightingDoc = (doc.lightingConfig as Partial<LightingConfig>) ?? {};
-      updates.lightingConfig = { ...lightingDoc, penMask };
+      updates.lightingConfig = { ...defaultLighting, ...lightingDoc, penMask };
 
       // Seed the saved-image cache so the first autosave doesn't re-upload what
       // we just downloaded.
