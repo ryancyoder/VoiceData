@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Trash2, LayoutGrid, Rows3, Search } from "lucide-react";
+import { Trash2, LayoutGrid, Rows3, Search, Link2, X } from "lucide-react";
+import { ReferencePlantPicker } from "./ReferencePlantPicker";
+import type { Plant } from "@/lib/plants";
 import type { LibraryItemData, LibraryKind } from "@/lib/design/library";
 import {
   TOP_LEVEL_CATEGORIES,
@@ -72,6 +74,7 @@ export function PlantDatabaseClient() {
   const [adding, setAdding] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -446,6 +449,7 @@ export function PlantDatabaseClient() {
                 <th className="px-3 py-2 font-medium">Common name</th>
                 <th className="w-44 px-3 py-2 font-medium">Category</th>
                 <th className="px-3 py-2 font-medium">Notes</th>
+                <th className="px-3 py-2 font-medium">Reference plant</th>
                 <th className="w-12 px-3 py-2"></th>
               </tr>
             </thead>
@@ -456,6 +460,8 @@ export function PlantDatabaseClient() {
                   item={item}
                   onUpdate={(patch) => updateItem(item.id, patch)}
                   onDelete={() => deleteItem(item.id, item.data?.name ?? "this item")}
+                  onLink={() => setLinkingId(item.id)}
+                  onUnlink={() => updateItem(item.id, { referencePlantId: undefined, referencePlantName: undefined })}
                 />
               ))}
             </tbody>
@@ -471,6 +477,20 @@ export function PlantDatabaseClient() {
             />
           ))}
         </ul>
+      )}
+
+      {linkingId && (
+        <ReferencePlantPicker
+          currentName={items.find((i) => i.id === linkingId)?.data?.referencePlantName ?? items.find((i) => i.id === linkingId)?.data?.botanicalName}
+          onClose={() => setLinkingId(null)}
+          onPick={(plant: Plant) => {
+            updateItem(linkingId, {
+              referencePlantId: plant.id,
+              referencePlantName: plant.botanical ?? plant.common ?? undefined,
+            });
+            setLinkingId(null);
+          }}
+        />
       )}
     </main>
   );
@@ -517,6 +537,11 @@ function GalleryCard({ item, onDelete }: { item: LibraryItem; onDelete: () => vo
         {/* Title overlay */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-3 pb-2 pt-8">
           <p className="truncate text-sm font-medium text-white drop-shadow-sm">{d.name || "Untitled"}</p>
+          {d.referencePlantName && (
+            <p className="flex items-center gap-1 truncate text-xs italic text-emerald-300">
+              <Link2 size={11} /> {d.referencePlantName}
+            </p>
+          )}
         </div>
       </div>
       <button
@@ -535,10 +560,14 @@ function PlantRow({
   item,
   onUpdate,
   onDelete,
+  onLink,
+  onUnlink,
 }: {
   item: LibraryItem;
   onUpdate: (patch: Partial<LibraryItemData>) => void;
   onDelete: () => void;
+  onLink: () => void;
+  onUnlink: () => void;
 }) {
   const d = item.data ?? ({} as LibraryItemData);
   const categoryKnown = CATEGORY_OPTIONS.some((c) => c.id === d.category);
@@ -577,6 +606,33 @@ function PlantRow({
       </td>
       <td className="px-3 py-1.5">
         <EditableCell value={d.notes ?? ""} placeholder="Notes" onCommit={(v) => onUpdate({ notes: v })} />
+      </td>
+      <td className="px-3 py-1.5">
+        {d.referencePlantName ? (
+          <span className="inline-flex items-center gap-1">
+            <button
+              onClick={onLink}
+              title="Change linked reference plant"
+              className="max-w-[12rem] truncate text-xs font-medium italic text-emerald-700 hover:underline dark:text-emerald-400"
+            >
+              {d.referencePlantName}
+            </button>
+            <button
+              onClick={onUnlink}
+              title="Unlink"
+              className="text-zinc-300 hover:text-red-500 dark:text-zinc-600"
+            >
+              <X size={13} />
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={onLink}
+            className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <Link2 size={12} /> Link plant
+          </button>
+        )}
       </td>
       <td className="px-3 py-1.5">
         <button

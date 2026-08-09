@@ -31,6 +31,10 @@ export interface LibraryItemData {
   botanicalName?: string;
   commonName?: string;
   notes?: string;
+  // Optional link to a public.plants reference entry (id + a display name
+  // snapshot so the library can show it without a join).
+  referencePlantId?: number;
+  referencePlantName?: string;
 }
 
 // A row as returned by the library API. imageUrl is the public URL derived from
