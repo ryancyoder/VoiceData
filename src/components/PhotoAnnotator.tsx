@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { dealPhotoUrl, type DealPhoto } from "@/lib/salesBoard";
 import styles from "./photoAnnotator.module.css";
 
-type Tool = "pen" | "curvepen" | "text" | "eraser";
+type Tool = "pen" | "curvepen" | "text" | "eraser" | "fill";
 
 const SWATCHES = ["#ff3b30", "#ffcc00", "#30d158", "#007aff", "#ffffff", "#1a1a1a"];
 const SIZES = [3, 7, 15] as const;
@@ -69,6 +69,7 @@ export default function PhotoAnnotator({
   const [color, setColor] = useState<string>(SWATCHES[0]);
   const [size, setSize] = useState<number>(3);
   const [textMode, setTextMode] = useState<"edit" | "move">("edit");
+  const [fillOpacity, setFillOpacity] = useState(0.3);
   const [saving, setSaving] = useState(false);
   const [textItems, setTextItems] = useState<TextData[]>([]);
   const [stickerItems, setStickerItems] = useState<StickerData[]>([]);
@@ -94,6 +95,7 @@ export default function PhotoAnnotator({
   const colorRef = useRef(color);
   const sizeRef = useRef(size);
   const textModeRef = useRef(textMode);
+  const fillOpacityRef = useRef(fillOpacity);
   useEffect(() => {
     toolRef.current = tool;
   }, [tool]);
@@ -106,6 +108,9 @@ export default function PhotoAnnotator({
   useEffect(() => {
     textModeRef.current = textMode;
   }, [textMode]);
+  useEffect(() => {
+    fillOpacityRef.current = fillOpacity;
+  }, [fillOpacity]);
 
   // Drawing scratch state — refs so pointer moves never trigger re-renders.
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -131,6 +136,10 @@ export default function PhotoAnnotator({
   // = a pen stroke is in progress; shiftProcessedRef debounces key auto-repeat
   // so one physical press drops exactly one vertex.
   const strokeActiveRef = useRef(false);
+  // Polygon fill: committed vertices of the shape being drawn. Each vertex holds
+  // the control point (cp) of the curved edge leading into it, or null for a
+  // straight edge. Index 0 is the start; the shape is auto-closed on lift.
+  const fillVertsRef = useRef<{ x: number; y: number; cp: { x: number; y: number } | null }[]>([]);
   const shiftProcessedRef = useRef(false);
   // Canvas rect cached for the duration of a stroke. getBoundingClientRect()
   // forces a synchronous reflow, and it was being called for every coalesced
@@ -287,31 +296,76 @@ export default function PhotoAnnotator({
     return { x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure > 0 ? e.pressure : 0.5 };
   }
 
-  // Quadratic arc from P0 to P2 that passes through Q. Q's perpendicular
-  // distance from the P0→P2 line sets the arch height; how far Q projects
-  // ALONG the line skews the apex toward the start or end (drag sideways for a
-  // symmetric arch, drag toward an endpoint to lean the peak that way).
-  function drawArch(ctx: CanvasRenderingContext2D, P0: Pt, P2: Pt, Q: { x: number; y: number }) {
+  // Control point of the quadratic P0→P2 that passes through Q. Q's
+  // perpendicular distance from the P0→P2 line sets the arch height; how far Q
+  // projects ALONG the line skews the apex toward the start or end. Returns null
+  // for a degenerate (zero-length) segment.
+  function arcControlPoint(P0: Pt | { x: number; y: number }, P2: { x: number; y: number }, Q: { x: number; y: number }): { x: number; y: number } | null {
     const ax = P2.x - P0.x;
     const ay = P2.y - P0.y;
     const len2 = ax * ax + ay * ay;
-    ctx.beginPath();
-    ctx.moveTo(P0.x, P0.y);
-    if (len2 < 1e-6) {
-      ctx.lineTo(P2.x, P2.y);
-      ctx.stroke();
-      return;
-    }
+    if (len2 < 1e-6) return null;
     // Parameter where Q sits along the axis (0 = start, 1 = end), kept off the
     // ends so the control point stays finite.
     let t = ((Q.x - P0.x) * ax + (Q.y - P0.y) * ay) / len2;
     t = Math.min(0.95, Math.max(0.05, t));
     const mt = 1 - t;
     const denom = 2 * mt * t;
-    // Control point that makes the quadratic pass through Q at parameter t.
-    const cpx = (Q.x - mt * mt * P0.x - t * t * P2.x) / denom;
-    const cpy = (Q.y - mt * mt * P0.y - t * t * P2.y) / denom;
-    ctx.quadraticCurveTo(cpx, cpy, P2.x, P2.y);
+    return { x: (Q.x - mt * mt * P0.x - t * t * P2.x) / denom, y: (Q.y - mt * mt * P0.y - t * t * P2.y) / denom };
+  }
+
+  // Stroke a quadratic arc from P0 to P2 passing through Q (drag sideways for a
+  // symmetric arch, toward an endpoint to lean the peak that way).
+  function drawArch(ctx: CanvasRenderingContext2D, P0: Pt, P2: Pt, Q: { x: number; y: number }) {
+    const cp = arcControlPoint(P0, P2, Q);
+    ctx.beginPath();
+    ctx.moveTo(P0.x, P0.y);
+    if (!cp) ctx.lineTo(P2.x, P2.y);
+    else ctx.quadraticCurveTo(cp.x, cp.y, P2.x, P2.y);
+    ctx.stroke();
+  }
+
+  // Render the polygon-fill shape from the pre-stroke base each frame:
+  // translucent fill of the closed region + a solid outline. `cursor` is the
+  // live drag position; `closeOutline` strokes the closing edge back to the
+  // start (used when the shape is finalized on lift).
+  function renderFill(cursor: Pt, closeOutline: boolean) {
+    const ctx = ctxRef.current;
+    if (!ctx || !preStrokeRef.current) return;
+    const verts = fillVertsRef.current;
+    if (verts.length === 0) return;
+    ctx.putImageData(preStrokeRef.current, 0, 0);
+    const lastV = verts[verts.length - 1];
+    // Live edge from the last committed vertex to the cursor: straight, or an
+    // arc to the locked endpoint while Alt-bending.
+    const liveEnd = altCurveRef.current && arcP2Ref.current ? arcP2Ref.current : cursor;
+    const liveCp = altCurveRef.current && arcP2Ref.current ? arcControlPoint(lastV, arcP2Ref.current, cursor) : null;
+    const trace = () => {
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < verts.length; i++) {
+        const v = verts[i];
+        if (v.cp) ctx.quadraticCurveTo(v.cp.x, v.cp.y, v.x, v.y);
+        else ctx.lineTo(v.x, v.y);
+      }
+      if (liveCp) ctx.quadraticCurveTo(liveCp.x, liveCp.y, liveEnd.x, liveEnd.y);
+      else ctx.lineTo(liveEnd.x, liveEnd.y);
+    };
+    ctx.globalCompositeOperation = "source-over";
+    // Translucent fill (canvas auto-closes the path for filling).
+    ctx.beginPath();
+    trace();
+    ctx.closePath();
+    ctx.globalAlpha = fillOpacityRef.current;
+    ctx.fillStyle = colorRef.current;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Solid outline: only drawn edges while building; the closing edge is added
+    // once the shape is finalized.
+    ctx.beginPath();
+    trace();
+    if (closeOutline) ctx.closePath();
+    ctx.strokeStyle = colorRef.current;
+    ctx.lineWidth = sizeRef.current * 1.5;
     ctx.stroke();
   }
 
@@ -322,6 +376,12 @@ export default function PhotoAnnotator({
     const ctx = ctxRef.current;
     if (!ctx || !preStrokeRef.current) return;
     const t = toolRef.current;
+    if (t === "fill") {
+      // A straight edge tracks the cursor; a bent one keeps its locked endpoint.
+      if (!altCurveRef.current) pointsRef.current[pointsRef.current.length - 1] = pos;
+      renderFill(pos, false);
+      return;
+    }
     ctx.putImageData(preStrokeRef.current, 0, 0);
     const base = t === "eraser" ? sizeRef.current * 6 : sizeRef.current;
     ctx.globalCompositeOperation = t === "eraser" ? "destination-out" : "source-over";
@@ -346,7 +406,8 @@ export default function PhotoAnnotator({
   // Enter Alt-bend: lock the current endpoint and set up the arc so the drag now
   // controls its bulge. Only meaningful for a snapped pen line.
   function engageAltCurve() {
-    if (toolRef.current !== "pen" || !straightenedRef.current || altCurveRef.current) return;
+    const tool = toolRef.current;
+    if ((tool !== "pen" && tool !== "fill") || !straightenedRef.current || altCurveRef.current) return;
     const pts = pointsRef.current;
     if (pts.length < 1) return;
     const P0 = pts[0];
@@ -370,7 +431,8 @@ export default function PhotoAnnotator({
   function commitPolygonVertex() {
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
-    if (!ctx || !canvas || toolRef.current !== "pen" || !strokeActiveRef.current) return;
+    const tool = toolRef.current;
+    if (!ctx || !canvas || (tool !== "pen" && tool !== "fill") || !strokeActiveRef.current) return;
     if (pointsRef.current.length < 1) return;
     if (straightenTimerRef.current) {
       clearTimeout(straightenTimerRef.current);
@@ -378,6 +440,26 @@ export default function PhotoAnnotator({
     }
     const pos = lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1];
     if (!pos) return;
+
+    // Fill: append the current edge's endpoint (and its curve control point) to
+    // the shape, then start the next edge there. No pixel bake — the whole fill
+    // is re-rendered from the pre-stroke base each frame.
+    if (tool === "fill") {
+      const lastV = fillVertsRef.current[fillVertsRef.current.length - 1];
+      const bent = altCurveRef.current && arcP2Ref.current;
+      const endpoint: Pt = bent ? { ...arcP2Ref.current! } : { ...pos };
+      const cp = bent ? arcControlPoint(lastV, arcP2Ref.current!, pos) : null;
+      fillVertsRef.current.push({ x: endpoint.x, y: endpoint.y, cp });
+      pointsRef.current = [{ ...endpoint }, { ...endpoint }];
+      straightenedRef.current = true;
+      altCurveRef.current = false;
+      arcP0Ref.current = null;
+      arcP2Ref.current = null;
+      lastPointerRef.current = { ...endpoint };
+      renderFill(endpoint, false);
+      navigator.vibrate?.(8);
+      return;
+    }
     // A still-freehand segment becomes a straight line from its start to here.
     if (!straightenedRef.current) {
       straightenedRef.current = true;
@@ -473,6 +555,19 @@ export default function PhotoAnnotator({
     saveUndo();
     preStrokeRef.current = undoStackRef.current[undoStackRef.current.length - 1];
     const pos = getPos(e);
+    if (toolRef.current === "fill") {
+      // Fill edges are straight from the start (no freehand/snap); Shift drops
+      // vertices, Alt bows an edge, lift closes and fills the shape.
+      fillVertsRef.current = [{ x: pos.x, y: pos.y, cp: null }];
+      pointsRef.current = [pos, { ...pos }];
+      strokeActiveRef.current = true;
+      straightenedRef.current = true;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = colorRef.current;
+      ctx.fillStyle = colorRef.current;
+      renderFill(pos, false);
+      return;
+    }
     pointsRef.current = [pos];
     strokeActiveRef.current = true;
     straightenOriginRef.current = pos;
@@ -547,6 +642,20 @@ export default function PhotoAnnotator({
     strokeActiveRef.current = false;
     if (!ctx) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
+    if (toolRef.current === "fill") {
+      const q = lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1] ?? null;
+      if (q && fillVertsRef.current.length >= 1) renderFill(q, true); // close + fill
+      fillVertsRef.current = [];
+      pointsRef.current = [];
+      straightenedRef.current = false;
+      preStrokeRef.current = null;
+      altCurveRef.current = false;
+      arcP0Ref.current = null;
+      arcP2Ref.current = null;
+      lastPointerRef.current = null;
+      ctx.globalCompositeOperation = "source-over";
+      return;
+    }
     if (straightenedRef.current) {
       pointsRef.current = [];
       straightenedRef.current = false;
@@ -753,14 +862,14 @@ export default function PhotoAnnotator({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Alt") {
         altDownRef.current = true;
-        if (!e.repeat && straightenedRef.current && toolRef.current === "pen" && !altCurveRef.current) {
+        if (!e.repeat && straightenedRef.current && (toolRef.current === "pen" || toolRef.current === "fill") && !altCurveRef.current) {
           e.preventDefault();
           keyApiRef.current.engage();
         }
       } else if (e.key === "Shift") {
         if (shiftProcessedRef.current) return; // ignore key auto-repeat
         shiftProcessedRef.current = true;
-        if (toolRef.current === "pen" && strokeActiveRef.current && pointsRef.current.length >= 1) {
+        if ((toolRef.current === "pen" || toolRef.current === "fill") && strokeActiveRef.current && pointsRef.current.length >= 1) {
           e.preventDefault();
           keyApiRef.current.commit();
         }
@@ -850,6 +959,14 @@ export default function PhotoAnnotator({
         <button type="button" className={`${styles.toolBtn} ${tool === "eraser" ? styles.active : ""}`} title="Eraser" onClick={() => selectTool("eraser")}>
           ⌫
         </button>
+        <button
+          type="button"
+          className={`${styles.toolBtn} ${tool === "fill" ? styles.active : ""}`}
+          title="Polygon fill — draw an edge, tap Shift to drop corners, hold Option/Alt to bow an edge, lift to close and fill"
+          onClick={() => selectTool("fill")}
+        >
+          ⬢
+        </button>
         <div className={styles.sep} />
         {SWATCHES.map((c) => (
           <button
@@ -860,7 +977,7 @@ export default function PhotoAnnotator({
             aria-label={`Color ${c}`}
             onClick={() => {
               setColor(c);
-              selectTool("pen");
+              if (tool === "eraser") selectTool("pen");
             }}
           />
         ))}
@@ -876,6 +993,24 @@ export default function PhotoAnnotator({
             <span className={styles.sizeDot} style={{ width: sz + 5, height: sz + 5 }} />
           </button>
         ))}
+        {tool === "fill" && (
+          <>
+            <div className={styles.sep} />
+            <div className={styles.opacityWrap} title="Fill opacity">
+              <span className={styles.opacityLabel}>Fill</span>
+              <input
+                type="range"
+                min={5}
+                max={80}
+                value={Math.round(fillOpacity * 100)}
+                onChange={(e) => setFillOpacity(parseInt(e.target.value, 10) / 100)}
+                className={styles.opacitySlider}
+                aria-label="Fill opacity"
+              />
+              <span className={styles.opacityVal}>{Math.round(fillOpacity * 100)}%</span>
+            </div>
+          </>
+        )}
         <div className={styles.sep} />
         <button type="button" className={styles.toolBtn} title="Add image / sticker" onClick={() => fileInputRef.current?.click()}>
           ⊕
