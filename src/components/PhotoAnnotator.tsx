@@ -88,9 +88,6 @@ export default function PhotoAnnotator({
   // bow); false = fast hard corners (quick lock, straight only). Toggled in the
   // toolbar. The pen always uses the curve window regardless.
   const [fillCurveMode, setFillCurveMode] = useState(true);
-  // On-screen Option/Alt modifier (for keyboardless iPad use). Mirrors the
-  // physical Alt key; `altActive` just drives the button's pressed highlight.
-  const [altActive, setAltActive] = useState(false);
   const [saving, setSaving] = useState(false);
   const [textItems, setTextItems] = useState<TextData[]>([]);
   const [stickerItems, setStickerItems] = useState<StickerData[]>([]);
@@ -104,8 +101,6 @@ export default function PhotoAnnotator({
   const containerRef = useRef<HTMLDivElement>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const altBtnRef = useRef<HTMLDivElement>(null);
-  const altTapRef = useRef(0); // dedupe: touchstart + pointerdown fire for one tap
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The full-resolution original, kept off-DOM. It is drawn once into the small
   // display-resolution background canvas for editing, and used again at save
@@ -610,14 +605,14 @@ export default function PhotoAnnotator({
   }
 
   // Press/release the Option/Alt modifier. Shared by the physical Alt key and
-  // the on-screen "Bend" button (for keyboardless iPad use). Press bends a
-  // snapped pen/fill/prism line into a curve; release keeps the curve and drops
-  // the vertex at its end. If pressed before the line has snapped, the snap
-  // (straighten) engages the bend then, matching the key.
+  // the physical Option/Alt key (keyboard users). Press bends a snapped
+  // pen/fill/prism line into a curve; release keeps the curve and drops the
+  // vertex at its end. If pressed before the line has snapped, the snap
+  // (straighten) engages the bend then, matching the key. Keyboardless users get
+  // the same result via the pen/fill yellow curve window.
   function pressAlt() {
     if (altDownRef.current) return; // already down — ignore key repeat / re-press
     altDownRef.current = true;
-    setAltActive(true);
     if (straightenedRef.current && (toolRef.current === "pen" || isFillDraw()) && !altCurveRef.current) {
       engageAltCurve();
     }
@@ -625,17 +620,7 @@ export default function PhotoAnnotator({
   function releaseAlt() {
     if (!altDownRef.current) return;
     altDownRef.current = false;
-    setAltActive(false);
     if (altCurveRef.current) disengageAltCurve();
-  }
-  // Toggle the modifier — used by the on-screen button. iPad palm-rejection
-  // blocks a finger while the pencil is in contact, so a hold-while-drawing
-  // button can't work; instead you TAP to arm "bend mode" between strokes
-  // (pencil up), then any straight line you draw bows as you drag and keeps the
-  // curve on lift. Tap again to turn it off.
-  function toggleAlt() {
-    if (altDownRef.current) releaseAlt();
-    else pressAlt();
   }
 
   // Show a brief pulse at a just-dropped vertex (visual counterpart to the
@@ -1289,9 +1274,9 @@ export default function PhotoAnnotator({
   // Keyboard modifiers: Option/Alt bends a snapped pen line into a curve; Shift
   // drops a polygon vertex mid-stroke. A ref keeps the document listeners
   // pointed at the latest closures.
-  const keyApiRef = useRef({ pressAlt, releaseAlt, toggleAlt, commit: commitPolygonVertex });
+  const keyApiRef = useRef({ pressAlt, releaseAlt, commit: commitPolygonVertex });
   useEffect(() => {
-    keyApiRef.current = { pressAlt, releaseAlt, toggleAlt, commit: commitPolygonVertex };
+    keyApiRef.current = { pressAlt, releaseAlt, commit: commitPolygonVertex };
   });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1323,31 +1308,6 @@ export default function PhotoAnnotator({
       window.removeEventListener("keyup", onKeyUp);
     };
   }, []);
-
-  // Bend button is only mounted for tools where bending applies.
-  const bendToolActive = tool === "pen" || tool === "fill" || tool === "prism";
-  // The Bend button is a TOGGLE, not a hold: iPad palm-rejection blocks a finger
-  // while the pencil is in contact, so you can't hold it and draw at the same
-  // time. Tapping it (between strokes) arms/disarms "bend mode." Handlers are
-  // native ({ passive: false }) and listen for both touch and pointer, since the
-  // Apple Pencil delivers touch events even where its pointer events don't fire.
-  // A short time-guard dedupes the touch + pointer pair from a single tap.
-  useEffect(() => {
-    const btn = altBtnRef.current;
-    if (!btn) return;
-    const onTap = (e: Event) => {
-      e.preventDefault(); // stop scroll/selection, synthetic click, and drawing-through
-      if (e.timeStamp - altTapRef.current < 400) return; // one physical tap → one toggle
-      altTapRef.current = e.timeStamp;
-      keyApiRef.current.toggleAlt();
-    };
-    btn.addEventListener("touchstart", onTap, { passive: false });
-    btn.addEventListener("pointerdown", onTap, { passive: false });
-    return () => {
-      btn.removeEventListener("touchstart", onTap);
-      btn.removeEventListener("pointerdown", onTap);
-    };
-  }, [bendToolActive]);
 
   return (
     <div className={styles.overlay}>
@@ -1529,24 +1489,6 @@ export default function PhotoAnnotator({
         </button>
       </div>
       </div>
-
-      {/* On-screen Option/Alt for keyboardless iPad use: press-and-hold with the
-          left thumb while the pencil draws to bow a straight line into a curve;
-          release to keep the curve. Only shown where bending applies. */}
-      {bendToolActive && (
-        <div
-          ref={altBtnRef}
-          role="button"
-          tabIndex={-1}
-          aria-pressed={altActive}
-          className={`${styles.altBtn} ${altActive ? styles.altBtnActive : ""}`}
-          title="Bend mode — tap to turn on, then any straight line you draw bows into a curve as you drag (lift to keep it); tap again to turn off"
-          aria-label="Bend mode"
-        >
-          <span className={styles.altGlyph}>⌥</span>
-          <span className={styles.altLabel}>{altActive ? "Bend ✓" : "Bend"}</span>
-        </div>
-      )}
 
       <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onFilePicked} />
     </div>
