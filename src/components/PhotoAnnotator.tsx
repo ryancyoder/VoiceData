@@ -94,6 +94,7 @@ export default function PhotoAnnotator({
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const altBtnRef = useRef<HTMLDivElement>(null);
+  const altTapRef = useRef(0); // dedupe: touchstart + pointerdown fire for one tap
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The full-resolution original, kept off-DOM. It is drawn once into the small
   // display-resolution background canvas for editing, and used again at save
@@ -596,6 +597,15 @@ export default function PhotoAnnotator({
     setAltActive(false);
     if (altCurveRef.current) disengageAltCurve();
   }
+  // Toggle the modifier — used by the on-screen button. iPad palm-rejection
+  // blocks a finger while the pencil is in contact, so a hold-while-drawing
+  // button can't work; instead you TAP to arm "bend mode" between strokes
+  // (pencil up), then any straight line you draw bows as you drag and keeps the
+  // curve on lift. Tap again to turn it off.
+  function toggleAlt() {
+    if (altDownRef.current) releaseAlt();
+    else pressAlt();
+  }
 
   // Show a brief pulse at a just-dropped vertex (visual counterpart to the
   // haptic tick). Purely a DOM overlay — never touches the canvas.
@@ -720,16 +730,16 @@ export default function PhotoAnnotator({
     }
     lockOriginRef.current = null;
   }
-  // Fired once the pointer has been held still long enough (pen: after the line
-  // snapped; fill: edges are straight from the start): drop a vertex and start
-  // the next segment/edge (same effect as tapping Shift). Suppressed while Alt is
-  // held so bowing a curve never locks the vertex — you release Alt (which keeps
-  // the curve) and then hold to lock.
+  // Fired once the pointer has been held still long enough after a segment
+  // formed (pen line snapped / fill edge / curve smoothed): drop a vertex and
+  // start the next segment (same effect as tapping Shift). For pen/fill the Alt
+  // hold suppresses it (you release Alt then hold to lock); the curve pen has no
+  // bend, so its long-hold lock is never suppressed.
   function lockVertex() {
     lockTimerRef.current = null;
-    if (altDownRef.current) return;
     const t = toolRef.current;
-    if ((t !== "pen" && !isFillDraw()) || !straightenedRef.current || !strokeActiveRef.current) return;
+    if (altDownRef.current && t !== "curvepen") return;
+    if ((t !== "pen" && t !== "curvepen" && !isFillDraw()) || !straightenedRef.current || !strokeActiveRef.current) return;
     commitPolygonVertex();
   }
 
@@ -772,9 +782,11 @@ export default function PhotoAnnotator({
     navigator.vibrate?.(12);
     // If Option/Alt is already held when the pen line snaps, start bending now.
     if (toolRef.current === "pen" && altDownRef.current) engageAltCurve();
-    // Pen: begin the "hold in place to drop a vertex" countdown now that the
-    // line has snapped. Continuing to hold locks the vertex; moving re-arms it.
-    if (toolRef.current === "pen") armLockTimer(pts[pts.length - 1]);
+    // Pen & curve pen: begin the "hold in place to drop a vertex" countdown now
+    // that the segment has formed. Continuing to hold locks the vertex and starts
+    // the next segment (chaining); moving re-arms it. For the curve pen this lets
+    // you chain another curve with a long hold — no Shift/keyboard needed.
+    if (toolRef.current === "pen" || toolRef.current === "curvepen") armLockTimer(pts[pts.length - 1]);
   }
 
   // ── Canvas pointer handlers ───────────────────────────────────────────────
@@ -919,9 +931,10 @@ export default function PhotoAnnotator({
         engageAltCurve();
       }
       redrawStraightened(pos);
-      // Pen/fill: while adjusting a straight edge, re-arm the hold-to-lock timer
-      // on real movement so it only fires once you settle on a spot.
-      if (toolRef.current === "pen" || isFillDraw()) {
+      // Pen/fill/curve: while adjusting the segment (curve pen: shaping the arc's
+      // bulge), re-arm the hold-to-lock timer on real movement so it only fires
+      // once you settle on a spot.
+      if (toolRef.current === "pen" || toolRef.current === "curvepen" || isFillDraw()) {
         const o = lockOriginRef.current;
         if (!o || Math.hypot(pos.x - o.x, pos.y - o.y) > 4) armLockTimer(pos);
       }
@@ -999,7 +1012,10 @@ export default function PhotoAnnotator({
       ctx.globalCompositeOperation = "source-over";
       return;
     }
-    if (pointsRef.current.length === 1 && toolRef.current !== "text") {
+    // A leftover single point becomes a dot (a deliberate tap) — except for the
+    // curve pen, where a 1-point segment is just the start the last lock chained
+    // to; lifting there should leave the drawn curve, not a stray dot.
+    if (pointsRef.current.length === 1 && toolRef.current !== "text" && toolRef.current !== "curvepen") {
       const pos = pointsRef.current[0];
       const base = toolRef.current === "eraser" ? sizeRef.current * 6 : sizeRef.current;
       ctx.lineWidth = base;
@@ -1195,9 +1211,9 @@ export default function PhotoAnnotator({
   // Keyboard modifiers: Option/Alt bends a snapped pen line into a curve; Shift
   // drops a polygon vertex mid-stroke. A ref keeps the document listeners
   // pointed at the latest closures.
-  const keyApiRef = useRef({ pressAlt, releaseAlt, commit: commitPolygonVertex });
+  const keyApiRef = useRef({ pressAlt, releaseAlt, toggleAlt, commit: commitPolygonVertex });
   useEffect(() => {
-    keyApiRef.current = { pressAlt, releaseAlt, commit: commitPolygonVertex };
+    keyApiRef.current = { pressAlt, releaseAlt, toggleAlt, commit: commitPolygonVertex };
   });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1232,48 +1248,26 @@ export default function PhotoAnnotator({
 
   // Bend button is only mounted for tools where bending applies.
   const bendToolActive = tool === "pen" || tool === "fill" || tool === "prism";
-  // Attach the Bend button's activation handlers NATIVELY ({ passive: false }).
-  // We listen for BOTH touch and pointer events: on iPad the Apple Pencil did
-  // not activate the button via pointer events (React synthetic OR native), but
-  // it does generate touch events — and touch events implicitly capture to their
-  // start target, so drift-off still releases. pressAlt()/releaseAlt() are
-  // idempotent, so touch + pointer both firing (finger) just no-ops the dupes.
+  // The Bend button is a TOGGLE, not a hold: iPad palm-rejection blocks a finger
+  // while the pencil is in contact, so you can't hold it and draw at the same
+  // time. Tapping it (between strokes) arms/disarms "bend mode." Handlers are
+  // native ({ passive: false }) and listen for both touch and pointer, since the
+  // Apple Pencil delivers touch events even where its pointer events don't fire.
+  // A short time-guard dedupes the touch + pointer pair from a single tap.
   useEffect(() => {
     const btn = altBtnRef.current;
     if (!btn) return;
-    const press = (e: Event) => {
-      keyApiRef.current.pressAlt();
-      e.preventDefault(); // stop scroll/selection and the synthetic click
-      // Mouse/desktop: capture so drift-off still releases. Touch events already
-      // capture implicitly to their start target; the pencil path uses touch.
-      if ("pointerId" in e) {
-        try {
-          btn.setPointerCapture((e as PointerEvent).pointerId);
-        } catch {
-          /* fast tap: pointer may already be gone — capture is optional */
-        }
-      }
+    const onTap = (e: Event) => {
+      e.preventDefault(); // stop scroll/selection, synthetic click, and drawing-through
+      if (e.timeStamp - altTapRef.current < 400) return; // one physical tap → one toggle
+      altTapRef.current = e.timeStamp;
+      keyApiRef.current.toggleAlt();
     };
-    const release = (e: Event) => {
-      e.preventDefault();
-      keyApiRef.current.releaseAlt();
-    };
-    const cancel = () => keyApiRef.current.releaseAlt();
-    btn.addEventListener("touchstart", press, { passive: false });
-    btn.addEventListener("touchend", release, { passive: false });
-    btn.addEventListener("touchcancel", cancel, { passive: false });
-    btn.addEventListener("pointerdown", press, { passive: false });
-    btn.addEventListener("pointerup", release, { passive: false });
-    btn.addEventListener("pointercancel", cancel);
-    btn.addEventListener("lostpointercapture", cancel);
+    btn.addEventListener("touchstart", onTap, { passive: false });
+    btn.addEventListener("pointerdown", onTap, { passive: false });
     return () => {
-      btn.removeEventListener("touchstart", press);
-      btn.removeEventListener("touchend", release);
-      btn.removeEventListener("touchcancel", cancel);
-      btn.removeEventListener("pointerdown", press);
-      btn.removeEventListener("pointerup", release);
-      btn.removeEventListener("pointercancel", cancel);
-      btn.removeEventListener("lostpointercapture", cancel);
+      btn.removeEventListener("touchstart", onTap);
+      btn.removeEventListener("pointerdown", onTap);
     };
   }, [bendToolActive]);
 
@@ -1332,7 +1326,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "curvepen" ? styles.active : ""}`}
-          title="Curve pen — draw and hold still to smooth into a curve; tap Shift while drawing to lock a vertex and chain another curve"
+          title="Curve pen — draw and hold still to smooth into a curve, optionally drag to shape it, then keep holding in place to lock it and chain another curve (or tap Shift)"
           onClick={() => selectTool("curvepen")}
         >
           ⌣
@@ -1447,12 +1441,13 @@ export default function PhotoAnnotator({
           ref={altBtnRef}
           role="button"
           tabIndex={-1}
+          aria-pressed={altActive}
           className={`${styles.altBtn} ${altActive ? styles.altBtnActive : ""}`}
-          title="Bend — hold while drawing a straight line to bow it into a curve (on-screen Option/Alt); release to keep the curve"
-          aria-label="Bend (hold)"
+          title="Bend mode — tap to turn on, then any straight line you draw bows into a curve as you drag (lift to keep it); tap again to turn off"
+          aria-label="Bend mode"
         >
           <span className={styles.altGlyph}>⌥</span>
-          <span className={styles.altLabel}>Bend</span>
+          <span className={styles.altLabel}>{altActive ? "Bend ✓" : "Bend"}</span>
         </div>
       )}
 
