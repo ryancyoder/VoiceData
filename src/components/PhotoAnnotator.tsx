@@ -93,6 +93,7 @@ export default function PhotoAnnotator({
   const containerRef = useRef<HTMLDivElement>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const altBtnRef = useRef<HTMLButtonElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The full-resolution original, kept off-DOM. It is drawn once into the small
   // display-resolution background canvas for editing, and used again at save
@@ -1229,6 +1230,42 @@ export default function PhotoAnnotator({
     };
   }, []);
 
+  // Bend button is only mounted for tools where bending applies.
+  const bendToolActive = tool === "pen" || tool === "fill" || tool === "prism";
+  // Attach the Bend button's pointer handlers NATIVELY ({ passive: false }),
+  // mirroring the canvas. iOS Safari delivers Apple Pencil ("pen") pointer
+  // events reliably to native non-passive listeners but not always to React's
+  // synthetic handlers — which is why the button responded to a finger but not
+  // the pencil. keyApiRef keeps these pointed at the latest press/release.
+  useEffect(() => {
+    const btn = altBtnRef.current;
+    if (!btn) return;
+    const down = (e: PointerEvent) => {
+      keyApiRef.current.pressAlt();
+      e.preventDefault();
+      try {
+        btn.setPointerCapture(e.pointerId);
+      } catch {
+        /* fast tap: pointer may already be gone — capture is optional */
+      }
+    };
+    const up = (e: PointerEvent) => {
+      e.preventDefault();
+      keyApiRef.current.releaseAlt();
+    };
+    const cancel = () => keyApiRef.current.releaseAlt();
+    btn.addEventListener("pointerdown", down, { passive: false });
+    btn.addEventListener("pointerup", up, { passive: false });
+    btn.addEventListener("pointercancel", cancel);
+    btn.addEventListener("lostpointercapture", cancel);
+    return () => {
+      btn.removeEventListener("pointerdown", down);
+      btn.removeEventListener("pointerup", up);
+      btn.removeEventListener("pointercancel", cancel);
+      btn.removeEventListener("lostpointercapture", cancel);
+    };
+  }, [bendToolActive]);
+
   return (
     <div className={styles.overlay}>
       <div className={styles.header}>
@@ -1394,29 +1431,13 @@ export default function PhotoAnnotator({
       {/* On-screen Option/Alt for keyboardless iPad use: press-and-hold with the
           left thumb while the pencil draws to bow a straight line into a curve;
           release to keep the curve. Only shown where bending applies. */}
-      {(tool === "pen" || tool === "fill" || tool === "prism") && (
+      {bendToolActive && (
         <button
+          ref={altBtnRef}
           type="button"
           className={`${styles.altBtn} ${altActive ? styles.altBtnActive : ""}`}
           title="Bend — hold while drawing a straight line to bow it into a curve (on-screen Option/Alt); release to keep the curve"
           aria-label="Bend (hold)"
-          onPointerDown={(e) => {
-            // Engage FIRST so it can't be skipped: a quick Apple Pencil tap can
-            // leave the pointer already released, making setPointerCapture throw.
-            pressAlt();
-            e.preventDefault();
-            try {
-              e.currentTarget.setPointerCapture(e.pointerId);
-            } catch {
-              /* pointer may have already ended (fast tap) — capture is optional */
-            }
-          }}
-          onPointerUp={(e) => {
-            e.preventDefault();
-            releaseAlt();
-          }}
-          onPointerCancel={releaseAlt}
-          onLostPointerCapture={releaseAlt}
         >
           <span className={styles.altGlyph}>⌥</span>
           <span className={styles.altLabel}>Bend</span>
