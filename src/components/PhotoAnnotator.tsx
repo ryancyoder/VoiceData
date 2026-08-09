@@ -167,6 +167,16 @@ export default function PhotoAnnotator({
     };
   }, []);
 
+  // Lock the page behind the fixed overlay so iPadOS isn't also running scroll /
+  // gesture recognition while the Apple Pencil is drawing.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
   // ── Undo ────────────────────────────────────────────────────────────────
   function saveUndo() {
     const canvas = canvasRef.current;
