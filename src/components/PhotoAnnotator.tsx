@@ -131,6 +131,10 @@ export default function PhotoAnnotator({
   // key press/release can redraw without waiting for a pointer move).
   const altDownRef = useRef(false);
   const altCurveRef = useRef(false);
+  // When Alt is released the bowed edge is kept (not flattened): its through-
+  // point is frozen here so the cursor no longer reshapes it, and a subsequent
+  // hold/Shift locks the vertex at the curve's end with the curve preserved.
+  const curveApexRef = useRef<Pt | null>(null);
   const lastPointerRef = useRef<Pt | null>(null);
   // Polygon (Shift): within a single pen stroke, each Shift tap bakes the
   // current segment and starts the next one from its endpoint. strokeActiveRef
@@ -395,11 +399,13 @@ export default function PhotoAnnotator({
     ctx.globalCompositeOperation = t === "eraser" ? "destination-out" : "source-over";
     ctx.strokeStyle = colorRef.current;
     ctx.lineWidth = base * 1.5;
-    const arcMode = t === "curvepen" || (t === "pen" && altCurveRef.current);
+    const arcMode = t === "curvepen" || (t === "pen" && (altCurveRef.current || curveApexRef.current != null));
     if (arcMode && arcP0Ref.current && arcP2Ref.current) {
-      // The cursor itself is the point the arc passes through, so its position
-      // sets both the height and the skew of the curve.
-      drawArch(ctx, arcP0Ref.current, arcP2Ref.current, pos);
+      // While bending, the cursor is the point the arc passes through (sets both
+      // height and skew). Once Alt is released the through-point is frozen, so
+      // the kept curve no longer follows the cursor.
+      const through = curveApexRef.current ?? pos;
+      drawArch(ctx, arcP0Ref.current, arcP2Ref.current, through);
     } else {
       const p1 = pointsRef.current[0];
       ctx.beginPath();
@@ -423,21 +429,22 @@ export default function PhotoAnnotator({
     arcP0Ref.current = P0;
     arcP2Ref.current = { ...P2 };
     altCurveRef.current = true;
+    curveApexRef.current = null; // live bending again — cursor drives the arc
     redrawStraightened(lastPointerRef.current ?? P2);
   }
 
-  // Leave Alt-bend: flatten back to a straight line but KEEP the endpoint where
-  // the line ended (the locked point), rather than snapping it to wherever the
-  // cursor drifted while bowing the arc. This way a hold-to-lock or Shift after
-  // bowing drops the vertex at the stroke's end, not out at the apex.
+  // Leave Alt-bend: KEEP the bowed curve. Freeze its through-point (so the
+  // cursor stops reshaping it) and treat the endpoint as the curve's locked end,
+  // so a following hold/Shift drops the vertex there with the curve preserved.
   function disengageAltCurve() {
     if (!altCurveRef.current) return;
     altCurveRef.current = false;
     const end = arcP2Ref.current ?? lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1];
-    lastPointerRef.current = end;
+    curveApexRef.current = lastPointerRef.current ?? end; // freeze the apex the user set
+    lastPointerRef.current = end; // endpoint = the curve's end, not the apex
     redrawStraightened(end);
-    // Re-arm hold-to-lock at the (stable) endpoint so holding still after
-    // releasing Alt drops the vertex there.
+    // Re-arm hold-to-lock at the endpoint so holding still after releasing Alt
+    // drops the vertex there.
     if (toolRef.current === "pen" && end) armLockTimer(end);
   }
 
@@ -512,7 +519,10 @@ export default function PhotoAnnotator({
       arcP2Ref.current = null;
       redrawStraightened(pos);
     }
-    const endpoint: Pt = altCurveRef.current && arcP2Ref.current ? { ...arcP2Ref.current } : { ...pos };
+    // A bowed edge (being bent, or a kept curve after Alt release) ends at its
+    // locked endpoint; a straight edge ends at the cursor.
+    const bent = (altCurveRef.current || curveApexRef.current != null) && arcP2Ref.current;
+    const endpoint: Pt = bent ? { ...arcP2Ref.current! } : { ...pos };
     // Freeze everything drawn so far; it's the base the next segment redraws on.
     preStrokeRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
     // Begin the next segment at this vertex (two points so redraws update the
@@ -520,6 +530,7 @@ export default function PhotoAnnotator({
     pointsRef.current = [endpoint, { ...endpoint }];
     straightenedRef.current = true;
     altCurveRef.current = false;
+    curveApexRef.current = null;
     arcP0Ref.current = null;
     arcP2Ref.current = null;
     lastPointerRef.current = { ...endpoint };
@@ -545,8 +556,11 @@ export default function PhotoAnnotator({
   }
   // Fired once the pen has been held still long enough after the line snapped:
   // drop a vertex and start the next segment (same effect as tapping Shift).
+  // Suppressed while Alt is held so bowing a curve never locks the vertex — you
+  // release Alt (which keeps the curve) and then hold to lock.
   function lockVertex() {
     lockTimerRef.current = null;
+    if (altDownRef.current) return;
     if (toolRef.current !== "pen" || !straightenedRef.current || !strokeActiveRef.current) return;
     commitPolygonVertex();
   }
@@ -623,6 +637,7 @@ export default function PhotoAnnotator({
     arcP0Ref.current = null;
     arcP2Ref.current = null;
     altCurveRef.current = false;
+    curveApexRef.current = null;
     lastPointerRef.current = null;
     saveUndo();
     preStrokeRef.current = undoStackRef.current[undoStackRef.current.length - 1];
@@ -740,6 +755,7 @@ export default function PhotoAnnotator({
       straightenedRef.current = false;
       preStrokeRef.current = null;
       altCurveRef.current = false;
+      curveApexRef.current = null;
       lastPointerRef.current = null;
       ctx.globalCompositeOperation = "source-over";
       return;
@@ -1015,7 +1031,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "pen" ? styles.active : ""}`}
-          title="Pen — hold still to snap to a straight line; keep holding in place to drop a polygon vertex and continue (or tap Shift); hold Option/Alt to bend an edge into a curve"
+          title="Pen — hold still to snap to a straight line; keep holding in place to drop a polygon vertex (or tap Shift); hold Option/Alt to bow an edge, release to keep the curve, then hold to lock the vertex"
           onClick={() => selectTool("pen")}
         >
           ✏
