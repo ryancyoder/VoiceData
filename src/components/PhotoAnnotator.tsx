@@ -127,6 +127,12 @@ export default function PhotoAnnotator({
   const altDownRef = useRef(false);
   const altCurveRef = useRef(false);
   const lastPointerRef = useRef<Pt | null>(null);
+  // Polygon (Shift): within a single pen stroke, each Shift tap bakes the
+  // current segment and starts the next one from its endpoint. strokeActiveRef
+  // = a pen stroke is in progress; shiftProcessedRef debounces key auto-repeat
+  // so one physical press drops exactly one vertex.
+  const strokeActiveRef = useRef(false);
+  const shiftProcessedRef = useRef(false);
   // Canvas rect cached for the duration of a stroke. getBoundingClientRect()
   // forces a synchronous reflow, and it was being called for every coalesced
   // pointer sample (up to ~10×/move at 120Hz) — measure once per stroke instead.
@@ -346,6 +352,45 @@ export default function PhotoAnnotator({
     redrawStraightened(lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1]);
   }
 
+  // Polygon: drop a vertex mid-stroke. Bake the current segment (snapping a
+  // still-freehand one to a straight line first), then start a new segment from
+  // that endpoint so the drag continues the shape. Lifting the pointer ends it.
+  function commitPolygonVertex() {
+    const ctx = ctxRef.current;
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas || toolRef.current !== "pen" || !strokeActiveRef.current) return;
+    if (pointsRef.current.length < 1) return;
+    if (straightenTimerRef.current) {
+      clearTimeout(straightenTimerRef.current);
+      straightenTimerRef.current = null;
+    }
+    const pos = lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1];
+    if (!pos) return;
+    // A still-freehand segment becomes a straight line from its start to here.
+    if (!straightenedRef.current) {
+      straightenedRef.current = true;
+      altCurveRef.current = false;
+      arcP0Ref.current = null;
+      arcP2Ref.current = null;
+      arcPerpRef.current = null;
+      redrawStraightened(pos);
+    }
+    const endpoint: Pt = altCurveRef.current && arcP2Ref.current ? { ...arcP2Ref.current } : { ...pos };
+    // Freeze everything drawn so far; it's the base the next segment redraws on.
+    preStrokeRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // Begin the next segment at this vertex (two points so redraws update the
+    // endpoint, not the anchor).
+    pointsRef.current = [endpoint, { ...endpoint }];
+    straightenedRef.current = true;
+    altCurveRef.current = false;
+    arcP0Ref.current = null;
+    arcP2Ref.current = null;
+    arcPerpRef.current = null;
+    lastPointerRef.current = { ...endpoint };
+    navigator.vibrate?.(8);
+    // If Alt is still held, bend the new segment as soon as the drag moves.
+  }
+
   // Hold-still-to-snap: straight line (pen/eraser) or smooth arch (curve pen).
   function straighten() {
     const ctx = ctxRef.current;
@@ -425,6 +470,7 @@ export default function PhotoAnnotator({
     preStrokeRef.current = undoStackRef.current[undoStackRef.current.length - 1];
     const pos = getPos(e);
     pointsRef.current = [pos];
+    strokeActiveRef.current = true;
     straightenOriginRef.current = pos;
     straightenTimerRef.current = setTimeout(straighten, 600);
     ctx.beginPath();
@@ -494,6 +540,7 @@ export default function PhotoAnnotator({
     const ctx = ctxRef.current;
     if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
     straightenTimerRef.current = null;
+    strokeActiveRef.current = false;
     if (!ctx) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
     if (straightenedRef.current) {
@@ -691,25 +738,37 @@ export default function PhotoAnnotator({
     };
   }, []);
 
-  // Option/Alt toggles bend-mode on a snapped pen line. A ref keeps the document
-  // listeners pointed at the latest engage/disengage closures.
-  const altApiRef = useRef({ engage: engageAltCurve, disengage: disengageAltCurve });
+  // Keyboard modifiers: Option/Alt bends a snapped pen line into a curve; Shift
+  // drops a polygon vertex mid-stroke. A ref keeps the document listeners
+  // pointed at the latest closures.
+  const keyApiRef = useRef({ engage: engageAltCurve, disengage: disengageAltCurve, commit: commitPolygonVertex });
   useEffect(() => {
-    altApiRef.current = { engage: engageAltCurve, disengage: disengageAltCurve };
+    keyApiRef.current = { engage: engageAltCurve, disengage: disengageAltCurve, commit: commitPolygonVertex };
   });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Alt") return;
-      altDownRef.current = true;
-      if (straightenedRef.current && toolRef.current === "pen" && !altCurveRef.current) {
-        e.preventDefault();
-        altApiRef.current.engage();
+      if (e.key === "Alt") {
+        altDownRef.current = true;
+        if (!e.repeat && straightenedRef.current && toolRef.current === "pen" && !altCurveRef.current) {
+          e.preventDefault();
+          keyApiRef.current.engage();
+        }
+      } else if (e.key === "Shift") {
+        if (shiftProcessedRef.current) return; // ignore key auto-repeat
+        shiftProcessedRef.current = true;
+        if (toolRef.current === "pen" && strokeActiveRef.current && pointsRef.current.length >= 1) {
+          e.preventDefault();
+          keyApiRef.current.commit();
+        }
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key !== "Alt") return;
-      altDownRef.current = false;
-      if (altCurveRef.current) altApiRef.current.disengage();
+      if (e.key === "Alt") {
+        altDownRef.current = false;
+        if (altCurveRef.current) keyApiRef.current.disengage();
+      } else if (e.key === "Shift") {
+        shiftProcessedRef.current = false;
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -763,7 +822,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "pen" ? styles.active : ""}`}
-          title="Pen — hold still to snap to a straight line, then hold Option/Alt to bend it into a curve"
+          title="Pen — hold still to snap to a straight line; hold Option/Alt to bend it into a curve; tap Shift while drawing to drop polygon vertices"
           onClick={() => selectTool("pen")}
         >
           ✏
