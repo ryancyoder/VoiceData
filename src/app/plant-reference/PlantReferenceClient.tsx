@@ -214,6 +214,19 @@ export function PlantReferenceClient() {
 
   const afterComboChange = useCallback(() => setReloadKey((k) => k + 1), []);
 
+  // Open a plant's detail card from a combination's linked-plant list. The
+  // combination only carries a slim projection, so fetch the full row first.
+  const openPlantById = useCallback(async (id: number) => {
+    try {
+      const res = await fetch(`/api/plants/${id}`);
+      if (!res.ok) return;
+      const d: { plant?: Plant } = await res.json();
+      if (d.plant) setSelected(d.plant);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const active = inAlbumList ? albumResult : plantResult;
   const totalPages = Math.max(1, Math.ceil(active.total / active.pageSize));
   const rangeFrom = active.total === 0 ? 0 : (active.page - 1) * active.pageSize + 1;
@@ -578,7 +591,6 @@ export function PlantReferenceClient() {
         </div>
       )}
 
-      {selected && <PlantDetail plant={selected} onClose={() => setSelected(null)} />}
       {editing && (
         <PlantEditor
           plant={editing}
@@ -590,7 +602,11 @@ export function PlantReferenceClient() {
           onChanged={() => setReloadKey((k) => k + 1)}
         />
       )}
-      {selectedCombo && <CombinationDetail combo={selectedCombo} onClose={() => setSelectedCombo(null)} />}
+      {selectedCombo && (
+        <CombinationDetail combo={selectedCombo} onClose={() => setSelectedCombo(null)} onPlantClick={openPlantById} />
+      )}
+      {/* Rendered last so a plant opened from a combination stacks on top of it. */}
+      {selected && <PlantDetail plant={selected} onClose={() => setSelected(null)} />}
       {editingCombo && (
         <CombinationEditor
           combo={editingCombo === "new" ? null : editingCombo}
@@ -1127,7 +1143,15 @@ function CombinationCard({ combo, onClick }: { combo: Combination; onClick: () =
   );
 }
 
-function CombinationDetail({ combo, onClose }: { combo: Combination; onClose: () => void }) {
+function CombinationDetail({
+  combo,
+  onClose,
+  onPlantClick,
+}: {
+  combo: Combination;
+  onClose: () => void;
+  onPlantClick: (id: number) => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
@@ -1156,14 +1180,21 @@ function CombinationDetail({ combo, onClose }: { combo: Combination; onClose: ()
           ) : (
             <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {combo.plants.map((p) => (
-                <li key={p.id} className="flex items-center gap-3 py-2">
-                  <span className="h-10 w-10 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
-                    <PlantImg image={p.image} alt="" className="h-full w-full object-cover" small />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "Unknown"}</span>
-                    {p.common && <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{p.common}</span>}
-                  </span>
+                <li key={p.id}>
+                  <button
+                    onClick={() => onPlantClick(p.id)}
+                    className="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+                    title={`Open ${p.botanical || p.common || "plant"}`}
+                  >
+                    <span className="h-10 w-10 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
+                      <PlantImg image={p.image} alt="" className="h-full w-full object-cover" small />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "Unknown"}</span>
+                      {p.common && <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{p.common}</span>}
+                    </span>
+                    <ExternalLink size={14} className="shrink-0 text-zinc-300 dark:text-zinc-600" />
+                  </button>
                 </li>
               ))}
             </ul>

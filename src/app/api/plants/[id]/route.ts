@@ -4,6 +4,24 @@ import type { Plant } from "@/lib/plants";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
+// Fetch a single reference plant by id (used to open a plant's detail from a
+// combination's linked-plant list).
+export async function GET(_req: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+  const plantId = Number(id);
+  if (!Number.isInteger(plantId)) {
+    return NextResponse.json({ error: "invalid plant id" }, { status: 400 });
+  }
+  const { data, error } = await supabase.from("plants").select("*").eq("id", plantId).maybeSingle();
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  return NextResponse.json({ plant: data as Plant });
+}
+
 // Columns the Plant Reference editor is allowed to change, grouped by how the
 // incoming JSON value is coerced. id/image/last_updated/source_file are managed
 // elsewhere (image via the /image route, last_updated set here automatically).
