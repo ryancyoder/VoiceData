@@ -542,48 +542,23 @@ export default function PhotoAnnotator({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    // stopPropagation keeps these off React's document-level synthetic-event
-    // system. React re-dispatches every bubbled pointer event through the fiber
-    // tree; at the Apple Pencil's ~240Hz that per-event tax saturates the main
-    // thread and starves drawing (a finger's ~60-120Hz stays under the ceiling,
-    // which is why only the Pencil felt laggy). The framework-free original pays
-    // no such tax. Drawing itself is handled here natively, so nothing else
-    // needs these events.
     const down = (e: PointerEvent) => {
-      e.stopPropagation();
       canvas.setPointerCapture(e.pointerId);
       handlersRef.current.down(e);
     };
     const move = (e: PointerEvent) => {
-      e.stopPropagation();
       if (e.buttons) handlersRef.current.move(e);
     };
-    const up = (e: PointerEvent) => {
-      e.stopPropagation();
-      handlersRef.current.up(e);
-    };
-    // Safari also emits touch events for the Apple Pencil, and React keeps a
-    // passive touchmove listener at the document root. Drawing is pointer-based
-    // and the canvas uses none of these, so swallow them too to keep the Pencil
-    // fully off React's per-event path. touch-action:none already blocks scroll.
-    const stopTouch = (e: TouchEvent) => e.stopPropagation();
+    const up = (e: PointerEvent) => handlersRef.current.up(e);
     canvas.addEventListener("pointerdown", down, { passive: false });
     canvas.addEventListener("pointermove", move, { passive: false });
     canvas.addEventListener("pointerup", up);
     canvas.addEventListener("pointercancel", up);
-    canvas.addEventListener("touchstart", stopTouch, { passive: true });
-    canvas.addEventListener("touchmove", stopTouch, { passive: true });
-    canvas.addEventListener("touchend", stopTouch, { passive: true });
-    canvas.addEventListener("touchcancel", stopTouch, { passive: true });
     return () => {
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointercancel", up);
-      canvas.removeEventListener("touchstart", stopTouch);
-      canvas.removeEventListener("touchmove", stopTouch);
-      canvas.removeEventListener("touchend", stopTouch);
-      canvas.removeEventListener("touchcancel", stopTouch);
     };
   }, []);
 
