@@ -119,6 +119,14 @@ export default function PhotoAnnotator({
   const arcP0Ref = useRef<Pt | null>(null);
   const arcP2Ref = useRef<Pt | null>(null);
   const arcPerpRef = useRef<{ x: number; y: number } | null>(null);
+  // Alt-to-bend: while a straight (pen) line is snapped, holding Option/Alt
+  // locks the endpoint and turns the drag into curve-pen arc control; releasing
+  // Alt reverts to the straight line. altDownRef = physical key state,
+  // altCurveRef = currently bending, lastPointerRef = last drag position (so a
+  // key press/release can redraw without waiting for a pointer move).
+  const altDownRef = useRef(false);
+  const altCurveRef = useRef(false);
+  const lastPointerRef = useRef<Pt | null>(null);
   // Canvas rect cached for the duration of a stroke. getBoundingClientRect()
   // forces a synchronous reflow, and it was being called for every coalesced
   // pointer sample (up to ~10×/move at 120Hz) — measure once per stroke instead.
@@ -283,6 +291,61 @@ export default function PhotoAnnotator({
     ctx.stroke();
   }
 
+  // Redraw a snapped (straightened) stroke for a given pointer position: an arc
+  // when the curve pen is active OR when Alt is bending a pen line, otherwise a
+  // straight line whose endpoint follows the pointer.
+  function redrawStraightened(pos: Pt) {
+    const ctx = ctxRef.current;
+    if (!ctx || !preStrokeRef.current) return;
+    const t = toolRef.current;
+    ctx.putImageData(preStrokeRef.current, 0, 0);
+    const base = t === "eraser" ? sizeRef.current * 6 : sizeRef.current;
+    ctx.globalCompositeOperation = t === "eraser" ? "destination-out" : "source-over";
+    ctx.strokeStyle = colorRef.current;
+    ctx.lineWidth = base * 1.5;
+    const arcMode = t === "curvepen" || (t === "pen" && altCurveRef.current);
+    if (arcMode && arcP0Ref.current && arcP2Ref.current && arcPerpRef.current) {
+      const P0 = arcP0Ref.current;
+      const P2 = arcP2Ref.current;
+      const mid = { x: (P0.x + P2.x) / 2, y: (P0.y + P2.y) / 2 };
+      const bulge = (pos.x - mid.x) * arcPerpRef.current.x + (pos.y - mid.y) * arcPerpRef.current.y;
+      drawArch(ctx, P0, P2, arcPerpRef.current, bulge);
+    } else {
+      const p1 = pointsRef.current[0];
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      pointsRef.current[pointsRef.current.length - 1] = pos;
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // Enter Alt-bend: lock the current endpoint and set up the arc so the drag now
+  // controls its bulge. Only meaningful for a snapped pen line.
+  function engageAltCurve() {
+    if (toolRef.current !== "pen" || !straightenedRef.current || altCurveRef.current) return;
+    const pts = pointsRef.current;
+    if (pts.length < 1) return;
+    const P0 = pts[0];
+    const P2 = pts[pts.length - 1]; // current endpoint = where the line ends now
+    const dx = P2.x - P0.x;
+    const dy = P2.y - P0.y;
+    const len = Math.hypot(dx, dy) || 1;
+    arcP0Ref.current = P0;
+    arcP2Ref.current = { ...P2 };
+    arcPerpRef.current = { x: -dy / len, y: dx / len };
+    altCurveRef.current = true;
+    redrawStraightened(lastPointerRef.current ?? P2);
+  }
+
+  // Leave Alt-bend: revert to the straight line (endpoint follows the pointer).
+  function disengageAltCurve() {
+    if (!altCurveRef.current) return;
+    altCurveRef.current = false;
+    redrawStraightened(lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1]);
+  }
+
   // Hold-still-to-snap: straight line (pen/eraser) or smooth arch (curve pen).
   function straighten() {
     const ctx = ctxRef.current;
@@ -323,6 +386,8 @@ export default function PhotoAnnotator({
     }
     straightenedRef.current = true;
     navigator.vibrate?.(12);
+    // If Option/Alt is already held when the pen line snaps, start bending now.
+    if (toolRef.current === "pen" && altDownRef.current) engageAltCurve();
   }
 
   // ── Canvas pointer handlers ───────────────────────────────────────────────
@@ -354,6 +419,8 @@ export default function PhotoAnnotator({
     arcP0Ref.current = null;
     arcP2Ref.current = null;
     arcPerpRef.current = null;
+    altCurveRef.current = false;
+    lastPointerRef.current = null;
     saveUndo();
     preStrokeRef.current = undoStackRef.current[undoStackRef.current.length - 1];
     const pos = getPos(e);
@@ -409,30 +476,11 @@ export default function PhotoAnnotator({
     if (!pointsRef.current.length) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
     e.preventDefault();
-    const t = toolRef.current;
 
     if (straightenedRef.current) {
       const pos = getPos(e);
-      if (preStrokeRef.current) ctx.putImageData(preStrokeRef.current, 0, 0);
-      const base = t === "eraser" ? sizeRef.current * 6 : sizeRef.current;
-      ctx.globalCompositeOperation = t === "eraser" ? "destination-out" : "source-over";
-      ctx.strokeStyle = colorRef.current;
-      ctx.lineWidth = base * 1.5;
-      if (t === "curvepen" && arcP0Ref.current && arcP2Ref.current && arcPerpRef.current) {
-        const P0 = arcP0Ref.current;
-        const P2 = arcP2Ref.current;
-        const mid = { x: (P0.x + P2.x) / 2, y: (P0.y + P2.y) / 2 };
-        const bulge = (pos.x - mid.x) * arcPerpRef.current.x + (pos.y - mid.y) * arcPerpRef.current.y;
-        drawArch(ctx, P0, P2, arcPerpRef.current, bulge);
-      } else {
-        const p1 = pointsRef.current[0];
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-        pointsRef.current[pointsRef.current.length - 1] = pos;
-      }
-      ctx.globalCompositeOperation = "source-over";
+      lastPointerRef.current = pos;
+      redrawStraightened(pos);
       return;
     }
 
@@ -452,6 +500,8 @@ export default function PhotoAnnotator({
       pointsRef.current = [];
       straightenedRef.current = false;
       preStrokeRef.current = null;
+      altCurveRef.current = false;
+      lastPointerRef.current = null;
       ctx.globalCompositeOperation = "source-over";
       return;
     }
@@ -641,6 +691,34 @@ export default function PhotoAnnotator({
     };
   }, []);
 
+  // Option/Alt toggles bend-mode on a snapped pen line. A ref keeps the document
+  // listeners pointed at the latest engage/disengage closures.
+  const altApiRef = useRef({ engage: engageAltCurve, disengage: disengageAltCurve });
+  useEffect(() => {
+    altApiRef.current = { engage: engageAltCurve, disengage: disengageAltCurve };
+  });
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Alt") return;
+      altDownRef.current = true;
+      if (straightenedRef.current && toolRef.current === "pen" && !altCurveRef.current) {
+        e.preventDefault();
+        altApiRef.current.engage();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key !== "Alt") return;
+      altDownRef.current = false;
+      if (altCurveRef.current) altApiRef.current.disengage();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+
   return (
     <div className={styles.overlay}>
       <div className={styles.header}>
@@ -682,7 +760,12 @@ export default function PhotoAnnotator({
       </div>
 
       <div className={styles.toolbar}>
-        <button type="button" className={`${styles.toolBtn} ${tool === "pen" ? styles.active : ""}`} title="Pen" onClick={() => selectTool("pen")}>
+        <button
+          type="button"
+          className={`${styles.toolBtn} ${tool === "pen" ? styles.active : ""}`}
+          title="Pen — hold still to snap to a straight line, then hold Option/Alt to bend it into a curve"
+          onClick={() => selectTool("pen")}
+        >
           ✏
         </button>
         <button
