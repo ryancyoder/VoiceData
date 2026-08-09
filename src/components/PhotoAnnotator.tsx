@@ -177,7 +177,7 @@ export default function PhotoAnnotator({
     ctx.putImageData(undoStackRef.current.pop()!, 0, 0);
   }
 
-  function getPos(e: React.PointerEvent): Pt {
+  function getPos(e: PointerEvent): Pt {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure > 0 ? e.pressure : 0.5 };
@@ -235,8 +235,7 @@ export default function PhotoAnnotator({
   }
 
   // ── Canvas pointer handlers ───────────────────────────────────────────────
-  function onPointerDown(e: React.PointerEvent) {
-    canvasRef.current?.setPointerCapture(e.pointerId);
+  function onPointerDown(e: PointerEvent) {
     const ctx = ctxRef.current;
     if (!ctx) return;
     // Blur any focused text label so its keyboard dismisses.
@@ -280,7 +279,35 @@ export default function PhotoAnnotator({
     }
   }
 
-  function onPointerMove(e: React.PointerEvent) {
+  // One freehand sample → one incremental quadratic segment. Called once per
+  // *coalesced* pointer sample so 120Hz input isn't thinned to the frame rate.
+  function pushFreehand(pos: Pt) {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    pointsRef.current.push(pos);
+    const len = pointsRef.current.length;
+    if (len < 2) return;
+    const p1 = pointsRef.current[len - 2];
+    const p2 = pointsRef.current[len - 1];
+    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    const base = toolRef.current === "eraser" ? sizeRef.current * 6 : sizeRef.current;
+    ctx.lineWidth = base * (0.4 + p2.pressure * 1.2);
+    ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(mid.x, mid.y);
+    const origin = straightenOriginRef.current;
+    if (origin) {
+      const dist = Math.hypot(pos.x - origin.x, pos.y - origin.y);
+      if (dist > 4) {
+        straightenOriginRef.current = pos;
+        if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
+        straightenTimerRef.current = setTimeout(straighten, 600);
+      }
+    }
+  }
+
+  function onPointerMove(e: PointerEvent) {
     if (!e.buttons) return;
     const ctx = ctxRef.current;
     if (!ctx) return;
@@ -289,10 +316,10 @@ export default function PhotoAnnotator({
     if (!pointsRef.current.length) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
     e.preventDefault();
-    const pos = getPos(e);
     const t = toolRef.current;
 
     if (straightenedRef.current) {
+      const pos = getPos(e);
       if (preStrokeRef.current) ctx.putImageData(preStrokeRef.current, 0, 0);
       const base = t === "eraser" ? sizeRef.current * 6 : sizeRef.current;
       ctx.globalCompositeOperation = t === "eraser" ? "destination-out" : "source-over";
@@ -316,30 +343,16 @@ export default function PhotoAnnotator({
       return;
     }
 
-    pointsRef.current.push(pos);
-    const len = pointsRef.current.length;
-    if (len < 2) return;
-    const p1 = pointsRef.current[len - 2];
-    const p2 = pointsRef.current[len - 1];
-    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-    const base = t === "eraser" ? sizeRef.current * 6 : sizeRef.current;
-    ctx.lineWidth = base * (0.4 + p2.pressure * 1.2);
-    ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(mid.x, mid.y);
-    const origin = straightenOriginRef.current;
-    if (origin) {
-      const dist = Math.hypot(pos.x - origin.x, pos.y - origin.y);
-      if (dist > 4) {
-        straightenOriginRef.current = pos;
-        if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
-        straightenTimerRef.current = setTimeout(straighten, 600);
-      }
+    // Replay every sub-frame sample the browser coalesced into this event.
+    const samples = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : null;
+    if (samples && samples.length) {
+      for (const ev of samples) pushFreehand(getPos(ev));
+    } else {
+      pushFreehand(getPos(e));
     }
   }
 
-  function onPointerUp(e: React.PointerEvent) {
+  function onPointerUp(e: PointerEvent) {
     const ctx = ctxRef.current;
     if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
     straightenTimerRef.current = null;
@@ -502,6 +515,39 @@ export default function PhotoAnnotator({
     }
   }
 
+  // Attach NATIVE pointer listeners with { passive: false }. React's synthetic
+  // event system delegates at the root, thins high-frequency/coalesced samples,
+  // and can't reliably preventDefault here — which made drawing feel laggy and
+  // jumpy versus the original. A ref keeps the listeners pointed at the latest
+  // handler closures without re-attaching on every render. Declared after the
+  // handlers so they're referenced, not hoisted-before-definition.
+  const handlersRef = useRef({ down: onPointerDown, move: onPointerMove, up: onPointerUp });
+  useEffect(() => {
+    handlersRef.current = { down: onPointerDown, move: onPointerMove, up: onPointerUp };
+  });
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const down = (e: PointerEvent) => {
+      canvas.setPointerCapture(e.pointerId);
+      handlersRef.current.down(e);
+    };
+    const move = (e: PointerEvent) => {
+      if (e.buttons) handlersRef.current.move(e);
+    };
+    const up = (e: PointerEvent) => handlersRef.current.up(e);
+    canvas.addEventListener("pointerdown", down, { passive: false });
+    canvas.addEventListener("pointermove", move, { passive: false });
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", up);
+    return () => {
+      canvas.removeEventListener("pointerdown", down);
+      canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointerup", up);
+      canvas.removeEventListener("pointercancel", up);
+    };
+  }, []);
+
   return (
     <div className={styles.overlay}>
       <div className={styles.header}>
@@ -528,14 +574,9 @@ export default function PhotoAnnotator({
             src={`${dealPhotoUrl(photo.storage_path)}?annotate=1`}
             onLoad={initCanvas}
           />
-          <canvas
-            ref={canvasRef}
-            className={styles.canvas}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-          />
+          {/* Pointer listeners are attached natively (passive:false) in an
+              effect above — not as React props — for input responsiveness. */}
+          <canvas ref={canvasRef} className={styles.canvas} />
           {stickerItems.map((s) => (
             <StickerEl key={s.id} initial={s} containerRef={containerRef} register={registerSticker} onRemove={() => removeSticker(s.id)} />
           ))}
@@ -688,10 +729,19 @@ function TextLabel({
     if (!forcesDrag && document.activeElement === spanRef.current) return;
     drag.current.moved = true;
     const rect = containerRef.current!.getBoundingClientRect();
-    setPos({ x: e.clientX - rect.left + drag.current.ox, y: e.clientY - rect.top + drag.current.oy });
+    const nx = e.clientX - rect.left + drag.current.ox;
+    const ny = e.clientY - rect.top + drag.current.oy;
+    // Move the DOM node directly (no per-move re-render); state is synced on up.
+    dataRef.current.x = nx;
+    dataRef.current.y = ny;
+    if (wrapRef.current) {
+      wrapRef.current.style.left = nx + "px";
+      wrapRef.current.style.top = ny + "px";
+    }
   }
   function onPointerUp() {
-    if (!drag.current.moved && drag.current.ptrType !== "pen" && !moveMode) focusSpan();
+    if (drag.current.moved) setPos({ x: dataRef.current.x, y: dataRef.current.y });
+    else if (drag.current.ptrType !== "pen" && !moveMode) focusSpan();
     drag.current.moved = false;
     drag.current.ptrType = "";
   }
@@ -760,39 +810,49 @@ function StickerEl({
   const resize = useRef<{ startW: number; startH: number; startX: number } | null>(null);
   const pinch = useRef<{ dist: number; w: number; h: number } | null>(null);
 
-  useEffect(() => {
-    dataRef.current.x = box.x;
-    dataRef.current.y = box.y;
-    dataRef.current.w = box.w;
-    dataRef.current.h = box.h;
-    dataRef.current.img = imgRef.current;
-  }, [box]);
+  // Push the current dataRef box straight to the DOM node (no re-render).
+  const applyStyle = useCallback(() => {
+    const wrap = wrapRef.current;
+    const d = dataRef.current;
+    if (!wrap) return;
+    wrap.style.left = d.x - d.w / 2 + "px";
+    wrap.style.top = d.y - d.h / 2 + "px";
+    wrap.style.width = d.w + "px";
+    wrap.style.height = d.h + "px";
+  }, []);
 
   useEffect(() => {
-    register(initial.id, () => dataRef.current);
+    register(initial.id, () => ({ ...dataRef.current, img: imgRef.current }));
     return () => register(initial.id, null);
   }, [initial.id, register]);
+
+  function commit() {
+    setBox({ x: dataRef.current.x, y: dataRef.current.y, w: dataRef.current.w, h: dataRef.current.h });
+  }
 
   function onPointerDown(e: React.PointerEvent) {
     e.stopPropagation();
     wrapRef.current?.setPointerCapture(e.pointerId);
     const rect = containerRef.current!.getBoundingClientRect();
-    drag.current = { ox: box.x - (e.clientX - rect.left), oy: box.y - (e.clientY - rect.top) };
+    drag.current = { ox: dataRef.current.x - (e.clientX - rect.left), oy: dataRef.current.y - (e.clientY - rect.top) };
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag.current || !e.buttons) return;
     e.stopPropagation();
     const rect = containerRef.current!.getBoundingClientRect();
-    setBox((b) => ({ ...b, x: e.clientX - rect.left + drag.current!.ox, y: e.clientY - rect.top + drag.current!.oy }));
+    dataRef.current.x = e.clientX - rect.left + drag.current.ox;
+    dataRef.current.y = e.clientY - rect.top + drag.current.oy;
+    applyStyle();
   }
   function onPointerUp() {
+    if (drag.current) commit();
     drag.current = null;
   }
 
   function onResizeDown(e: React.PointerEvent) {
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    resize.current = { startW: box.w, startH: box.h, startX: e.clientX };
+    resize.current = { startW: dataRef.current.w, startH: dataRef.current.h, startX: e.clientX };
   }
   function onResizeMove(e: React.PointerEvent) {
     if (!resize.current || !e.buttons) return;
@@ -800,9 +860,12 @@ function StickerEl({
     const dx = e.clientX - resize.current.startX;
     const ratio = resize.current.startH / resize.current.startW;
     const w = Math.max(20, resize.current.startW + dx);
-    setBox((b) => ({ ...b, w, h: w * ratio }));
+    dataRef.current.w = w;
+    dataRef.current.h = w * ratio;
+    applyStyle();
   }
   function onResizeUp() {
+    if (resize.current) commit();
     resize.current = null;
   }
 
@@ -810,16 +873,19 @@ function StickerEl({
     if (e.touches.length !== 2) return;
     e.preventDefault();
     const [t1, t2] = [e.touches[0], e.touches[1]];
-    pinch.current = { dist: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY), w: box.w, h: box.h };
+    pinch.current = { dist: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY), w: dataRef.current.w, h: dataRef.current.h };
   }
   function onTouchMove(e: React.TouchEvent) {
     if (e.touches.length !== 2 || !pinch.current) return;
     e.preventDefault();
     const [t1, t2] = [e.touches[0], e.touches[1]];
     const scale = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) / pinch.current.dist;
-    setBox((b) => ({ ...b, w: Math.max(20, pinch.current!.w * scale), h: Math.max(20, pinch.current!.h * scale) }));
+    dataRef.current.w = Math.max(20, pinch.current.w * scale);
+    dataRef.current.h = Math.max(20, pinch.current.h * scale);
+    applyStyle();
   }
   function onTouchEnd() {
+    if (pinch.current) commit();
     pinch.current = null;
   }
 
