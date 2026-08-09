@@ -910,6 +910,13 @@ export default function PhotoAnnotator({
     if (straightenedRef.current) {
       const pos = getPos(e);
       lastPointerRef.current = pos;
+      // If the Alt modifier (key or on-screen Bend button) is held but the bend
+      // hasn't engaged yet, engage now — so holding Bend and then moving the
+      // pencil bows the line even if the exact press-moment timing was missed
+      // (and for fill/prism, which have no snap event to engage on).
+      if (altDownRef.current && !altCurveRef.current && (toolRef.current === "pen" || isFillDraw())) {
+        engageAltCurve();
+      }
       redrawStraightened(pos);
       // Pen/fill: while adjusting a straight edge, re-arm the hold-to-lock timer
       // on real movement so it only fires once you settle on a spot.
@@ -1394,9 +1401,15 @@ export default function PhotoAnnotator({
           title="Bend — hold while drawing a straight line to bow it into a curve (on-screen Option/Alt); release to keep the curve"
           aria-label="Bend (hold)"
           onPointerDown={(e) => {
-            e.preventDefault();
-            e.currentTarget.setPointerCapture(e.pointerId);
+            // Engage FIRST so it can't be skipped: a quick Apple Pencil tap can
+            // leave the pointer already released, making setPointerCapture throw.
             pressAlt();
+            e.preventDefault();
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch {
+              /* pointer may have already ended (fast tap) — capture is optional */
+            }
           }}
           onPointerUp={(e) => {
             e.preventDefault();
