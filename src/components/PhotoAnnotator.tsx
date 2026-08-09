@@ -15,6 +15,13 @@ type Tool = "pen" | "curvepen" | "text" | "eraser" | "fill" | "prism";
 const SWATCHES = ["#ff3b30", "#ffcc00", "#30d158", "#007aff", "#ffffff", "#1a1a1a"];
 const SIZES = [3, 7, 15] as const;
 const TEXT_SIZES: Record<number, number> = { 3: 16, 7: 22, 15: 32 };
+type LineStyle = "solid" | "dashed" | "dotted";
+// `css` is the CSS border-style used to render the picker glyph.
+const LINE_STYLES: { key: LineStyle; css: "solid" | "dashed" | "dotted"; label: string }[] = [
+  { key: "solid", css: "solid", label: "Solid line" },
+  { key: "dashed", css: "dashed", label: "Dashed line" },
+  { key: "dotted", css: "dotted", label: "Dotted line" },
+];
 
 const MAX_UNDO = 20;
 const PEN_LOCK = 1000; // ms of palm-rejection after an Apple Pencil stroke lifts
@@ -69,6 +76,7 @@ export default function PhotoAnnotator({
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState<string>(SWATCHES[0]);
   const [size, setSize] = useState<number>(3);
+  const [lineStyle, setLineStyle] = useState<LineStyle>("solid");
   const [textMode, setTextMode] = useState<"edit" | "move">("edit");
   const [fillOpacity, setFillOpacity] = useState(0.3);
   const [saving, setSaving] = useState(false);
@@ -98,6 +106,7 @@ export default function PhotoAnnotator({
   const toolRef = useRef(tool);
   const colorRef = useRef(color);
   const sizeRef = useRef(size);
+  const lineStyleRef = useRef(lineStyle);
   const textModeRef = useRef(textMode);
   const fillOpacityRef = useRef(fillOpacity);
   useEffect(() => {
@@ -109,6 +118,9 @@ export default function PhotoAnnotator({
   useEffect(() => {
     sizeRef.current = size;
   }, [size]);
+  useEffect(() => {
+    lineStyleRef.current = lineStyle;
+  }, [lineStyle]);
   useEffect(() => {
     textModeRef.current = textMode;
   }, [textMode]);
@@ -339,13 +351,33 @@ export default function PhotoAnnotator({
 
   // Stroke a quadratic arc from P0 to P2 passing through Q (drag sideways for a
   // symmetric arch, toward an endpoint to lean the peak that way).
+  // Dash pattern for the active line style, scaled to the stroke width so it
+  // reads the same at any size. Dotted relies on the round line cap (set in
+  // setup) to render the zero-length dashes as round dots. Freehand strokes are
+  // drawn as many tiny segments and can't carry a dash phase, so they always use
+  // [] (solid); the style shows on snapped lines, curves, and shape outlines.
+  function dashFor(w: number): number[] {
+    switch (lineStyleRef.current) {
+      case "dashed":
+        return [w * 2.6, w * 2];
+      case "dotted":
+        // Short on-segment + round cap ⇒ round dots; kept non-zero so it renders
+        // reliably across browsers (the [0, gap] trick is culled by some).
+        return [Math.max(1, w * 0.3), w * 1.8];
+      default:
+        return [];
+    }
+  }
+
   function drawArch(ctx: CanvasRenderingContext2D, P0: Pt, P2: Pt, Q: { x: number; y: number }) {
     const cp = arcControlPoint(P0, P2, Q);
     ctx.beginPath();
     ctx.moveTo(P0.x, P0.y);
     if (!cp) ctx.lineTo(P2.x, P2.y);
     else ctx.quadraticCurveTo(cp.x, cp.y, P2.x, P2.y);
+    ctx.setLineDash(dashFor(ctx.lineWidth));
     ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // True while the current stroke should behave like the fill polygon builder:
@@ -370,6 +402,7 @@ export default function PhotoAnnotator({
     ctx.lineWidth = sizeRef.current * 1.5;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
+    ctx.setLineDash(dashFor(ctx.lineWidth));
     const traceRing = (oy: number) => {
       ctx.moveTo(verts[0].x, verts[0].y + oy);
       for (let i = 1; i < verts.length; i++) {
@@ -391,6 +424,7 @@ export default function PhotoAnnotator({
       ctx.lineTo(v.x, v.y + dy); // vertical connector
     }
     ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // Turn the in-progress fill polygon into a closed ring for extrusion. Appends
@@ -454,7 +488,9 @@ export default function PhotoAnnotator({
     if (closeOutline) ctx.closePath();
     ctx.strokeStyle = colorRef.current;
     ctx.lineWidth = sizeRef.current * 1.5;
+    ctx.setLineDash(dashFor(ctx.lineWidth));
     ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // Redraw a snapped (straightened) stroke for a given pointer position: an arc
@@ -487,7 +523,9 @@ export default function PhotoAnnotator({
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(pos.x, pos.y);
+      ctx.setLineDash(t === "eraser" ? [] : dashFor(ctx.lineWidth));
       ctx.stroke();
+      ctx.setLineDash([]);
       pointsRef.current[pointsRef.current.length - 1] = pos;
     }
     ctx.globalCompositeOperation = "source-over";
@@ -701,7 +739,9 @@ export default function PhotoAnnotator({
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p2.x, p2.y);
+      ctx.setLineDash(t === "eraser" ? [] : dashFor(ctx.lineWidth));
       ctx.stroke();
+      ctx.setLineDash([]);
       ctx.globalCompositeOperation = "source-over";
     }
     straightenedRef.current = true;
@@ -807,6 +847,7 @@ export default function PhotoAnnotator({
     const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
     const base = toolRef.current === "eraser" ? sizeRef.current * 6 : sizeRef.current;
     ctx.lineWidth = base * (0.4 + p2.pressure * 1.2);
+    ctx.setLineDash([]); // freehand is always solid (per-segment dashing can't hold a phase)
     ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
     ctx.stroke();
     ctx.beginPath();
@@ -1277,6 +1318,18 @@ export default function PhotoAnnotator({
             onClick={() => setSize(sz)}
           >
             <span className={styles.sizeDot} style={{ width: sz + 5, height: sz + 5 }} />
+          </button>
+        ))}
+        <div className={styles.sep} />
+        {LINE_STYLES.map((ls) => (
+          <button
+            key={ls.key}
+            type="button"
+            className={`${styles.sizeBtn} ${lineStyle === ls.key ? styles.active : ""}`}
+            title={ls.label}
+            onClick={() => setLineStyle(ls.key)}
+          >
+            <span className={styles.lineGlyph} style={{ borderTopStyle: ls.css }} />
           </button>
         ))}
         {tool === "fill" && (

@@ -224,6 +224,14 @@
   border-radius: 50%;
   display: block;
 }
+/* Line-style picker glyph: a short rule whose border-style (solid/dashed/dotted)
+   is set inline to preview the stroke. */
+.lineGlyph {
+  display: block;
+  width: 20px;
+  height: 0;
+  border-top: 3px solid currentColor;
+}
 
 /* Transient pulse marking a just-dropped polygon vertex. Bold and a touch long
    so it's unmistakable against any photo while drawing. */
