@@ -25,7 +25,11 @@ const LINE_STYLES: { key: LineStyle; css: "solid" | "dashed" | "dotted"; label: 
 
 const MAX_UNDO = 20;
 const PEN_LOCK = 1000; // ms of palm-rejection after an Apple Pencil stroke lifts
-const VERTEX_LOCK_DELAY = 600; // ms of continued stillness (after a line snaps) that drops a polygon vertex
+const VERTEX_LOCK_DELAY = 600; // ms of continued stillness (after a line snaps) that drops a polygon vertex (fill/curve pen)
+// Pen straight-line hold has two stages: a yellow "you can curve now" cue, then
+// the blue vertex lock. Moving between them bends the line instead of locking.
+const PEN_CURVE_CUE_DELAY = 320; // ms after settle → yellow cue appears
+const PEN_VERTEX_LOCK_DELAY = 720; // ms after settle → blue vertex lock (window = ~400ms)
 
 interface Pt {
   x: number;
@@ -88,6 +92,8 @@ export default function PhotoAnnotator({
   // Transient "vertex dropped" pulses (DOM overlay, not drawn on the canvas, so
   // they never bake into the annotation). Each removes itself on animation end.
   const [pulses, setPulses] = useState<{ id: string; x: number; y: number }[]>([]);
+  // The pen "yellow" curve cue: a steady dot shown while the curve window is open.
+  const [curveCue, setCurveCue] = useState<{ x: number; y: number } | null>(null);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -167,6 +173,11 @@ export default function PhotoAnnotator({
   // it was last armed at, so ordinary drag jitter doesn't keep resetting it.
   const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lockOriginRef = useRef<Pt | null>(null);
+  // Pen curve-cue ("yellow dot") stage: yellowTimerRef fires PEN_CURVE_CUE_DELAY
+  // after settle to open the curve window; curveWindowRef is true while it's open
+  // (a move then bends the line instead of locking a straight vertex).
+  const yellowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const curveWindowRef = useRef(false);
   // Polygon fill: committed vertices of the shape being drawn. Each vertex holds
   // the control point (cp) of the curved edge leading into it, or null for a
   // straight edge. Index 0 is the start; the shape is auto-closed on lift.
@@ -302,6 +313,7 @@ export default function PhotoAnnotator({
     return () => {
       if (straightenTimerRef.current) clearTimeout(straightenTimerRef.current);
       if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+      if (yellowTimerRef.current) clearTimeout(yellowTimerRef.current);
     };
   }, []);
 
@@ -632,6 +644,7 @@ export default function PhotoAnnotator({
       clearTimeout(lockTimerRef.current);
       lockTimerRef.current = null;
     }
+    closeCurveWindow(); // committing supersedes any pending yellow cue
     const pos = lastPointerRef.current ?? pointsRef.current[pointsRef.current.length - 1];
     if (!pos) return;
 
@@ -719,11 +732,29 @@ export default function PhotoAnnotator({
     // If Alt is still held, bend the new segment as soon as the drag moves.
   }
 
-  // Re-arm the "hold in place to drop a vertex" timer for the pen polygon.
+  // Close the pen curve window: stop the yellow-cue timer and hide the dot.
+  function closeCurveWindow() {
+    if (yellowTimerRef.current) {
+      clearTimeout(yellowTimerRef.current);
+      yellowTimerRef.current = null;
+    }
+    curveWindowRef.current = false;
+    setCurveCue((c) => (c ? null : c));
+  }
+  // Re-arm the "hold in place to drop a vertex" timer. For the pen straight line
+  // this also (re)starts the yellow curve-cue that precedes the blue lock, so a
+  // move during that window bends the line instead of locking a straight vertex.
   function armLockTimer(pos: Pt) {
     lockOriginRef.current = pos;
+    const t = toolRef.current;
     if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
-    lockTimerRef.current = setTimeout(lockVertex, VERTEX_LOCK_DELAY);
+    const blueDelay = t === "pen" ? PEN_VERTEX_LOCK_DELAY : VERTEX_LOCK_DELAY;
+    lockTimerRef.current = setTimeout(lockVertex, blueDelay);
+    // Restart the yellow stage for a straight pen line (not while bending).
+    closeCurveWindow();
+    if (t === "pen" && !altCurveRef.current) {
+      yellowTimerRef.current = setTimeout(showYellow, PEN_CURVE_CUE_DELAY);
+    }
   }
   function clearLockTimer() {
     if (lockTimerRef.current) {
@@ -731,6 +762,17 @@ export default function PhotoAnnotator({
       lockTimerRef.current = null;
     }
     lockOriginRef.current = null;
+    closeCurveWindow();
+  }
+  // Yellow cue fires: open the curve window and show the dot at the endpoint. A
+  // move now bends the line; holding still lets the blue lock fire next.
+  function showYellow() {
+    yellowTimerRef.current = null;
+    if (toolRef.current !== "pen" || !straightenedRef.current || !strokeActiveRef.current || altCurveRef.current) return;
+    curveWindowRef.current = true;
+    const p = lockOriginRef.current ?? lastPointerRef.current;
+    if (p) setCurveCue({ x: p.x, y: p.y });
+    navigator.vibrate?.(6);
   }
   // Fired once the pointer has been held still long enough after a segment
   // formed (pen line snapped / fill edge / curve smoothed): drop a vertex and
@@ -739,6 +781,7 @@ export default function PhotoAnnotator({
   // bend, so its long-hold lock is never suppressed.
   function lockVertex() {
     lockTimerRef.current = null;
+    closeCurveWindow(); // blue lock supersedes the yellow cue
     const t = toolRef.current;
     if (altDownRef.current && t !== "curvepen") return;
     if ((t !== "pen" && t !== "curvepen" && !isFillDraw()) || !straightenedRef.current || !strokeActiveRef.current) return;
@@ -924,6 +967,21 @@ export default function PhotoAnnotator({
 
     if (straightenedRef.current) {
       const pos = getPos(e);
+      // Pen: a deliberate move while the yellow curve window is open bends the
+      // line instead of nudging the straight endpoint. The blue lock is cancelled
+      // and re-armed (below) so it fires on the NEXT settle — now locking the
+      // curved vertex. A >4px threshold ignores Apple Pencil jitter.
+      if (toolRef.current === "pen" && curveWindowRef.current && !altCurveRef.current) {
+        const o = lockOriginRef.current;
+        if (!o || Math.hypot(pos.x - o.x, pos.y - o.y) > 4) {
+          closeCurveWindow();
+          if (lockTimerRef.current) {
+            clearTimeout(lockTimerRef.current);
+            lockTimerRef.current = null;
+          }
+          engageAltCurve();
+        }
+      }
       lastPointerRef.current = pos;
       // If the Alt modifier (key or on-screen Bend button) is held but the bend
       // hasn't engaged yet, engage now — so holding Bend and then moving the
@@ -1311,6 +1369,7 @@ export default function PhotoAnnotator({
               onAnimationEnd={() => setPulses((cur) => cur.filter((pp) => pp.id !== p.id))}
             />
           ))}
+          {curveCue && <div className={styles.curveCue} style={{ left: curveCue.x, top: curveCue.y }} />}
         </div>
         {!ready && !loadError && <div className={styles.spinner}>Loading…</div>}
         {loadError && <div className={styles.spinner}>Couldn’t load the photo.</div>}
