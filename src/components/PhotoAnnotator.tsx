@@ -110,6 +110,10 @@ export default function PhotoAnnotator({
   const arcP0Ref = useRef<Pt | null>(null);
   const arcP2Ref = useRef<Pt | null>(null);
   const arcPerpRef = useRef<{ x: number; y: number } | null>(null);
+  // Canvas rect cached for the duration of a stroke. getBoundingClientRect()
+  // forces a synchronous reflow, and it was being called for every coalesced
+  // pointer sample (up to ~10×/move at 120Hz) — measure once per stroke instead.
+  const rectRef = useRef<DOMRect | null>(null);
 
   // Each floating text/sticker registers a getter for its current data, so the
   // save composite reads live positions/text without the parent mutating props.
@@ -163,6 +167,16 @@ export default function PhotoAnnotator({
     };
   }, []);
 
+  // Lock the page behind the fixed overlay so iPadOS isn't also running scroll /
+  // gesture recognition while the Apple Pencil is drawing.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
   // ── Undo ────────────────────────────────────────────────────────────────
   function saveUndo() {
     const canvas = canvasRef.current;
@@ -178,8 +192,9 @@ export default function PhotoAnnotator({
   }
 
   function getPos(e: PointerEvent): Pt {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
+    // rectRef is refreshed at each pointerdown; fall back only if a move somehow
+    // arrives first. Avoids a reflow-inducing getBoundingClientRect per sample.
+    const rect = rectRef.current ?? canvasRef.current!.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure > 0 ? e.pressure : 0.5 };
   }
 
@@ -238,6 +253,8 @@ export default function PhotoAnnotator({
   function onPointerDown(e: PointerEvent) {
     const ctx = ctxRef.current;
     if (!ctx) return;
+    // Measure the canvas rect once per stroke; reused by every getPos() sample.
+    rectRef.current = canvasRef.current!.getBoundingClientRect();
     // Blur any focused text label so its keyboard dismisses.
     const focused = document.querySelector<HTMLElement>(`.${styles.textInput}:focus`);
     focused?.blur();

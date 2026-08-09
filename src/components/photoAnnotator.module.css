@@ -9,6 +9,7 @@
   display: flex;
   flex-direction: column;
   touch-action: none;
+  overscroll-behavior: none;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -67,12 +68,23 @@
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
+  /* Own compositor layer: the full-res source photo is rasterized once and
+     never re-downscaled when the canvas above it is drawn on. Without this the
+     big background image repaints on every pen stroke — the main cause of the
+     drawing lag versus VoiceMap (whose backgrounds are small data URLs). */
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .canvas {
   position: absolute;
   inset: 0;
   touch-action: none;
   cursor: crosshair;
+  /* Keep the drawing surface on its own layer too, so stroke updates only
+     re-upload this (display-sized) texture, not the photo underneath. */
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* ── Toolbar ────────────────────────────────────────────────────────────── */
