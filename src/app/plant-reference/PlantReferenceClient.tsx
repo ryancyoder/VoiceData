@@ -1,7 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, X, ExternalLink, LayoutGrid, Rows3, Leaf, ChevronLeft, Layers } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Search,
+  X,
+  ExternalLink,
+  LayoutGrid,
+  Rows3,
+  Leaf,
+  ChevronLeft,
+  Layers,
+  Lock,
+  Unlock,
+  Upload,
+  Trash2,
+  Loader2,
+} from "lucide-react";
 import {
   PLANT_CATEGORIES,
   SUN_OPTIONS,
@@ -31,6 +45,12 @@ export function PlantReferenceClient() {
   const [plantResult, setPlantResult] = useState<PlantQueryResult>({ plants: [], total: 0, page: 1, pageSize: 50 });
   const [albumResult, setAlbumResult] = useState<PlantAlbumsResult>({ albums: [], total: 0, page: 1, pageSize: 50 });
   const [selected, setSelected] = useState<Plant | null>(null);
+  // Edit mode: the whole page is read-only until unlocked. When unlocked,
+  // clicking a plant opens an editor (photo upload + field editing) instead of
+  // the read-only detail card. reloadKey forces a refetch after a save.
+  const [locked, setLocked] = useState(true);
+  const [editing, setEditing] = useState<Plant | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Showing the album grid (grouped mode, not drilled into a species).
   const inAlbumList = groupMode === "albums" && !drill;
@@ -95,7 +115,7 @@ export function PlantReferenceClient() {
     return () => {
       active = false;
     };
-  }, [q, category, sun, moisture, native, deer, evergreen, page, inAlbumList, drill]);
+  }, [q, category, sun, moisture, native, deer, evergreen, page, inAlbumList, drill, reloadKey]);
 
   const anyFilter = !!(q || category || sun || moisture || native || deer || evergreen);
   const clearAll = useCallback(() => {
@@ -140,24 +160,51 @@ export function PlantReferenceClient() {
             conditions, size, and traits.
           </p>
         </div>
-        <div className="flex shrink-0 rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
-          {(["gallery", "table"] as const).map((l) => (
-            <button
-              key={l}
-              onClick={() => setLayout(l)}
-              title={l === "gallery" ? "Gallery view" : "Table view"}
-              aria-label={l === "gallery" ? "Gallery view" : "Table view"}
-              className={`flex items-center justify-center rounded-full px-3 py-1.5 transition-colors ${
-                layout === l
-                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-              }`}
-            >
-              {l === "gallery" ? <LayoutGrid size={16} /> : <Rows3 size={16} />}
-            </button>
-          ))}
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => {
+              setLocked((v) => !v);
+              setEditing(null);
+              setSelected(null);
+            }}
+            title={locked ? "Unlock to edit plants and photos" : "Lock (read-only)"}
+            aria-label={locked ? "Unlock editing" : "Lock editing"}
+            aria-pressed={!locked}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              locked
+                ? "border border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                : "bg-amber-500 text-white hover:bg-amber-600"
+            }`}
+          >
+            {locked ? <Lock size={16} /> : <Unlock size={16} />}
+            <span className="hidden sm:inline">{locked ? "Locked" : "Editing"}</span>
+          </button>
+          <div className="flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
+            {(["gallery", "table"] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setLayout(l)}
+                title={l === "gallery" ? "Gallery view" : "Table view"}
+                aria-label={l === "gallery" ? "Gallery view" : "Table view"}
+                className={`flex items-center justify-center rounded-full px-3 py-1.5 transition-colors ${
+                  layout === l
+                    ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-100"
+                    : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                }`}
+              >
+                {l === "gallery" ? <LayoutGrid size={16} /> : <Rows3 size={16} />}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {!locked && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          <Unlock size={15} className="shrink-0" />
+          <span>Editing is unlocked — select a plant to change its photo or details.</span>
+        </div>
+      )}
 
       {/* Grouping toggle / breadcrumb */}
       <div className="mb-3">
@@ -279,7 +326,7 @@ export function PlantReferenceClient() {
           {plantResult.plants.map((p) => (
             <li
               key={p.id}
-              onClick={() => setSelected(p)}
+              onClick={() => (locked ? setSelected(p) : setEditing(p))}
               className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
             >
               <div className="relative aspect-square">
@@ -312,7 +359,7 @@ export function PlantReferenceClient() {
               {plantResult.plants.map((p) => (
                 <tr
                   key={p.id}
-                  onClick={() => setSelected(p)}
+                  onClick={() => (locked ? setSelected(p) : setEditing(p))}
                   className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
                 >
                   <td className="px-3 py-1.5">
@@ -368,6 +415,17 @@ export function PlantReferenceClient() {
       )}
 
       {selected && <PlantDetail plant={selected} onClose={() => setSelected(null)} />}
+      {editing && (
+        <PlantEditor
+          plant={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            setReloadKey((k) => k + 1);
+          }}
+          onChanged={() => setReloadKey((k) => k + 1)}
+        />
+      )}
     </main>
   );
 }
@@ -481,6 +539,9 @@ function PlantImg({
 }) {
   const url = plantImageUrl(image);
   const [failed, setFailed] = useState(false);
+  // Reset the error state when the image path changes (e.g. after a re-upload)
+  // so a fresh URL gets another chance to load.
+  useEffect(() => setFailed(false), [url]);
   if (!url || failed) {
     return (
       <div className={`flex items-center justify-center bg-zinc-100 text-zinc-300 dark:bg-zinc-800 dark:text-zinc-600 ${className}`}>
@@ -568,6 +629,294 @@ function PlantDetail({ plant, onClose }: { plant: Plant; onClose: () => void }) 
               Source <ExternalLink size={14} />
             </a>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Editing (unlocked): change a plant's photo and its catalog fields.
+// ---------------------------------------------------------------------------
+
+type FieldKind = "text" | "number" | "array";
+
+const TEXT_GROUPS: { title: string; fields: { key: keyof Plant; label: string; kind: FieldKind }[] }[] = [
+  {
+    title: "Identity",
+    fields: [
+      { key: "botanical", label: "Botanical name", kind: "text" },
+      { key: "common", label: "Common name", kind: "text" },
+      { key: "genus", label: "Genus", kind: "text" },
+      { key: "species", label: "Species", kind: "text" },
+      { key: "cultivar", label: "Cultivar", kind: "text" },
+      { key: "type", label: "Type", kind: "text" },
+      { key: "category", label: "Category", kind: "text" },
+      { key: "zone", label: "Hardiness zone", kind: "text" },
+    ],
+  },
+  {
+    title: "Growing conditions",
+    fields: [
+      { key: "sun", label: "Sun", kind: "array" },
+      { key: "moisture", label: "Moisture", kind: "array" },
+      { key: "soil", label: "Soil", kind: "array" },
+      { key: "soil_ph", label: "Soil pH", kind: "array" },
+    ],
+  },
+  {
+    title: "Size (inches)",
+    fields: [
+      { key: "height_in", label: "Height", kind: "number" },
+      { key: "width_in", label: "Width", kind: "number" },
+      { key: "spread_in", label: "Spread", kind: "number" },
+    ],
+  },
+  {
+    title: "Appearance",
+    fields: [
+      { key: "bloom_season", label: "Bloom season", kind: "array" },
+      { key: "bloom_color", label: "Bloom color", kind: "array" },
+      { key: "foliage_color", label: "Foliage color", kind: "array" },
+      { key: "texture", label: "Texture", kind: "text" },
+      { key: "form", label: "Form", kind: "text" },
+      { key: "growth_rate", label: "Growth rate", kind: "text" },
+    ],
+  },
+  {
+    title: "Ecology & design",
+    fields: [
+      { key: "pollinator_value", label: "Pollinator value", kind: "text" },
+      { key: "attracts", label: "Attracts", kind: "array" },
+      { key: "seasonal_interest", label: "Seasonal interest", kind: "array" },
+      { key: "matrix_role", label: "Matrix role", kind: "text" },
+      { key: "design_style", label: "Design style", kind: "array" },
+      { key: "features", label: "Features", kind: "array" },
+      { key: "source_url", label: "Source URL", kind: "text" },
+    ],
+  },
+];
+
+const BOOL_FIELDS: { key: keyof Plant; label: string }[] = [
+  { key: "native", label: "Native" },
+  { key: "evergreen", label: "Evergreen" },
+  { key: "deer_resistant", label: "Deer resistant" },
+  { key: "rabbit_resistant", label: "Rabbit resistant" },
+];
+
+function initialForm(plant: Plant): Record<string, string> {
+  const form: Record<string, string> = {};
+  for (const g of TEXT_GROUPS) {
+    for (const f of g.fields) {
+      const v = plant[f.key];
+      form[f.key as string] = Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v);
+    }
+  }
+  return form;
+}
+
+function PlantEditor({
+  plant,
+  onClose,
+  onSaved,
+  onChanged,
+}: {
+  plant: Plant;
+  onClose: () => void;
+  onSaved: () => void;
+  onChanged: () => void;
+}) {
+  const [form, setForm] = useState<Record<string, string>>(() => initialForm(plant));
+  const [bools, setBools] = useState<Record<string, boolean>>(() => ({
+    native: !!plant.native,
+    evergreen: !!plant.evergreen,
+    deer_resistant: !!plant.deer_resistant,
+    rabbit_resistant: !!plant.rabbit_resistant,
+  }));
+  const [image, setImage] = useState<string | null>(plant.image);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    const payload: Record<string, unknown> = { ...form, ...bools };
+    try {
+      const res = await fetch(`/api/plants/${plant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Save failed (${res.status})`);
+      }
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+      setSaving(false);
+    }
+  };
+
+  const uploadPhoto = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/plants/${plant.id}/image`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Upload failed (${res.status})`);
+      }
+      const d: { image: string } = await res.json();
+      setImage(d.image);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const removePhoto = async () => {
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/plants/${plant.id}/image`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Remove failed (${res.status})`);
+      }
+      setImage(null);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Remove failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
+          <div className="flex items-center gap-2">
+            <Unlock size={16} className="text-amber-500" />
+            <div>
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">Edit plant</h2>
+              <p className="text-xs italic text-zinc-500 dark:text-zinc-400">{plant.botanical || plant.common || `#${plant.id}`}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {/* Photo */}
+          <div className="mb-5 flex items-center gap-4">
+            <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+              <PlantImg image={image} alt={plant.botanical ?? ""} className="h-full w-full object-cover" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadPhoto(f);
+                }}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+              >
+                {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                {image ? "Replace photo" : "Upload photo"}
+              </button>
+              {image && (
+                <button
+                  onClick={removePhoto}
+                  disabled={uploading}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  <Trash2 size={15} /> Remove photo
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Fields */}
+          {TEXT_GROUPS.map((g) => (
+            <fieldset key={g.title} className="mb-5">
+              <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">{g.title}</legend>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {g.fields.map((f) => (
+                  <label key={f.key as string} className="flex flex-col gap-1">
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {f.label}
+                      {f.kind === "array" && <span className="text-zinc-400"> (comma-separated)</span>}
+                    </span>
+                    <input
+                      type={f.kind === "number" ? "number" : "text"}
+                      value={form[f.key as string] ?? ""}
+                      onChange={(e) => set(f.key as string, e.target.value)}
+                      className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+
+          <fieldset className="mb-2">
+            <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Traits</legend>
+            <div className="flex flex-wrap gap-4">
+              {BOOL_FIELDS.map((b) => (
+                <label key={b.key as string} className="inline-flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                  <input
+                    type="checkbox"
+                    checked={!!bools[b.key as string]}
+                    onChange={(e) => setBools((s) => ({ ...s, [b.key]: e.target.checked }))}
+                    className="h-4 w-4 rounded border-zinc-300 accent-emerald-600 dark:border-zinc-600"
+                  />
+                  {b.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
+          <span className="text-xs text-red-600 dark:text-red-400">{error}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-full px-4 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {saving && <Loader2 size={15} className="animate-spin" />}
+              Save changes
+            </button>
+          </div>
         </div>
       </div>
     </div>
