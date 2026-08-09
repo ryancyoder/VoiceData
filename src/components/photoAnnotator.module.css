@@ -163,6 +163,29 @@
   background: rgba(255, 255, 255, 0.18);
   flex-shrink: 0;
 }
+.opacityWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: #fff;
+}
+.opacityLabel {
+  font-size: 13px;
+  opacity: 0.75;
+}
+.opacityVal {
+  font-size: 12px;
+  opacity: 0.75;
+  width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.opacitySlider {
+  width: 110px;
+  accent-color: #4a9eff;
+  cursor: pointer;
+}
 .swatch {
   width: 28px;
   height: 28px;
