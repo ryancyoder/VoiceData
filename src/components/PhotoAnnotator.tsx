@@ -74,6 +74,9 @@ export default function PhotoAnnotator({
   const [saving, setSaving] = useState(false);
   const [textItems, setTextItems] = useState<TextData[]>([]);
   const [stickerItems, setStickerItems] = useState<StickerData[]>([]);
+  // Transient "vertex dropped" pulses (DOM overlay, not drawn on the canvas, so
+  // they never bake into the annotation). Each removes itself on animation end.
+  const [pulses, setPulses] = useState<{ id: string; x: number; y: number }[]>([]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -448,6 +451,12 @@ export default function PhotoAnnotator({
     if (toolRef.current === "pen" && end) armLockTimer(end);
   }
 
+  // Show a brief pulse at a just-dropped vertex (visual counterpart to the
+  // haptic tick). Purely a DOM overlay — never touches the canvas.
+  function flashVertex(x: number, y: number) {
+    setPulses((p) => [...p, { id: crypto.randomUUID(), x, y }]);
+  }
+
   // Polygon: drop a vertex mid-stroke. Bake the current segment (snapping a
   // still-freehand one to a straight line first), then start a new segment from
   // that endpoint so the drag continues the shape. Lifting the pointer ends it.
@@ -488,6 +497,7 @@ export default function PhotoAnnotator({
       ctx.fillStyle = colorRef.current;
       ctx.beginPath();
       ctx.moveTo(endpoint.x, endpoint.y);
+      flashVertex(endpoint.x, endpoint.y);
       navigator.vibrate?.(8);
       return;
     }
@@ -508,6 +518,7 @@ export default function PhotoAnnotator({
       arcP2Ref.current = null;
       lastPointerRef.current = { ...endpoint };
       renderFill(endpoint, false);
+      flashVertex(endpoint.x, endpoint.y);
       navigator.vibrate?.(8);
       return;
     }
@@ -537,6 +548,7 @@ export default function PhotoAnnotator({
     // Don't re-arm the hold-to-lock timer here (that would drop repeated
     // vertices while holding at the same spot). Moving away re-arms it.
     lockOriginRef.current = { ...endpoint };
+    flashVertex(endpoint.x, endpoint.y);
     navigator.vibrate?.(8);
     // If Alt is still held, bend the new segment as soon as the drag moves.
   }
@@ -1020,6 +1032,14 @@ export default function PhotoAnnotator({
               containerRef={containerRef}
               register={registerText}
               onRemove={() => removeText(t.id)}
+            />
+          ))}
+          {pulses.map((p) => (
+            <div
+              key={p.id}
+              className={styles.vertexPulse}
+              style={{ left: p.x, top: p.y }}
+              onAnimationEnd={() => setPulses((cur) => cur.filter((pp) => pp.id !== p.id))}
             />
           ))}
         </div>

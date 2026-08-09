@@ -225,6 +225,36 @@
   display: block;
 }
 
+/* Transient pulse marking a just-dropped polygon vertex. */
+.vertexPulse {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #4a9eff;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: vertexPulse 0.5s ease-out forwards;
+}
+@keyframes vertexPulse {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  35% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
 /* ── Floating text labels ───────────────────────────────────────────────── */
 .textWrap {
   position: absolute;
