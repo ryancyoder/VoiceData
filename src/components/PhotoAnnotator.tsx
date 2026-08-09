@@ -533,6 +533,9 @@ export default function PhotoAnnotator({
       arcP0Ref.current = null;
       arcP2Ref.current = null;
       lastPointerRef.current = { ...endpoint };
+      // Anchor the hold-origin here so staying still doesn't immediately drop a
+      // second corner; moving away re-arms the timer.
+      lockOriginRef.current = { ...endpoint };
       renderFill(endpoint, false);
       flashVertex(endpoint.x, endpoint.y);
       navigator.vibrate?.(8);
@@ -582,14 +585,16 @@ export default function PhotoAnnotator({
     }
     lockOriginRef.current = null;
   }
-  // Fired once the pen has been held still long enough after the line snapped:
-  // drop a vertex and start the next segment (same effect as tapping Shift).
-  // Suppressed while Alt is held so bowing a curve never locks the vertex — you
-  // release Alt (which keeps the curve) and then hold to lock.
+  // Fired once the pointer has been held still long enough (pen: after the line
+  // snapped; fill: edges are straight from the start): drop a vertex and start
+  // the next segment/edge (same effect as tapping Shift). Suppressed while Alt is
+  // held so bowing a curve never locks the vertex — you release Alt (which keeps
+  // the curve) and then hold to lock.
   function lockVertex() {
     lockTimerRef.current = null;
     if (altDownRef.current) return;
-    if (toolRef.current !== "pen" || !straightenedRef.current || !strokeActiveRef.current) return;
+    const t = toolRef.current;
+    if ((t !== "pen" && t !== "fill") || !straightenedRef.current || !strokeActiveRef.current) return;
     commitPolygonVertex();
   }
 
@@ -671,8 +676,8 @@ export default function PhotoAnnotator({
     preStrokeRef.current = undoStackRef.current[undoStackRef.current.length - 1];
     const pos = getPos(e);
     if (toolRef.current === "fill") {
-      // Fill edges are straight from the start (no freehand/snap); Shift drops
-      // vertices, Alt bows an edge, lift closes and fills the shape.
+      // Fill edges are straight from the start (no freehand/snap); Shift or a
+      // hold-in-place drops vertices, Alt bows an edge, lift closes and fills.
       fillVertsRef.current = [{ x: pos.x, y: pos.y, cp: null }];
       pointsRef.current = [pos, { ...pos }];
       strokeActiveRef.current = true;
@@ -681,6 +686,9 @@ export default function PhotoAnnotator({
       ctx.strokeStyle = colorRef.current;
       ctx.fillStyle = colorRef.current;
       renderFill(pos, false);
+      // No hold-timer yet: the first edge has zero length until the pointer
+      // moves. onPointerMove arms it once the user drags out an edge, so holding
+      // still then drops the corner (same as pen). Shift still works too.
       return;
     }
     pointsRef.current = [pos];
@@ -741,9 +749,9 @@ export default function PhotoAnnotator({
       const pos = getPos(e);
       lastPointerRef.current = pos;
       redrawStraightened(pos);
-      // Pen: while adjusting a snapped segment, re-arm the hold-to-lock timer on
-      // real movement so it only fires once you settle on a spot.
-      if (toolRef.current === "pen") {
+      // Pen/fill: while adjusting a straight edge, re-arm the hold-to-lock timer
+      // on real movement so it only fires once you settle on a spot.
+      if (toolRef.current === "pen" || toolRef.current === "fill") {
         const o = lockOriginRef.current;
         if (!o || Math.hypot(pos.x - o.x, pos.y - o.y) > 4) armLockTimer(pos);
       }
@@ -1094,7 +1102,7 @@ export default function PhotoAnnotator({
         <button
           type="button"
           className={`${styles.toolBtn} ${tool === "fill" ? styles.active : ""}`}
-          title="Polygon fill — draw an edge, tap Shift to drop corners, hold Option/Alt to bow an edge and release to keep the curve and drop the corner, lift to close and fill"
+          title="Polygon fill — draw an edge, hold still in place (or tap Shift) to drop corners, hold Option/Alt to bow an edge and release to keep the curve and drop the corner, lift to close and fill"
           onClick={() => selectTool("fill")}
         >
           ⬢
