@@ -42,6 +42,7 @@ export function PlantReferenceClient() {
   const [deer, setDeer] = useState(false);
   const [evergreen, setEvergreen] = useState(false);
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState("botanical"); // botanical | height_asc | height_desc
   const [groupMode, setGroupMode] = useState<"albums" | "all" | "combinations">("albums");
   const [drill, setDrill] = useState<PlantAlbum | null>(null);
   const [layout, setLayout] = useState<"gallery" | "table">("gallery");
@@ -116,6 +117,7 @@ export function PlantReferenceClient() {
         params.set("genus", drill.genus ?? "");
         params.set("species", drill.species ?? "");
       }
+      if (sort !== "botanical") params.set("sort", sort);
       fetch(`/api/plants?${params.toString()}`)
         .then((r) => (r.ok ? r.json() : { plants: [], total: 0, page, pageSize: 50 }))
         .then((d: PlantQueryResult) => {
@@ -134,7 +136,7 @@ export function PlantReferenceClient() {
     return () => {
       active = false;
     };
-  }, [q, category, sun, moisture, native, deer, evergreen, page, inAlbumList, inCombinations, drill, reloadKey]);
+  }, [q, category, sun, moisture, native, deer, evergreen, sort, page, inAlbumList, inCombinations, drill, reloadKey]);
 
   // Combinations: fetch the whole-library list (Combinations tab) or the subset
   // tied to the drilled-into species (shown as a section above the cultivars).
@@ -343,6 +345,18 @@ export function PlantReferenceClient() {
               className="w-full rounded-full border border-zinc-300 bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             />
           </div>
+          {!inAlbumList && !inCombinations && (
+            <select
+              value={sort}
+              onChange={(e) => { setSort(e.target.value); setPage(1); }}
+              aria-label="Sort plants"
+              className="cursor-pointer rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              <option value="botanical">Sort: Name (A–Z)</option>
+              <option value="height_asc">Sort: Height (low→high)</option>
+              <option value="height_desc">Sort: Height (high→low)</option>
+            </select>
+          )}
           {!inCombinations && (
             <>
               <Select value={sun} onChange={(v) => { setSun(v); setPage(1); }} placeholder="Any sun" options={SUN_OPTIONS} />
@@ -518,6 +532,11 @@ export function PlantReferenceClient() {
             >
               <div className="relative aspect-square">
                 <PlantImg image={p.image} alt={p.botanical ?? ""} className="h-full w-full object-cover" />
+                {sort.startsWith("height") && p.height_in != null && (
+                  <span className="absolute right-2 top-2 inline-flex items-center rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
+                    {formatInches(p.height_in)}
+                  </span>
+                )}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-3 pb-2 pt-8">
                   <p className="truncate text-sm font-medium italic text-white drop-shadow-sm">{p.botanical || "Unknown"}</p>
                   {p.common && <p className="truncate text-xs text-white/80">{p.common}</p>}

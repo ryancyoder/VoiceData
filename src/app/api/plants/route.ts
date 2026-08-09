@@ -39,7 +39,21 @@ export async function GET(req: NextRequest) {
   if (deer) query = query.eq("deer_resistant", true);
   if (evergreen) query = query.eq("evergreen", true);
 
-  query = query.order("botanical", { ascending: true, nullsFirst: false }).range(from, to);
+  // Sort: botanical name (default), or height ascending/descending with a
+  // botanical tiebreaker. Nulls always sort last.
+  const sort = sp.get("sort");
+  if (sort === "height_asc") {
+    query = query
+      .order("height_in", { ascending: true, nullsFirst: false })
+      .order("botanical", { ascending: true, nullsFirst: false });
+  } else if (sort === "height_desc") {
+    query = query
+      .order("height_in", { ascending: false, nullsFirst: false })
+      .order("botanical", { ascending: true, nullsFirst: false });
+  } else {
+    query = query.order("botanical", { ascending: true, nullsFirst: false });
+  }
+  query = query.range(from, to);
 
   const { data, error, count } = await query;
   if (error) {
