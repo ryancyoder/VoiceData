@@ -730,6 +730,18 @@ export default function PhotoAnnotator({
         </button>
       </div>
 
+      {/* Bottom action bar. The top header can sit under iPad Safari's toolbar,
+          so the primary finish/cancel controls live here where the tool row is
+          reliably visible and reachable. */}
+      <div className={styles.actionBar}>
+        <button type="button" className={styles.actionCancel} onClick={onClose} disabled={saving}>
+          Cancel
+        </button>
+        <button type="button" className={styles.actionSave} onClick={save} disabled={saving || !ready}>
+          {saving ? "Saving…" : "✓ Save & Close"}
+        </button>
+      </div>
+
       <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onFilePicked} />
     </div>
   );
