@@ -336,26 +336,28 @@ export default function PhotoAnnotator({
     return { x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure > 0 ? e.pressure : 0.5 };
   }
 
-  // Control point of the quadratic P0→P2 that passes through Q. Q's
-  // perpendicular distance from the P0→P2 line sets the arch height; how far Q
-  // projects ALONG the line skews the apex toward the start or end. Returns null
-  // for a degenerate (zero-length) segment.
+  // Control point of the quadratic P0→P2 whose apex sits at the CHORD MIDPOINT,
+  // bulging perpendicular to the P0→P2 line by Q's perpendicular distance from
+  // it. The along-line position of Q is ignored, so the arch is always
+  // symmetric (no skew). Returns null for a degenerate (zero-length) segment.
   function arcControlPoint(P0: Pt | { x: number; y: number }, P2: { x: number; y: number }, Q: { x: number; y: number }): { x: number; y: number } | null {
     const ax = P2.x - P0.x;
     const ay = P2.y - P0.y;
     const len2 = ax * ax + ay * ay;
     if (len2 < 1e-6) return null;
-    // Parameter where Q sits along the axis (0 = start, 1 = end), kept off the
-    // ends so the control point stays finite.
-    let t = ((Q.x - P0.x) * ax + (Q.y - P0.y) * ay) / len2;
-    t = Math.min(0.95, Math.max(0.05, t));
-    const mt = 1 - t;
-    const denom = 2 * mt * t;
-    return { x: (Q.x - mt * mt * P0.x - t * t * P2.x) / denom, y: (Q.y - mt * mt * P0.y - t * t * P2.y) / denom };
+    const len = Math.sqrt(len2);
+    // Unit perpendicular to the chord.
+    const nx = -ay / len;
+    const ny = ax / len;
+    // Signed perpendicular distance of Q from the chord.
+    const h = (Q.x - P0.x) * nx + (Q.y - P0.y) * ny;
+    const mx = (P0.x + P2.x) / 2;
+    const my = (P0.y + P2.y) / 2;
+    // For a quadratic, B(0.5) = midpoint(M, CP); placing CP at 2h from the chord
+    // midpoint M puts the apex at perpendicular distance h from the chord.
+    return { x: mx + 2 * h * nx, y: my + 2 * h * ny };
   }
 
-  // Stroke a quadratic arc from P0 to P2 passing through Q (drag sideways for a
-  // symmetric arch, toward an endpoint to lean the peak that way).
   // Dash pattern for the active line style, scaled to the stroke width so it
   // reads the same at any size. Dotted relies on the round line cap (set in
   // setup) to render the zero-length dashes as round dots. Freehand strokes are
