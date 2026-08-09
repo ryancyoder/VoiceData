@@ -93,7 +93,7 @@ export default function PhotoAnnotator({
   const containerRef = useRef<HTMLDivElement>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const altBtnRef = useRef<HTMLButtonElement>(null);
+  const altBtnRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The full-resolution original, kept off-DOM. It is drawn once into the small
   // display-resolution background canvas for editing, and used again at save
@@ -1232,35 +1232,46 @@ export default function PhotoAnnotator({
 
   // Bend button is only mounted for tools where bending applies.
   const bendToolActive = tool === "pen" || tool === "fill" || tool === "prism";
-  // Attach the Bend button's pointer handlers NATIVELY ({ passive: false }),
-  // mirroring the canvas. iOS Safari delivers Apple Pencil ("pen") pointer
-  // events reliably to native non-passive listeners but not always to React's
-  // synthetic handlers — which is why the button responded to a finger but not
-  // the pencil. keyApiRef keeps these pointed at the latest press/release.
+  // Attach the Bend button's activation handlers NATIVELY ({ passive: false }).
+  // We listen for BOTH touch and pointer events: on iPad the Apple Pencil did
+  // not activate the button via pointer events (React synthetic OR native), but
+  // it does generate touch events — and touch events implicitly capture to their
+  // start target, so drift-off still releases. pressAlt()/releaseAlt() are
+  // idempotent, so touch + pointer both firing (finger) just no-ops the dupes.
   useEffect(() => {
     const btn = altBtnRef.current;
     if (!btn) return;
-    const down = (e: PointerEvent) => {
+    const press = (e: Event) => {
       keyApiRef.current.pressAlt();
-      e.preventDefault();
-      try {
-        btn.setPointerCapture(e.pointerId);
-      } catch {
-        /* fast tap: pointer may already be gone — capture is optional */
+      e.preventDefault(); // stop scroll/selection and the synthetic click
+      // Mouse/desktop: capture so drift-off still releases. Touch events already
+      // capture implicitly to their start target; the pencil path uses touch.
+      if ("pointerId" in e) {
+        try {
+          btn.setPointerCapture((e as PointerEvent).pointerId);
+        } catch {
+          /* fast tap: pointer may already be gone — capture is optional */
+        }
       }
     };
-    const up = (e: PointerEvent) => {
+    const release = (e: Event) => {
       e.preventDefault();
       keyApiRef.current.releaseAlt();
     };
     const cancel = () => keyApiRef.current.releaseAlt();
-    btn.addEventListener("pointerdown", down, { passive: false });
-    btn.addEventListener("pointerup", up, { passive: false });
+    btn.addEventListener("touchstart", press, { passive: false });
+    btn.addEventListener("touchend", release, { passive: false });
+    btn.addEventListener("touchcancel", cancel, { passive: false });
+    btn.addEventListener("pointerdown", press, { passive: false });
+    btn.addEventListener("pointerup", release, { passive: false });
     btn.addEventListener("pointercancel", cancel);
     btn.addEventListener("lostpointercapture", cancel);
     return () => {
-      btn.removeEventListener("pointerdown", down);
-      btn.removeEventListener("pointerup", up);
+      btn.removeEventListener("touchstart", press);
+      btn.removeEventListener("touchend", release);
+      btn.removeEventListener("touchcancel", cancel);
+      btn.removeEventListener("pointerdown", press);
+      btn.removeEventListener("pointerup", release);
       btn.removeEventListener("pointercancel", cancel);
       btn.removeEventListener("lostpointercapture", cancel);
     };
@@ -1432,16 +1443,17 @@ export default function PhotoAnnotator({
           left thumb while the pencil draws to bow a straight line into a curve;
           release to keep the curve. Only shown where bending applies. */}
       {bendToolActive && (
-        <button
+        <div
           ref={altBtnRef}
-          type="button"
+          role="button"
+          tabIndex={-1}
           className={`${styles.altBtn} ${altActive ? styles.altBtnActive : ""}`}
           title="Bend — hold while drawing a straight line to bow it into a curve (on-screen Option/Alt); release to keep the curve"
           aria-label="Bend (hold)"
         >
           <span className={styles.altGlyph}>⌥</span>
           <span className={styles.altLabel}>Bend</span>
-        </button>
+        </div>
       )}
 
       <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onFilePicked} />
