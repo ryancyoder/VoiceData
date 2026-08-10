@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { dealPhotoUrl, type DealPhoto } from "@/lib/salesBoard";
 import styles from "./photoAnnotator.module.css";
 
-type Tool = "pen" | "curvepen" | "text" | "eraser" | "fill" | "prism";
+type Tool = "pen" | "curvepen" | "text" | "eraser" | "fill" | "prism" | "ellipse";
 
 const SWATCHES = ["#ff3b30", "#ffcc00", "#30d158", "#007aff", "#ffffff", "#1a1a1a"];
 const SIZES = [3, 7, 15] as const;
@@ -51,6 +51,7 @@ const ICON_PATHS: Record<string, ReactNode> = {
     </>
   ),
   fill: <path d="M7 4h10l4 8-4 8H7l-4-8z" />,
+  ellipse: <ellipse cx="12" cy="12" rx="9" ry="6.5" />,
   prism: (
     <>
       <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
@@ -207,6 +208,7 @@ export default function PhotoAnnotator({
   const straightenOriginRef = useRef<Pt | null>(null);
   const arcP0Ref = useRef<Pt | null>(null);
   const arcP2Ref = useRef<Pt | null>(null);
+  const ellipseStartRef = useRef<Pt | null>(null); // ellipse tool: bounding-box corner where the drag began
   // Alt-to-bend: while a straight (pen) line is snapped, holding Option/Alt
   // locks the endpoint and turns the drag into curve-pen arc control; releasing
   // Alt reverts to the straight line. altDownRef = physical key state,
@@ -621,6 +623,27 @@ export default function PhotoAnnotator({
   // The curve pen is excluded — it curves inherently and keeps its quicker lock.
   function usesCurveCue(): boolean {
     return toolRef.current === "pen" || (isFillDraw() && fillCurveModeRef.current);
+  }
+
+  // Ellipse tool: repaint the base, then stroke the ellipse inscribed in the
+  // bounding box from the drag's start corner to `pos`. Honors color/size/style.
+  function renderEllipse(pos: Pt) {
+    const ctx = ctxRef.current;
+    const start = ellipseStartRef.current;
+    if (!ctx || !preStrokeRef.current || !start) return;
+    ctx.putImageData(preStrokeRef.current, 0, 0);
+    const cx = (start.x + pos.x) / 2;
+    const cy = (start.y + pos.y) / 2;
+    const rx = Math.abs(pos.x - start.x) / 2;
+    const ry = Math.abs(pos.y - start.y) / 2;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = colorRef.current;
+    ctx.lineWidth = sizeRef.current * 1.5;
+    ctx.setLineDash(dashFor(ctx.lineWidth));
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, Math.max(rx, 0.1), Math.max(ry, 0.1), 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // Extrude preview: repaint the pre-polygon base, then stroke the base ring, a
@@ -1089,6 +1112,14 @@ export default function PhotoAnnotator({
     saveUndo();
     preStrokeRef.current = undoStackRef.current[undoStackRef.current.length - 1];
     const pos = getPos(e);
+    if (toolRef.current === "ellipse") {
+      // Rubber-band from this corner; the drag sizes/shapes the ellipse.
+      ellipseStartRef.current = pos;
+      pointsRef.current = [pos, { ...pos }];
+      strokeActiveRef.current = true;
+      renderEllipse(pos);
+      return;
+    }
     if (isFillDraw()) {
       // Fill/prism edges are straight from the start (no freehand/snap); Shift or
       // a hold-in-place drops vertices, Alt bows an edge. Fill closes+fills on
@@ -1168,6 +1199,16 @@ export default function PhotoAnnotator({
       return;
     }
 
+    // Ellipse rubber-band: redraw the ellipse for the current bounding box.
+    if (toolRef.current === "ellipse") {
+      if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
+      e.preventDefault();
+      const pos = getPos(e);
+      lastPointerRef.current = pos;
+      renderEllipse(pos);
+      return;
+    }
+
     if (!pointsRef.current.length) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
     e.preventDefault();
@@ -1222,6 +1263,14 @@ export default function PhotoAnnotator({
     strokeActiveRef.current = false;
     if (!ctx) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
+    if (toolRef.current === "ellipse") {
+      // The last renderEllipse left the shape on the canvas; just clear state.
+      ellipseStartRef.current = null;
+      pointsRef.current = [];
+      preStrokeRef.current = null;
+      ctx.globalCompositeOperation = "source-over";
+      return;
+    }
     if (toolRef.current === "prism") {
       if (prismPhaseRef.current === "draw") {
         // Phase 1 done: close the polygon into a ring and auto-enter extrude.
@@ -1643,6 +1692,14 @@ export default function PhotoAnnotator({
           onClick={() => selectTool("prism")}
         >
           <Ico name="prism" />
+        </button>
+        <button
+          type="button"
+          className={`${styles.toolBtn} ${tool === "ellipse" ? styles.active : ""}`}
+          title="Ellipse — drag a box (e.g. upper-left to lower-right) to size and shape a circle/ellipse"
+          onClick={() => selectTool("ellipse")}
+        >
+          <Ico name="ellipse" />
         </button>
         <div className={styles.sep} />
         {SWATCHES.map((c) => (
