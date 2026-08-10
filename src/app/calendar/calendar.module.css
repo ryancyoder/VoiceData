@@ -12,6 +12,16 @@
   --danger-soft: #FBEAE9;
   --warn: #A66A00;
   --warn-soft: #FCF0D9;
+  /* Deal-stage colors, mirrored from the Sales Board so planning blocks match. */
+  --c-lead: #6366F1;
+  --c-propose: #2563EB;
+  --c-send: #0891B2;
+  --c-sold: #0B939D;
+  --c-schedule: #0D9488;
+  --c-pm: #65A30D;
+  --c-jobcosting: #CA8A04;
+  --c-invoiced: #EA580C;
+  --c-paid: #16A34A;
   --shadow: 0 1px 2px rgba(20, 24, 30, 0.06), 0 1px 1px rgba(20, 24, 30, 0.04);
   --radius: 10px;
 
@@ -39,6 +49,15 @@
     --danger-soft: #3A1E1E;
     --warn: #E0A020;
     --warn-soft: #3A2E10;
+    --c-lead: #818CF8;
+    --c-propose: #60A5FA;
+    --c-send: #22D3EE;
+    --c-sold: #28D4D7;
+    --c-schedule: #2DD4BF;
+    --c-pm: #A3E635;
+    --c-jobcosting: #FACC15;
+    --c-invoiced: #FB923C;
+    --c-paid: #4ADE80;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 }
