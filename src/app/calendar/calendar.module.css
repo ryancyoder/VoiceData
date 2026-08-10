@@ -568,3 +568,30 @@
   font-size: 0.78rem;
   color: var(--text);
 }
+
+/* Planning blocks: faded, less-dominant "intent" bands rendered behind real
+   events for capacity planning/forecasting (see planning_blocks). */
+.planning-block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  border-radius: 5px;
+  padding: 2px 6px;
+  overflow: hidden;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.planning-block:hover { filter: brightness(1.06) saturate(1.15); }
+.planning-block-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}

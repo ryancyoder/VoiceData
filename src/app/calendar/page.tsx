@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import type { Deal, DealPhoto, PropertyOption } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
+import { PLANNING_BLOCK_COLUMNS, rowToBlock, type PlanningBlockRow } from "@/lib/planning/blocks";
 import CalendarClient, { type CalendarEvent, type DealOption } from "./CalendarClient";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ type RawEvent = {
 };
 
 export default async function CalendarPage() {
-  const [eventsRes, dealsRes, propertiesRes, ungroupedRes] = await Promise.all([
+  const [eventsRes, dealsRes, propertiesRes, ungroupedRes, blocksRes] = await Promise.all([
     supabase
       .from("events")
       .select('*, deal_photos(*, deal:"Sales Board"(deal_name, company, stage, properties(address)))')
@@ -38,10 +39,14 @@ export default async function CalendarPage() {
       .select("id, address, contacts(last_name)")
       .order("address", { ascending: true }),
     supabase.from("deal_photos").select("id", { count: "exact", head: true }).is("event_id", null),
+    supabase.from("planning_blocks").select(PLANNING_BLOCK_COLUMNS).order("created_at", { ascending: true }),
   ]);
 
   if (eventsRes.error) {
     throw new Error(`Failed to load calendar: ${eventsRes.error.message}`);
+  }
+  if (blocksRes.error) {
+    throw new Error(`Failed to load calendar: ${blocksRes.error.message}`);
   }
   if (dealsRes.error) {
     throw new Error(`Failed to load calendar: ${dealsRes.error.message}`);
@@ -73,6 +78,7 @@ export default async function CalendarPage() {
     contactLastName: p.contacts?.last_name ?? null,
   }));
   const ungeotaggedCount = ungroupedRes.count ?? 0;
+  const planningBlocks = ((blocksRes.data ?? []) as unknown as PlanningBlockRow[]).map(rowToBlock);
   const dealOptionsById = new Map(dealOptions.map((d) => [d.id, d]));
 
   const calendarEvents: CalendarEvent[] = rawEvents.map((event) => {
@@ -134,6 +140,7 @@ export default async function CalendarPage() {
       ungeotaggedCount={ungeotaggedCount}
       dealOptions={dealOptions}
       propertyOptions={propertyOptions}
+      blocks={planningBlocks}
     />
   );
 }

@@ -12,6 +12,8 @@ import EventPhotoUpload from "./EventPhotoUpload";
 import ImportOutlookEvent from "./ImportOutlookEvent";
 import PhotoAnnotator from "@/components/PhotoAnnotator";
 import type { DealPhoto } from "@/lib/salesBoard";
+import BlockEditorModal from "./BlockEditorModal";
+import { blockColor, blockHours, blockOccursOn, type PlanningBlock } from "@/lib/planning/blocks";
 
 export interface GeoPhoto {
   id: number;
@@ -134,6 +136,32 @@ function layoutDay(day: Date, events: CalendarEvent[]): LaidOutEvent[] {
   });
 }
 
+interface LaidOutBlock {
+  block: PlanningBlock;
+  top: number;
+  height: number;
+}
+
+function localDateKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Planning blocks that fall on a given day, positioned by the same
+// minutes-from-midnight → pixel mapping the events use.
+function blocksForDay(day: Date, blocks: PlanningBlock[]): LaidOutBlock[] {
+  const dateKey = localDateKey(day);
+  const weekday = day.getDay();
+  return blocks
+    .filter((b) => blockOccursOn(b, dateKey, weekday))
+    .map((b) => {
+      const [sh, sm] = b.startTime.split(":").map(Number);
+      const top = ((sh * 60 + sm) / 60) * HOUR_HEIGHT;
+      const height = Math.max(6, blockHours(b.startTime, b.endTime) * HOUR_HEIGHT);
+      return { block: b, top, height };
+    });
+}
+
 // An explicit event name always wins. Otherwise, the property's own
 // contact last name is the default — it's the one thing that's true
 // regardless of whether a deal has been attached yet, unlike a deal name
@@ -196,11 +224,13 @@ export default function CalendarClient({
   ungeotaggedCount,
   dealOptions,
   propertyOptions,
+  blocks,
 }: {
   events: CalendarEvent[];
   ungeotaggedCount: number;
   dealOptions: DealOption[];
   propertyOptions: PropertyOption[];
+  blocks: PlanningBlock[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -274,6 +304,10 @@ export default function CalendarClient({
   const [newEventForm, setNewEventForm] = useState<EventFormState>(emptyEventForm);
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [newEventError, setNewEventError] = useState<string | null>(null);
+
+  // Which block the editor is open for: an existing block, or a fresh one
+  // pre-dated to `date`. null = closed.
+  const [blockEditor, setBlockEditor] = useState<{ block: PlanningBlock | null; date: string } | null>(null);
 
   const [editingEvent, setEditingEvent] = useState(false);
   const [editForm, setEditForm] = useState<EventFormState | null>(null);
@@ -791,6 +825,13 @@ export default function CalendarClient({
         >
           + New Event
         </button>
+        <button
+          type="button"
+          className={styles["nav-btn"]}
+          onClick={() => setBlockEditor({ block: null, date: localDateKey(new Date()) })}
+        >
+          + New Block
+        </button>
         <ImportOutlookEvent
           onImported={(eventId) => {
             setPendingOpenEventId(eventId);
@@ -835,12 +876,46 @@ export default function CalendarClient({
           </div>
           {weekDays.map((day) => {
             const laidOut = layoutDay(day, eventsForLayout);
+            const dayBlocks = blocksForDay(day, blocks);
             return (
               <div
                 key={day.toISOString()}
                 className={styles["day-column"]}
                 style={{ height: HOUR_HEIGHT * 24, ["--hour-height" as string]: `${HOUR_HEIGHT}px` }}
               >
+                {dayBlocks.map(({ block, top, height }) => {
+                  const color = blockColor(block);
+                  const open = () => setBlockEditor({ block, date: block.blockDate ?? localDateKey(day) });
+                  return (
+                    <div
+                      key={block.id}
+                      role="button"
+                      tabIndex={0}
+                      className={styles["planning-block"]}
+                      style={{
+                        top,
+                        height,
+                        background: `color-mix(in srgb, ${color} 13%, transparent)`,
+                        borderLeft: `3px solid color-mix(in srgb, ${color} 55%, transparent)`,
+                      }}
+                      title={`Planning block · ${block.stage}`}
+                      onClick={open}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          open();
+                        }
+                      }}
+                    >
+                      <span
+                        className={styles["planning-block-label"]}
+                        style={{ color: `color-mix(in srgb, ${color} 70%, var(--text-muted, #64748b))` }}
+                      >
+                        {block.title ?? block.stage}
+                      </span>
+                    </div>
+                  );
+                })}
                 {laidOut.map(({ event, lane, totalLanes, top, height }) => (
                   <div
                     key={event.id}
@@ -1389,6 +1464,18 @@ export default function CalendarClient({
             </div>
           </div>
         </div>
+      )}
+
+      {blockEditor && (
+        <BlockEditorModal
+          block={blockEditor.block}
+          defaultDate={blockEditor.date}
+          onClose={() => setBlockEditor(null)}
+          onSaved={() => {
+            setBlockEditor(null);
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );
