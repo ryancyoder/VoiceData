@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { dealPhotoUrl, type DealPhoto } from "@/lib/salesBoard";
 import styles from "./photoAnnotator.module.css";
 
-type Tool = "pen" | "curvepen" | "text" | "eraser" | "fill" | "prism" | "ellipse";
+type Tool = "pen" | "curvepen" | "text" | "eraser" | "fill" | "prism" | "ellipse" | "rectangle";
 
 const SWATCHES = ["#ff3b30", "#ffcc00", "#30d158", "#007aff", "#ffffff", "#1a1a1a"];
 const SIZES = [3, 7, 15] as const;
@@ -52,6 +52,7 @@ const ICON_PATHS: Record<string, ReactNode> = {
   ),
   fill: <path d="M7 4h10l4 8-4 8H7l-4-8z" />,
   ellipse: <ellipse cx="12" cy="12" rx="9" ry="6.5" />,
+  rect: <rect x="3.5" y="6" width="17" height="12" rx="1.5" />,
   prism: (
     <>
       <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
@@ -208,7 +209,7 @@ export default function PhotoAnnotator({
   const straightenOriginRef = useRef<Pt | null>(null);
   const arcP0Ref = useRef<Pt | null>(null);
   const arcP2Ref = useRef<Pt | null>(null);
-  const ellipseStartRef = useRef<Pt | null>(null); // ellipse tool: bounding-box corner where the drag began
+  const shapeStartRef = useRef<Pt | null>(null); // ellipse/rectangle tools: bounding-box corner where the drag began
   // Alt-to-bend: while a straight (pen) line is snapped, holding Option/Alt
   // locks the endpoint and turns the drag into curve-pen arc control; releasing
   // Alt reverts to the straight line. altDownRef = physical key state,
@@ -629,7 +630,7 @@ export default function PhotoAnnotator({
   // bounding box from the drag's start corner to `pos`. Honors color/size/style.
   function renderEllipse(pos: Pt) {
     const ctx = ctxRef.current;
-    const start = ellipseStartRef.current;
+    const start = shapeStartRef.current;
     if (!ctx || !preStrokeRef.current || !start) return;
     ctx.putImageData(preStrokeRef.current, 0, 0);
     const cx = (start.x + pos.x) / 2;
@@ -644,6 +645,33 @@ export default function PhotoAnnotator({
     ctx.ellipse(cx, cy, Math.max(rx, 0.1), Math.max(ry, 0.1), 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+  }
+
+  // Rectangle tool: repaint the base, then stroke the rectangle spanning the
+  // drag's start corner to `pos`. Honors color/size/style; miter for crisp corners.
+  function renderRect(pos: Pt) {
+    const ctx = ctxRef.current;
+    const start = shapeStartRef.current;
+    if (!ctx || !preStrokeRef.current || !start) return;
+    ctx.putImageData(preStrokeRef.current, 0, 0);
+    const x = Math.min(start.x, pos.x);
+    const y = Math.min(start.y, pos.y);
+    const w = Math.abs(pos.x - start.x);
+    const h = Math.abs(pos.y - start.y);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = colorRef.current;
+    ctx.lineWidth = sizeRef.current * 1.5;
+    ctx.lineJoin = "miter";
+    ctx.setLineDash(dashFor(ctx.lineWidth));
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.lineJoin = "round"; // restore global default for other tools
+  }
+
+  // Draw the active rubber-band shape (ellipse or rectangle) for the current box.
+  function renderShape(pos: Pt) {
+    if (toolRef.current === "rectangle") renderRect(pos);
+    else renderEllipse(pos);
   }
 
   // Extrude preview: repaint the pre-polygon base, then stroke the base ring, a
@@ -1112,12 +1140,12 @@ export default function PhotoAnnotator({
     saveUndo();
     preStrokeRef.current = undoStackRef.current[undoStackRef.current.length - 1];
     const pos = getPos(e);
-    if (toolRef.current === "ellipse") {
-      // Rubber-band from this corner; the drag sizes/shapes the ellipse.
-      ellipseStartRef.current = pos;
+    if (toolRef.current === "ellipse" || toolRef.current === "rectangle") {
+      // Rubber-band from this corner; the drag sizes/shapes the ellipse/rectangle.
+      shapeStartRef.current = pos;
       pointsRef.current = [pos, { ...pos }];
       strokeActiveRef.current = true;
-      renderEllipse(pos);
+      renderShape(pos);
       return;
     }
     if (isFillDraw()) {
@@ -1200,12 +1228,12 @@ export default function PhotoAnnotator({
     }
 
     // Ellipse rubber-band: redraw the ellipse for the current bounding box.
-    if (toolRef.current === "ellipse") {
+    if (toolRef.current === "ellipse" || toolRef.current === "rectangle") {
       if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
       e.preventDefault();
       const pos = getPos(e);
       lastPointerRef.current = pos;
-      renderEllipse(pos);
+      renderShape(pos);
       return;
     }
 
@@ -1263,9 +1291,9 @@ export default function PhotoAnnotator({
     strokeActiveRef.current = false;
     if (!ctx) return;
     if (e.pointerType === "pen") penExpiryRef.current = e.timeStamp + PEN_LOCK;
-    if (toolRef.current === "ellipse") {
-      // The last renderEllipse left the shape on the canvas; just clear state.
-      ellipseStartRef.current = null;
+    if (toolRef.current === "ellipse" || toolRef.current === "rectangle") {
+      // The last renderShape left the shape on the canvas; just clear state.
+      shapeStartRef.current = null;
       pointsRef.current = [];
       preStrokeRef.current = null;
       ctx.globalCompositeOperation = "source-over";
@@ -1700,6 +1728,14 @@ export default function PhotoAnnotator({
           onClick={() => selectTool("ellipse")}
         >
           <Ico name="ellipse" />
+        </button>
+        <button
+          type="button"
+          className={`${styles.toolBtn} ${tool === "rectangle" ? styles.active : ""}`}
+          title="Rectangle — drag a box (e.g. upper-left to lower-right) to size a rectangle"
+          onClick={() => selectTool("rectangle")}
+        >
+          <Ico name="rect" />
         </button>
         <div className={styles.sep} />
         {SWATCHES.map((c) => (
