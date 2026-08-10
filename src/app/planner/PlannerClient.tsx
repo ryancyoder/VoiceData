@@ -94,7 +94,7 @@ export default function PlannerClient({
       offset: i,
       dayOfMonth: d,
       monthKey: `${y}-${m}`,
-      monthLabel: `${m}/${y}`,
+      monthLabel: `${String(m).padStart(2, "0")}/${String(y).slice(-2)}`,
     };
   });
   const monthSegments = days
