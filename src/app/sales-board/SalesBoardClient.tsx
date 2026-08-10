@@ -18,7 +18,6 @@ const STAGE_COLORS: Record<Stage, string> = {
   Propose: "var(--c-propose)",
   Sent: "var(--c-send)",
   Sold: "var(--c-sold)",
-  Scheduled: "var(--c-schedule)",
   "Project Management": "var(--c-pm)",
   "Job Costing": "var(--c-jobcosting)",
   Invoiced: "var(--c-invoiced)",
@@ -38,9 +37,15 @@ const EMPTY_ADD_FORM = {
   proposal_number: "",
   proposal_date: "",
   appointment_date: "",
+  start_date: "",
+  end_date: "",
   property_id: null as number | null,
   proposal_description: "",
 };
+
+// Every column starts sorted by date, nearest (earliest) first — so the deals
+// with the soonest dates surface at the top. Users can still re-sort per column.
+const DEFAULT_COLUMN_SORT = "date_asc";
 
 // Deals with no proposal_date sort to the end regardless of direction —
 // there's no meaningful "earliest"/"latest" position for a date that isn't
@@ -125,7 +130,9 @@ export default function SalesBoardClient({
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
-  const [columnSortState, setColumnSortState] = useState<Record<string, string>>({});
+  const [columnSortState, setColumnSortState] = useState<Record<string, string>>(() =>
+    Object.fromEntries(STAGES.map((s) => [s, DEFAULT_COLUMN_SORT]))
+  );
   const [columnCollapsedState, setColumnCollapsedState] = useState<Record<string, boolean>>({});
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
@@ -509,6 +516,8 @@ export default function SalesBoardClient({
           proposal_number: addForm.proposal_number.trim() || null,
           proposal_date: addForm.proposal_date || null,
           appointment_date: addForm.appointment_date || null,
+          start_date: addForm.start_date || null,
+          end_date: addForm.end_date || null,
           property_id: addForm.property_id,
           proposal_description: addForm.proposal_description.trim() || null,
         }),
@@ -719,6 +728,25 @@ export default function SalesBoardClient({
               type="date"
               value={addForm.appointment_date}
               onChange={(e) => setAddForm((f) => ({ ...f, appointment_date: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-start-date">Start day</label>
+            <input
+              id="f-start-date"
+              type="date"
+              value={addForm.start_date}
+              onChange={(e) => setAddForm((f) => ({ ...f, start_date: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-end-date">Stop day</label>
+            <input
+              id="f-end-date"
+              type="date"
+              value={addForm.end_date}
+              min={addForm.start_date || undefined}
+              onChange={(e) => setAddForm((f) => ({ ...f, end_date: e.target.value }))}
             />
           </div>
           <div className={`${styles.field} ${styles["is-full"]}`}>

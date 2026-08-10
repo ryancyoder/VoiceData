@@ -296,6 +296,8 @@ export default function DealModal({
     proposal_number: deal.proposal_number || "",
     proposal_date: deal.proposal_date || "",
     appointment_date: deal.appointment_date || "",
+    start_date: deal.start_date || "",
+    end_date: deal.end_date || "",
     property_id: deal.property_id,
     aspire_link: deal.aspire_link || "",
     proposal_description: deal.proposal_description || "",
@@ -616,6 +618,8 @@ export default function DealModal({
         proposal_number: form.proposal_number.trim() || null,
         proposal_date: form.proposal_date || null,
         appointment_date: form.appointment_date || null,
+        start_date: form.start_date || null,
+        end_date: form.end_date || null,
         property_id: form.property_id,
         aspire_link: form.aspire_link.trim() || null,
         proposal_description: form.proposal_description.trim() || null,
@@ -723,6 +727,14 @@ export default function DealModal({
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-appointment-date">Appointment date</label>
             <input id="dm-appointment-date" type="date" value={form.appointment_date} onChange={(e) => set("appointment_date", e.target.value)} />
+          </div>
+          <div className={styles["card-edit-field"]}>
+            <label htmlFor="dm-start-date">Start day</label>
+            <input id="dm-start-date" type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
+          </div>
+          <div className={styles["card-edit-field"]}>
+            <label htmlFor="dm-end-date">Stop day</label>
+            <input id="dm-end-date" type="date" value={form.end_date} min={form.start_date || undefined} onChange={(e) => set("end_date", e.target.value)} />
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-aspire-link">Aspire opportunity link</label>

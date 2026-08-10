@@ -5,7 +5,6 @@ export const STAGES = [
   "Propose",
   "Sent",
   "Sold",
-  "Scheduled",
   "Project Management",
   "Job Costing",
   "Invoiced",
@@ -120,6 +119,10 @@ export interface Deal {
   proposal_number: string | null;
   proposal_date: string | null;
   proposal_description: string | null;
+  // The deal's scheduled work window — all-day (date only, no time). start_date
+  // is the first day on the job, end_date the last. Either may be null.
+  start_date: string | null;
+  end_date: string | null;
   // Not a deal column — this is the title of whichever task (in the
   // `tasks` table) is flagged as this deal's next action, joined in at
   // fetch time. Never set directly; flag a task instead.
@@ -216,6 +219,8 @@ export interface DealInput {
   proposal_date?: string | null;
   proposal_description?: string | null;
   appointment_date?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
   property_id?: number | null;
   value?: number | null;
   stage?: Stage;

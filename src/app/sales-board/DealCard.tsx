@@ -17,6 +17,14 @@ function formatProposalDate(isoDate: string) {
   return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// The deal's all-day work window as a compact "Mar 3 – Mar 7" range. A single
+// day (or only a start set) collapses to just that one date.
+function formatDateWindow(start: string | null, end: string | null) {
+  if (!start && !end) return null;
+  if (start && end && start !== end) return `${formatProposalDate(start)} – ${formatProposalDate(end)}`;
+  return formatProposalDate((start || end) as string);
+}
+
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
 
@@ -143,6 +151,10 @@ export default function DealCard({
 
       {deal.stage === "Sent" && deal.proposal_date && (
         <div className={styles["card-proposal-date"]}>Sent {formatProposalDate(deal.proposal_date)}</div>
+      )}
+
+      {formatDateWindow(deal.start_date, deal.end_date) && (
+        <div className={styles["card-schedule-date"]}>🗓 {formatDateWindow(deal.start_date, deal.end_date)}</div>
       )}
 
       {showNextAction && deal.next_action && (

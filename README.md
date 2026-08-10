@@ -21,8 +21,9 @@ you go.
   built-in `speechSynthesis` API — no extra API calls needed.
 - **Sales Board** (`/sales-board`): a Kanban-style deal pipeline backed by a
   Supabase Postgres table, separate from the voice-driven SQLite database.
-  Deals move through `Lead → Propose → Sent → Sold → Scheduled → Project
-  Management → Job Costing → Invoiced → Paid in Full`. Deals sharing the
+  Deals move through `Lead → Propose → Sent → Sold → Project
+  Management → Job Costing → Invoiced → Paid in Full`. Each deal can also
+  carry an all-day scheduled work window (`start_date` / `end_date`). Deals sharing the
   same jobsite address are linked to one `properties` row (repeat
   customers, multiple jobs at the same property over time), and a deal's
   detail view lists the other deals attached to its property.
