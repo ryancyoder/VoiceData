@@ -599,10 +599,16 @@
   padding: 2px 6px;
   overflow: hidden;
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
   transition: filter 0.12s ease;
 }
 .planning-block:hover { filter: brightness(1.06) saturate(1.15); }
+.planning-block-dragging {
+  z-index: 6;
+  cursor: grabbing;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+}
 .planning-block-label {
   display: block;
   font-size: 10px;

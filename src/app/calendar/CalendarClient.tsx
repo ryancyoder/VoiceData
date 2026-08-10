@@ -148,6 +148,17 @@ function localDateKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// Minutes-from-midnight <-> 'HH:MM', for dragging planning blocks.
+function timeToMin(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+function minToTime(min: number): string {
+  const c = Math.max(0, Math.min(1440, Math.round(min)));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(c / 60))}:${pad(c % 60)}`;
+}
+
 // Planning blocks that fall on a given day, positioned by the same
 // minutes-from-midnight → pixel mapping the events use.
 function blocksForDay(day: Date, blocks: PlanningBlock[]): LaidOutBlock[] {
@@ -368,6 +379,103 @@ export default function CalendarClient({
     moved: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // Planning-block drag/resize — mirrors the event drag, but works in
+  // minutes-of-day and PATCHes the block's start/end time.
+  const [isBlockDragging, setIsBlockDragging] = useState(false);
+  const [blockDragPreview, setBlockDragPreview] = useState<{ blockId: string; startMin: number; endMin: number } | null>(null);
+  const blockDragRef = useRef<{
+    blockId: string;
+    mode: "move" | "resize-start" | "resize-end";
+    startClientY: number;
+    origStartMin: number;
+    origEndMin: number;
+    curStartMin: number;
+    curEndMin: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressBlockClickRef = useRef(false);
+
+  function beginBlockDrag(block: PlanningBlock, mode: "move" | "resize-start" | "resize-end", clientY: number) {
+    const origStartMin = timeToMin(block.startTime);
+    const origEndMin = timeToMin(block.endTime);
+    blockDragRef.current = {
+      blockId: block.id,
+      mode,
+      startClientY: clientY,
+      origStartMin,
+      origEndMin,
+      curStartMin: origStartMin,
+      curEndMin: origEndMin,
+      moved: false,
+    };
+    setBlockDragPreview({ blockId: block.id, startMin: origStartMin, endMin: origEndMin });
+    setIsBlockDragging(true);
+  }
+
+  async function saveBlockTimes(blockId: string, startMin: number, endMin: number) {
+    try {
+      const res = await fetch(`/api/planning/blocks/${blockId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startTime: minToTime(startMin), endTime: minToTime(endMin) }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error || "Failed to update block");
+      }
+      router.refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to update block");
+      router.refresh();
+    }
+  }
+
+  useEffect(() => {
+    if (!isBlockDragging) return;
+    const SNAP = 15;
+    const pxPerMin = HOUR_HEIGHT / 60;
+
+    function onMove(e: PointerEvent) {
+      const d = blockDragRef.current;
+      if (!d) return;
+      const deltaPx = e.clientY - d.startClientY;
+      const deltaMin = Math.round(deltaPx / pxPerMin / SNAP) * SNAP;
+      const dur = d.origEndMin - d.origStartMin;
+      let s = d.origStartMin;
+      let en = d.origEndMin;
+      if (d.mode === "move") {
+        s = Math.max(0, Math.min(1440 - dur, d.origStartMin + deltaMin));
+        en = s + dur;
+      } else if (d.mode === "resize-start") {
+        s = Math.max(0, Math.min(d.origStartMin + deltaMin, d.origEndMin - SNAP));
+      } else {
+        en = Math.min(1440, Math.max(d.origEndMin + deltaMin, d.origStartMin + SNAP));
+      }
+      const moved = d.moved || Math.abs(deltaPx) > 3;
+      blockDragRef.current = { ...d, curStartMin: s, curEndMin: en, moved };
+      setBlockDragPreview({ blockId: d.blockId, startMin: s, endMin: en });
+    }
+
+    function onUp() {
+      const d = blockDragRef.current;
+      blockDragRef.current = null;
+      setIsBlockDragging(false);
+      setBlockDragPreview(null);
+      if (d && d.moved && (d.curStartMin !== d.origStartMin || d.curEndMin !== d.origEndMin)) {
+        suppressBlockClickRef.current = true;
+        saveBlockTimes(d.blockId, d.curStartMin, d.curEndMin);
+      }
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBlockDragging]);
 
   function beginDrag(event: CalendarEvent, mode: "move" | "resize-start" | "resize-end", clientY: number) {
     const originStartMs = new Date(event.start).getTime();
@@ -921,20 +1029,33 @@ export default function CalendarClient({
                   const color = blockColor(block);
                   const open = () => setBlockEditor({ block, date: block.blockDate ?? localDateKey(day) });
                   const bandDeals = assignmentsByWindow.get(`${block.id}|${dayKey}`) ?? [];
+                  const bp = blockDragPreview?.blockId === block.id ? blockDragPreview : null;
+                  const bTop = bp ? (bp.startMin / 60) * HOUR_HEIGHT : top;
+                  const bHeight = bp ? Math.max(6, ((bp.endMin - bp.startMin) / 60) * HOUR_HEIGHT) : height;
                   return (
                     <div
                       key={block.id}
                       role="button"
                       tabIndex={0}
-                      className={styles["planning-block"]}
+                      className={`${styles["planning-block"]} ${bp ? styles["planning-block-dragging"] : ""}`}
                       style={{
-                        top,
-                        height,
+                        top: bTop,
+                        height: bHeight,
                         background: `color-mix(in srgb, ${color} 13%, transparent)`,
                         borderLeft: `3px solid color-mix(in srgb, ${color} 55%, transparent)`,
                       }}
-                      title={`Planning block · ${block.stage}`}
-                      onClick={open}
+                      title={`Planning block · ${block.stage} — drag to move, edges to resize`}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        beginBlockDrag(block, "move", e.clientY);
+                      }}
+                      onClick={() => {
+                        if (suppressBlockClickRef.current) {
+                          suppressBlockClickRef.current = false;
+                          return;
+                        }
+                        open();
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
@@ -942,6 +1063,15 @@ export default function CalendarClient({
                         }
                       }}
                     >
+                      <div
+                        className={styles["event-resize-handle"]}
+                        style={{ top: 0 }}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          beginBlockDrag(block, "resize-start", e.clientY);
+                        }}
+                      />
                       <span
                         className={styles["planning-block-label"]}
                         style={{ color: `color-mix(in srgb, ${color} 70%, var(--text-muted, #64748b))` }}
@@ -964,6 +1094,15 @@ export default function CalendarClient({
                           )}
                         </div>
                       )}
+                      <div
+                        className={styles["event-resize-handle"]}
+                        style={{ bottom: 0 }}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          beginBlockDrag(block, "resize-end", e.clientY);
+                        }}
+                      />
                     </div>
                   );
                 })}
