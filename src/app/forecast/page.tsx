@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import type { Stage } from "@/lib/salesBoard";
 import { PLANNING_BLOCK_COLUMNS, rowToBlock, type PlanningBlock, type PlanningBlockRow } from "@/lib/planning/blocks";
-import type { ForecastDeal } from "@/lib/planning/schedule";
+import type { ForecastDeal, Placement } from "@/lib/planning/schedule";
 import ForecastClient from "./ForecastClient";
 
 export const dynamic = "force-dynamic";
@@ -17,18 +17,20 @@ type RawDeal = {
 };
 
 export default async function ForecastPage() {
-  const [blocksRes, dealsRes, defaultsRes] = await Promise.all([
+  const [blocksRes, dealsRes, defaultsRes, placementsRes] = await Promise.all([
     supabase.from("planning_blocks").select(PLANNING_BLOCK_COLUMNS).order("created_at", { ascending: true }),
     supabase
       .from("Sales Board")
       .select("id, deal_name, company, stage, estimated_hours, proposal_date, created_at, lost_at")
       .is("lost_at", null),
     supabase.from("stage_effort_defaults").select("stage, default_hours"),
+    supabase.from("planning_placements").select("deal_id, block_id, date, position"),
   ]);
 
   if (blocksRes.error) throw new Error(`Failed to load forecast: ${blocksRes.error.message}`);
   if (dealsRes.error) throw new Error(`Failed to load forecast: ${dealsRes.error.message}`);
   if (defaultsRes.error) throw new Error(`Failed to load forecast: ${defaultsRes.error.message}`);
+  if (placementsRes.error) throw new Error(`Failed to load forecast: ${placementsRes.error.message}`);
 
   const blocks: PlanningBlock[] = ((blocksRes.data ?? []) as unknown as PlanningBlockRow[]).map(rowToBlock);
 
@@ -44,5 +46,12 @@ export default async function ForecastPage() {
   const defaults: Record<string, number> = {};
   for (const row of defaultsRes.data ?? []) defaults[row.stage as string] = Number(row.default_hours);
 
-  return <ForecastClient blocks={blocks} deals={deals} initialDefaults={defaults} />;
+  const placements: Placement[] = (placementsRes.data ?? []).map((r) => ({
+    dealId: r.deal_id as number,
+    blockId: r.block_id as string | null,
+    date: r.date as string,
+    position: r.position as number,
+  }));
+
+  return <ForecastClient blocks={blocks} deals={deals} initialDefaults={defaults} initialPlacements={placements} />;
 }

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PlanningBlock } from "@/lib/planning/blocks";
-import { computeForecast, type ForecastDeal } from "@/lib/planning/schedule";
+import { computeForecast, type ForecastDeal, type Placement } from "@/lib/planning/schedule";
 import ForecastGantt from "./ForecastGantt";
 import styles from "./forecast.module.css";
 
@@ -31,16 +31,24 @@ export default function ForecastClient({
   blocks,
   deals,
   initialDefaults,
+  initialPlacements,
 }: {
   blocks: PlanningBlock[];
   deals: ForecastDeal[];
   initialDefaults: Record<string, number>;
+  initialPlacements: Placement[];
 }) {
   const router = useRouter();
   const defaults = initialDefaults;
   const [horizonWeeks, setHorizonWeeks] = useState(12);
   const [today] = useState(todayKey);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+
+  const placementMap = useMemo(() => {
+    const m = new Map<number, Placement>();
+    for (const p of initialPlacements) m.set(p.dealId, p);
+    return m;
+  }, [initialPlacements]);
 
   function toggleStage(stage: string) {
     setCollapsed((prev) => {
@@ -52,8 +60,8 @@ export default function ForecastClient({
   }
 
   const forecast = useMemo(
-    () => computeForecast(blocks, deals, defaults, { todayKey: today, horizonWeeks }),
-    [blocks, deals, defaults, today, horizonWeeks]
+    () => computeForecast(blocks, deals, defaults, placementMap, { todayKey: today, horizonWeeks }),
+    [blocks, deals, defaults, placementMap, today, horizonWeeks]
   );
 
   const allCollapsed = forecast.stages.length > 0 && forecast.stages.every((s) => collapsed.has(s.stage));

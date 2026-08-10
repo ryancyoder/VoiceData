@@ -14,7 +14,7 @@ import PhotoAnnotator from "@/components/PhotoAnnotator";
 import type { DealPhoto } from "@/lib/salesBoard";
 import BlockEditorModal from "./BlockEditorModal";
 import { blockColor, blockHours, blockOccursOn, type PlanningBlock } from "@/lib/planning/blocks";
-import { computeForecast, type Assignment, type ForecastDeal } from "@/lib/planning/schedule";
+import { computeForecast, type Assignment, type ForecastDeal, type Placement } from "@/lib/planning/schedule";
 
 export interface GeoPhoto {
   id: number;
@@ -228,6 +228,7 @@ export default function CalendarClient({
   blocks,
   forecastDeals,
   stageDefaults,
+  forecastPlacements,
 }: {
   events: CalendarEvent[];
   ungeotaggedCount: number;
@@ -236,6 +237,7 @@ export default function CalendarClient({
   blocks: PlanningBlock[];
   forecastDeals: ForecastDeal[];
   stageDefaults: Record<string, number>;
+  forecastPlacements: Placement[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -318,8 +320,13 @@ export default function CalendarClient({
   // deal placements by their block instance ("<blockId>|<date>") so each block
   // band can subtly list the deals scheduled into it.
   const [forecastTodayKey] = useState(() => localDateKey(new Date()));
+  const forecastPlacementMap = useMemo(() => {
+    const m = new Map<number, Placement>();
+    for (const p of forecastPlacements) m.set(p.dealId, p);
+    return m;
+  }, [forecastPlacements]);
   const assignmentsByWindow = useMemo(() => {
-    const forecast = computeForecast(blocks, forecastDeals, stageDefaults, {
+    const forecast = computeForecast(blocks, forecastDeals, stageDefaults, forecastPlacementMap, {
       todayKey: forecastTodayKey,
       horizonWeeks: 26,
     });
@@ -333,7 +340,7 @@ export default function CalendarClient({
       }
     }
     return map;
-  }, [blocks, forecastDeals, stageDefaults, forecastTodayKey]);
+  }, [blocks, forecastDeals, stageDefaults, forecastPlacementMap, forecastTodayKey]);
 
   const [editingEvent, setEditingEvent] = useState(false);
   const [editForm, setEditForm] = useState<EventFormState | null>(null);

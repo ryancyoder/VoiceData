@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabaseClient";
 import type { Deal, DealPhoto, PropertyOption, Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import { PLANNING_BLOCK_COLUMNS, rowToBlock, type PlanningBlockRow } from "@/lib/planning/blocks";
-import type { ForecastDeal } from "@/lib/planning/schedule";
+import type { ForecastDeal, Placement } from "@/lib/planning/schedule";
 import CalendarClient, { type CalendarEvent, type DealOption } from "./CalendarClient";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +26,7 @@ type RawEvent = {
 };
 
 export default async function CalendarPage() {
-  const [eventsRes, dealsRes, propertiesRes, ungroupedRes, blocksRes, stageDefaultsRes] = await Promise.all([
+  const [eventsRes, dealsRes, propertiesRes, ungroupedRes, blocksRes, stageDefaultsRes, placementsRes] = await Promise.all([
     supabase
       .from("events")
       .select('*, deal_photos(*, deal:"Sales Board"(deal_name, company, stage, properties(address)))')
@@ -42,6 +42,7 @@ export default async function CalendarPage() {
     supabase.from("deal_photos").select("id", { count: "exact", head: true }).is("event_id", null),
     supabase.from("planning_blocks").select(PLANNING_BLOCK_COLUMNS).order("created_at", { ascending: true }),
     supabase.from("stage_effort_defaults").select("stage, default_hours"),
+    supabase.from("planning_placements").select("deal_id, block_id, date, position"),
   ]);
 
   if (eventsRes.error) {
@@ -99,6 +100,12 @@ export default async function CalendarPage() {
     }));
   const stageDefaults: Record<string, number> = {};
   for (const row of stageDefaultsRes.data ?? []) stageDefaults[row.stage as string] = Number(row.default_hours);
+  const forecastPlacements: Placement[] = (placementsRes.data ?? []).map((r) => ({
+    dealId: r.deal_id as number,
+    blockId: r.block_id as string | null,
+    date: r.date as string,
+    position: r.position as number,
+  }));
 
   const dealOptionsById = new Map(dealOptions.map((d) => [d.id, d]));
 
@@ -164,6 +171,7 @@ export default async function CalendarPage() {
       blocks={planningBlocks}
       forecastDeals={forecastDeals}
       stageDefaults={stageDefaults}
+      forecastPlacements={forecastPlacements}
     />
   );
 }
