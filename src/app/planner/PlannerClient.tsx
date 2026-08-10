@@ -3,8 +3,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { STAGE_COLORS, type PlanningBlock } from "@/lib/planning/blocks";
 import type { ForecastDeal } from "@/lib/planning/schedule";
-import { computeBoard, type Placement } from "@/lib/planning/board";
-import type { Stage } from "@/lib/salesBoard";
+import { computeBoard, type Placement, type BoardDealRow } from "@/lib/planning/board";
+import { STAGES, type Stage } from "@/lib/salesBoard";
 import styles from "./planner.module.css";
 
 const PX_PER_DAY = 26;
@@ -117,6 +117,18 @@ export default function PlannerClient({
     for (const p of initialPlacements) m.set(p.dealId, p);
     return m;
   });
+  // Filter bar: which stages to show, and whether to restrict to deals whose
+  // stage has planning blocks (the schedulable view this page used to show).
+  const [stageFilter, setStageFilter] = useState<Set<Stage>>(() => new Set(STAGES));
+  const [blocksOnly, setBlocksOnly] = useState(false);
+  function toggleStage(s: Stage) {
+    setStageFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+  }
 
   const board = useMemo(
     () => computeBoard(blocks, deals, initialDefaults, placements, { todayKey: today, horizonWeeks }),
@@ -129,19 +141,41 @@ export default function PlannerClient({
     return m;
   }, [stageDates]);
 
-  const allRows = board.stages
-    .flatMap((s) => s.rows.map((r) => ({ ...r, stage: s.stage, color: s.color })))
-    .sort((a, b) => {
-      const ad = a.placement?.date ?? "9999-99-99";
-      const bd = b.placement?.date ?? "9999-99-99";
-      return ad === bd ? a.orderDate.localeCompare(b.orderDate) : ad.localeCompare(bd);
-    });
-  const fullHeight = AXIS_H + Math.max(1, allRows.length) * ROW_H;
+  type Row = BoardDealRow & { stage: Stage; color: string };
+
+  // Rows from the scheduler (deals whose stage has planning blocks) …
+  const boardRows: Row[] = board.stages.flatMap((s) => s.rows.map((r) => ({ ...r, stage: s.stage, color: s.color })));
+  const stagesWithBlocks = new Set<Stage>(board.stages.map((s) => s.stage));
+  const scheduledIds = new Set(boardRows.map((r) => r.dealId));
+  // … plus a plain row for every other active deal (no block windows to snap
+  // to — shown for its stage-history band only).
+  const extraRows: Row[] = deals
+    .filter((d) => !scheduledIds.has(d.id))
+    .map((d) => ({
+      dealId: d.id,
+      name: d.name,
+      company: d.company,
+      hours: d.estimatedHours ?? initialDefaults[d.stage] ?? 0,
+      orderDate: d.orderDate,
+      placement: null,
+      issue: null,
+      stage: d.stage,
+      color: STAGE_COLORS[d.stage],
+    }));
+  const allRows: Row[] = [...boardRows, ...extraRows].sort((a, b) => {
+    const ad = a.placement?.date ?? "9999-99-99";
+    const bd = b.placement?.date ?? "9999-99-99";
+    return ad === bd ? a.orderDate.localeCompare(b.orderDate) : ad.localeCompare(bd);
+  });
+
+  // Apply the filter bar: stage chips + "blocks only".
+  const rows = allRows.filter((r) => stageFilter.has(r.stage) && (!blocksOnly || stagesWithBlocks.has(r.stage)));
+  const fullHeight = AXIS_H + Math.max(1, rows.length) * ROW_H;
 
   // The timeline's left edge is pulled back to the earliest stage-history date
-  // among the shown deals, so each row's history band is visible (not just the
+  // among the visible deals, so each row's history band is visible (not just the
   // today-forward scheduling range). Everything is measured from this origin.
-  const rangeStart = allRows.reduce((min, r) => {
+  const rangeStart = rows.reduce((min, r) => {
     const dd = datesById.get(r.dealId);
     if (!dd) return min;
     const cand = [dd.rfp, dd.appointment, dd.proposal, dd.won, dd.start, dd.end].filter((x): x is string => !!x);
@@ -330,13 +364,35 @@ export default function PlannerClient({
         </div>
       </div>
 
-      {board.stages.length === 0 ? (
-        <div className={styles.empty}>
-          No planning blocks yet. Add blocks on the <a href="/calendar">calendar</a> to build a schedule.
-        </div>
+      {deals.length === 0 ? (
+        <div className={styles.empty}>No active deals yet.</div>
       ) : (
         <>
-          <div className={styles.legend}>
+          <div className={styles.filterBar}>
+            {STAGES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`${styles.filterChip} ${stageFilter.has(s) ? styles.filterOn : ""}`}
+                style={{ ["--chip-color" as string]: STAGE_COLORS[s] }}
+                onClick={() => toggleStage(s)}
+                title={`Show/hide ${s} deals`}
+              >
+                {s}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={`${styles.filterChip} ${styles.blocksChip} ${blocksOnly ? styles.filterOn : ""}`}
+              onClick={() => setBlocksOnly((v) => !v)}
+              title="Show only deals whose stage has planning blocks (the schedulable view)"
+            >
+              Blocks only
+            </button>
+          </div>
+
+          {board.stages.length > 0 && (
+            <div className={styles.legend}>
             {board.stages.map((s) => (
               <span key={s.stage} className={styles.legendItem} style={{ ["--stage-color" as string]: s.color }}>
                 <button type="button" className={styles.shiftBtn} onClick={() => shiftStage(s.stage, -1)} title={`Shift ${s.stage} earlier`}>
@@ -349,14 +405,15 @@ export default function PlannerClient({
                 </button>
               </span>
             ))}
-          </div>
+            </div>
+          )}
 
           <div className={styles.board}>
             <div className={styles.scroll}>
               <div ref={innerRef} className={styles.inner} style={{ width: innerWidth, height: fullHeight }}>
                 {/* Stage-history bands (row backgrounds): each deal's time in a
                     stage, colored by the stage. Behind the grid and drag rows. */}
-                {allRows.map((r, i) => {
+                {rows.map((r, i) => {
                   const dd = datesById.get(r.dealId);
                   if (!dd) return null;
                   return buildSegments(dd, today).map((seg, si) => {
@@ -379,7 +436,7 @@ export default function PlannerClient({
                     );
                   });
                 })}
-                {allRows.map((r, i) => (
+                {rows.map((r, i) => (
                   <div
                     key={`bg${r.dealId}`}
                     className={styles.ganttRow}
@@ -421,7 +478,7 @@ export default function PlannerClient({
                   ))}
                 </div>
                 {/* deal labels: left edge at the scheduled date, colored by stage */}
-                {allRows.map((r, i) => {
+                {rows.map((r, i) => {
                   const placed = !!r.placement;
                   const isDragging = drag?.dealId === r.dealId;
                   const offset = isDragging ? drag!.targetOffset : placed ? daysBetween(rangeStart, r.placement!.date) : todayOffset;

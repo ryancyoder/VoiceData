@@ -134,6 +134,53 @@
   padding: 2px 9px;
 }
 
+/* Filter bar: stage toggles + "blocks only". */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.filterChip::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--chip-color, var(--text-muted));
+}
+.filterChip.filterOn {
+  opacity: 1;
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--chip-color, var(--text-muted)) 55%, var(--border));
+  background: color-mix(in srgb, var(--chip-color, var(--text-muted)) 12%, var(--surface));
+}
+/* "Blocks only" is a mode toggle, not a stage — no color swatch. */
+.blocksChip::before {
+  display: none;
+}
+.blocksChip {
+  margin-left: auto;
+}
+.blocksChip.filterOn {
+  color: var(--text);
+  border-color: var(--c-propose);
+  background: color-mix(in srgb, var(--c-propose) 14%, var(--surface));
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;
