@@ -10,6 +10,9 @@ import styles from "./planner.module.css";
 const PX_PER_DAY = 26;
 const ROW_H = 40;
 const AXIS_H = 36;
+// Bands and tiles fill 75% of the row height, centered (12.5% padding top/bottom).
+const BAND_H = ROW_H * 0.75;
+const BAND_PAD = (ROW_H - BAND_H) / 2;
 const HORIZONS = [4, 8, 12, 26];
 
 function todayKey(): string {
@@ -450,8 +453,8 @@ export default function PlannerClient({
                         style={{
                           left: xOf(from),
                           width: xOf(to) - xOf(from),
-                          top: AXIS_H + i * ROW_H,
-                          height: ROW_H,
+                          top: AXIS_H + i * ROW_H + BAND_PAD,
+                          height: BAND_H,
                           ["--band-color" as string]: STAGE_COLORS[seg.stage],
                         }}
                         title={`${r.name} · ${seg.stage}`}
@@ -523,7 +526,7 @@ export default function PlannerClient({
                       <Fragment key={r.dealId}>
                         <div
                           className={styles.pmTile}
-                          style={{ ["--stage-color" as string]: r.color, left: tileLeft, width: tileRight - tileLeft, top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
+                          style={{ ["--stage-color" as string]: r.color, left: tileLeft, width: tileRight - tileLeft, top: AXIS_H + i * ROW_H + BAND_PAD, height: BAND_H }}
                           title={title}
                         />
                         {/* Name sits to the right of the tile so it's never clipped. */}
