@@ -214,8 +214,16 @@
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-  padding-right: 10px;
+  padding-right: 6px;
   z-index: 2;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.itemDragging {
+  z-index: 10;
+  cursor: grabbing;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3));
 }
 .chipPinned,
 .chipAuto,
@@ -260,5 +268,76 @@
 .itemIssueTag {
   font-size: 0.64rem;
   font-weight: 600;
+  color: var(--warn);
+}
+
+/* Header controls */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.resetAll {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.resetAll:hover {
+  color: var(--text);
+}
+
+/* Legend group-shift arrows */
+.shiftBtn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  line-height: 1;
+  padding: 2px 3px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.shiftBtn:hover {
+  color: var(--stage-color);
+  background: color-mix(in srgb, var(--stage-color) 12%, transparent);
+}
+
+/* Drop-target guides shown while dragging */
+.dropGuide {
+  position: absolute;
+  z-index: 1;
+  background: color-mix(in srgb, var(--stage-color) 8%, transparent);
+  border-left: 1px dashed color-mix(in srgb, var(--stage-color) 35%, transparent);
+  border-right: 1px dashed color-mix(in srgb, var(--stage-color) 35%, transparent);
+}
+.dropTarget {
+  background: color-mix(in srgb, var(--stage-color) 22%, transparent);
+  border-left: 1px solid var(--stage-color);
+  border-right: 1px solid var(--stage-color);
+}
+
+/* Per-deal reset (×), shown on hover */
+.resetBtn {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.item:hover .resetBtn {
+  opacity: 0.7;
+}
+.resetBtn:hover {
+  opacity: 1 !important;
   color: var(--warn);
 }

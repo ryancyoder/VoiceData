@@ -21,3 +21,12 @@ export async function GET() {
   }));
   return NextResponse.json({ placements });
 }
+
+// Reset the whole board to auto (clear every manual placement).
+export async function DELETE() {
+  const { error } = await supabase.from("planning_placements").delete().not("deal_id", "is", null);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
+}
