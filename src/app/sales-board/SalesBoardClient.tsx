@@ -36,6 +36,7 @@ const EMPTY_ADD_FORM = {
   contact_phone: "",
   proposal_number: "",
   proposal_date: "",
+  rfp_date: "",
   appointment_date: "",
   start_date: "",
   end_date: "",
@@ -49,17 +50,18 @@ const EMPTY_ADD_FORM = {
 // date belongs to that column's stage; stages without a dedicated date can't
 // be date-sorted at all. "production" resolves to the start day (falling back
 // to the stop day when only a stop is set).
-type StageDateField = "appointment_date" | "proposal_date" | "production";
+type StageDateField = "rfp_date" | "appointment_date" | "proposal_date" | "production";
 
 const STAGE_DATE: Partial<Record<Stage, { field: StageDateField; short: string }>> = {
-  Lead: { field: "appointment_date", short: "Appt" },
-  Propose: { field: "proposal_date", short: "Prop" },
+  Lead: { field: "rfp_date", short: "RFP" },
+  Propose: { field: "appointment_date", short: "Appt" },
   Sent: { field: "proposal_date", short: "Prop" },
   "Project Management": { field: "production", short: "Prod" },
 };
 
 function stageDateValue(d: UiDeal, field: StageDateField): string | null {
   if (field === "production") return d.start_date || d.end_date || null;
+  if (field === "rfp_date") return d.rfp_date || null;
   if (field === "appointment_date") return d.appointment_date || null;
   return d.proposal_date || null;
 }
@@ -537,6 +539,7 @@ export default function SalesBoardClient({
           contact_phone: addForm.contact_phone.trim() || null,
           proposal_number: addForm.proposal_number.trim() || null,
           proposal_date: addForm.proposal_date || null,
+          rfp_date: addForm.rfp_date || null,
           appointment_date: addForm.appointment_date || null,
           start_date: addForm.start_date || null,
           end_date: addForm.end_date || null,
@@ -735,6 +738,15 @@ export default function SalesBoardClient({
             />
           </div>
           <div className={styles.field}>
+            <label htmlFor="f-rfp-date">RFP date</label>
+            <input
+              id="f-rfp-date"
+              type="date"
+              value={addForm.rfp_date}
+              onChange={(e) => setAddForm((f) => ({ ...f, rfp_date: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
             <label htmlFor="f-proposal-date">Proposal date</label>
             <input
               id="f-proposal-date"
@@ -880,7 +892,7 @@ export default function SalesBoardClient({
                       <button
                         type="button"
                         className={`${styles["column-sort-btn"]} ${sortMode.indexOf("date_") === 0 ? styles["is-active"] : ""}`}
-                        aria-label={`Sort ${stage} by its ${stageDate.field === "production" ? "production" : stageDate.field === "appointment_date" ? "appointment" : "proposal"} date`}
+                        aria-label={`Sort ${stage} by ${stageDate.short} date`}
                         title="Sort by this stage's date"
                         onClick={() =>
                           setColumnSortState((s) => ({ ...s, [stage]: nextDateSort(sortMode) }))
