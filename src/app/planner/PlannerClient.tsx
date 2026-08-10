@@ -10,8 +10,8 @@ import styles from "./planner.module.css";
 const PX_PER_DAY = 26;
 const ROW_H = 40;
 const AXIS_H = 36;
-// Bands and tiles fill 75% of the row height, centered (12.5% padding top/bottom).
-const BAND_H = ROW_H * 0.75;
+// Bands and tiles fill 50% of the row height, centered (25% padding top/bottom).
+const BAND_H = ROW_H * 0.5;
 const BAND_PAD = (ROW_H - BAND_H) / 2;
 const HORIZONS = [4, 8, 12, 26];
 
