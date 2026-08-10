@@ -135,42 +135,14 @@
 }
 
 .board {
-  display: flex;
-  align-items: stretch;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
 }
-.labels {
-  flex: 0 0 auto;
-  border-right: 1px solid var(--border);
-  background: var(--surface-2);
-}
-.rowLabel {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  border-top: 1px solid var(--border);
-}
-.rowName {
-  flex: 1;
-  font-size: 0.78rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.rowHours {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-.rowTag {
-  font-size: 0.64rem;
-  font-weight: 600;
-  color: var(--warn);
-  white-space: nowrap;
+.ganttRow {
+  position: absolute;
+  left: 0;
+  border-bottom: 1px solid var(--surface-2);
 }
 
 .scroll {
@@ -215,33 +187,58 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
-.bar {
+/* On-board deal label: its left edge aligns to the scheduled date. */
+.item {
   position: absolute;
-  border-radius: 5px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  overflow: hidden;
+  gap: 6px;
+  white-space: nowrap;
+  padding-right: 10px;
   z-index: 2;
 }
-.barPinned {
-  background: color-mix(in srgb, var(--stage-color) 72%, var(--surface));
-  border: 1px solid var(--stage-color);
+.chipPinned,
+.chipAuto,
+.chipIssue {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 100%;
+  border-radius: 3px;
 }
-.barAuto {
-  background:
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--stage-color) 40%, transparent) 0,
-      color-mix(in srgb, var(--stage-color) 40%, transparent) 3px,
-      transparent 3px,
-      transparent 6px
-    ),
-    color-mix(in srgb, var(--stage-color) 12%, var(--surface));
+.chipPinned {
+  background: var(--stage-color);
+}
+.chipAuto {
+  background: color-mix(in srgb, var(--stage-color) 34%, transparent);
   border: 1px dashed color-mix(in srgb, var(--stage-color) 60%, transparent);
 }
-.barHours {
-  font-size: 9px;
-  font-weight: 700;
+.chipIssue {
+  background: color-mix(in srgb, var(--text-muted) 28%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-muted) 50%, transparent);
+}
+.itemName {
+  font-size: 0.76rem;
+  font-weight: 600;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nameAuto {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.nameIssue {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 500;
+}
+.itemMeta {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.itemIssueTag {
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: var(--warn);
 }

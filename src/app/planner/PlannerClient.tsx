@@ -9,7 +9,6 @@ import styles from "./planner.module.css";
 const PX_PER_DAY = 26;
 const ROW_H = 26;
 const AXIS_H = 24;
-const LABEL_W = 210;
 const HORIZONS = [4, 8, 12, 26];
 
 function todayKey(): string {
@@ -118,26 +117,16 @@ export default function PlannerClient({
             </div>
 
             <div className={styles.board}>
-              {/* Deal-name column */}
-              <div className={styles.labels} style={{ width: LABEL_W }}>
-                <div style={{ height: AXIS_H }} />
-                {stage.rows.map((r) => (
-                  <div key={r.dealId} className={styles.rowLabel} style={{ height: ROW_H }}>
-                    <span className={styles.rowName}>{r.name}</span>
-                    {r.issue ? (
-                      <span className={styles.rowTag}>
-                        {r.issue === "needsEstimate" ? "no estimate" : r.issue === "oversized" ? "too big" : "no room"}
-                      </span>
-                    ) : (
-                      <span className={styles.rowHours}>{r.hours}h</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Timeline */}
               <div className={styles.scroll}>
                 <div className={styles.inner} style={{ width: innerWidth, height: fullHeight }}>
+                  {/* row separators */}
+                  {stage.rows.map((r, i) => (
+                    <div
+                      key={`bg${r.dealId}`}
+                      className={styles.ganttRow}
+                      style={{ top: AXIS_H + i * ROW_H, width: innerWidth, height: ROW_H }}
+                    />
+                  ))}
                   {/* block-window guide bands (full lane height) */}
                   {stage.windows.map((w, i) => {
                     const offset = daysBetween(today, w.date);
@@ -163,19 +152,43 @@ export default function PlannerClient({
                       </span>
                     ))}
                   </div>
-                  {/* deal bars */}
+                  {/* on-board deal labels: the label's left edge sits at the scheduled date */}
                   {stage.rows.map((r, i) => {
-                    if (!r.placement) return null;
-                    const offset = daysBetween(today, r.placement.date);
-                    if (offset < 0 || offset >= totalDays) return null;
+                    const placed = !!r.placement;
+                    const offset = placed ? daysBetween(today, r.placement!.date) : 0;
+                    if (placed && (offset < 0 || offset >= totalDays)) return null;
+                    const left = placed ? offset * PX_PER_DAY : 0;
+                    const chipCls = r.issue
+                      ? styles.chipIssue
+                      : r.placement?.manual
+                        ? styles.chipPinned
+                        : styles.chipAuto;
+                    const issueLabel =
+                      r.issue === "needsEstimate"
+                        ? "needs estimate"
+                        : r.issue === "oversized"
+                          ? "too big for a block"
+                          : r.issue === "unplaced"
+                            ? "no room in horizon"
+                            : "";
                     return (
                       <div
                         key={r.dealId}
-                        className={`${styles.bar} ${r.placement.manual ? styles.barPinned : styles.barAuto}`}
-                        style={{ left: offset * PX_PER_DAY + 3, width: PX_PER_DAY - 6, top: AXIS_H + i * ROW_H + 4, height: ROW_H - 8 }}
-                        title={`${r.name} · ${r.hours}h · ${fmtTick(r.placement.date)}${r.placement.manual ? " (pinned)" : " (auto)"}`}
+                        className={styles.item}
+                        style={{ left, top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
+                        title={
+                          placed
+                            ? `${r.name} · ${r.hours}h · ${fmtTick(r.placement!.date)}${r.placement!.manual ? " (pinned)" : " (auto)"}`
+                            : `${r.name} · ${issueLabel}`
+                        }
                       >
-                        <span className={styles.barHours}>{r.hours}</span>
+                        <span className={chipCls} />
+                        <span className={`${styles.itemName} ${r.issue ? styles.nameIssue : r.placement?.manual ? "" : styles.nameAuto}`}>
+                          {r.name}
+                        </span>
+                        <span className={r.issue ? styles.itemIssueTag : styles.itemMeta}>
+                          {r.issue ? issueLabel : `${r.hours}h`}
+                        </span>
                       </div>
                     );
                   })}
