@@ -67,10 +67,11 @@ interface StageSegment {
   endEx: string; // exclusive
 }
 
-// Turn a deal's transition dates into contiguous colored spans. Each stage runs
-// from its own date until the next defined transition; the last known stage runs
-// to today (still ongoing), and Project Management runs to the production end
-// date. Segments with no positive width (missing/out-of-order dates) are dropped.
+// Turn a deal's transition dates into colored spans. Each stage runs from its
+// own date until the next defined transition; the last known stage runs to today
+// (still ongoing). Two special cases: Project Management runs to the production
+// end date, and Sold always runs to the current date (won → today), regardless
+// of when production is scheduled. Zero/negative-width spans are dropped.
 function buildSegments(d: DealStageDates, today: string): StageSegment[] {
   const seq = BAND_STAGE_ORDER.map((o) => ({ stage: o.stage, date: d[o.key] as string | null })).filter(
     (p): p is { stage: Stage; date: string } => !!p.date
@@ -83,7 +84,9 @@ function buildSegments(d: DealStageDates, today: string): StageSegment[] {
         ? d.end
           ? addDays(d.end, 1)
           : addDays(today, 1)
-        : seq[i + 1]?.date ?? addDays(today, 1);
+        : cur.stage === "Sold"
+          ? addDays(today, 1)
+          : seq[i + 1]?.date ?? addDays(today, 1);
     if (endEx > cur.date) segs.push({ stage: cur.stage, start: cur.date, endEx });
   }
   return segs;
