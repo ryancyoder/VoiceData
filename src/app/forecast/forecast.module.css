@@ -130,6 +130,16 @@
   text-align: right;
 }
 
+.defaultsHint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 18px;
+}
+.defaultsHint a {
+  color: var(--c-propose);
+  text-decoration: underline;
+}
+
 .empty {
   background: var(--surface);
   border: 1px dashed var(--border);

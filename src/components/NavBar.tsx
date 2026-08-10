@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/calendar", label: "Calendar" },
   { href: "/forecast", label: "Forecast" },
   { href: "/photos", label: "Photos" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export default function NavBar() {

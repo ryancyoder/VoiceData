@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { STAGES } from "@/lib/salesBoard";
 import type { PlanningBlock } from "@/lib/planning/blocks";
 import { computeForecast, type ForecastDeal } from "@/lib/planning/schedule";
 import styles from "./forecast.module.css";
@@ -37,28 +36,14 @@ export default function ForecastClient({
   initialDefaults: Record<string, number>;
 }) {
   const router = useRouter();
-  const [defaults, setDefaults] = useState<Record<string, number>>(initialDefaults);
+  const defaults = initialDefaults;
   const [horizonWeeks, setHorizonWeeks] = useState(12);
-  const [savingDefaults, setSavingDefaults] = useState(false);
   const [today] = useState(todayKey);
 
   const forecast = useMemo(
     () => computeForecast(blocks, deals, defaults, { todayKey: today, horizonWeeks }),
     [blocks, deals, defaults, today, horizonWeeks]
   );
-
-  async function saveDefaults() {
-    setSavingDefaults(true);
-    try {
-      await fetch("/api/planning/stage-defaults", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ defaults }),
-      });
-    } finally {
-      setSavingDefaults(false);
-    }
-  }
 
   async function commitDealHours(dealId: number, raw: string) {
     const trimmed = raw.trim();
@@ -91,29 +76,10 @@ export default function ForecastClient({
         </label>
       </div>
 
-      {/* Per-stage default effort editor */}
-      <div className={styles.defaultsPanel}>
-        <div className={styles.defaultsHead}>
-          <span>Default hours per deal, by stage</span>
-          <button type="button" onClick={saveDefaults} disabled={savingDefaults}>
-            {savingDefaults ? "Saving…" : "Save defaults"}
-          </button>
-        </div>
-        <div className={styles.defaultsGrid}>
-          {STAGES.map((s) => (
-            <label key={s} className={styles.defaultItem}>
-              <span>{s}</span>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                value={defaults[s] ?? 0}
-                onChange={(e) => setDefaults({ ...defaults, [s]: Number(e.target.value) || 0 })}
-              />
-            </label>
-          ))}
-        </div>
-      </div>
+      <p className={styles.defaultsHint}>
+        Deals without their own estimate use the per-stage default effort — set those in{" "}
+        <a href="/settings">Settings</a>. Override an individual deal in its row below.
+      </p>
 
       {forecast.stages.length === 0 && (
         <div className={styles.empty}>
