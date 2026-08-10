@@ -439,21 +439,30 @@
   position: relative;
   border-top: 1px solid var(--surface-2);
 }
-.dayBar {
+.slot {
   position: absolute;
   bottom: 5px;
   border-radius: 4px 4px 2px 2px;
-  background: color-mix(in srgb, var(--stage-color) 68%, var(--surface));
-  border: 1px solid var(--stage-color);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  background: color-mix(in srgb, var(--stage-color) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--stage-color) 40%, transparent);
   overflow: hidden;
   cursor: default;
 }
-.dayBarCount {
+.slotFill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--stage-color) 62%, var(--surface));
+}
+.slotCount {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
   font-size: 9px;
   font-weight: 700;
   color: var(--text);
-  padding-top: 1px;
+  z-index: 1;
 }
