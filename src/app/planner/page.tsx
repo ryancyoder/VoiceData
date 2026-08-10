@@ -3,7 +3,7 @@ import type { Stage } from "@/lib/salesBoard";
 import { PLANNING_BLOCK_COLUMNS, rowToBlock, type PlanningBlock, type PlanningBlockRow } from "@/lib/planning/blocks";
 import type { ForecastDeal } from "@/lib/planning/schedule";
 import type { Placement } from "@/lib/planning/board";
-import PlannerClient from "./PlannerClient";
+import PlannerClient, { type DealStageDates } from "./PlannerClient";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,11 @@ type RawDeal = {
   estimated_hours: number | null;
   proposal_date: string | null;
   created_at: string | null;
+  rfp_date: string | null;
+  appointment_date: string | null;
+  won_date: string | null;
+  start_date: string | null;
+  end_date: string | null;
 };
 
 export default async function PlannerPage() {
@@ -22,7 +27,7 @@ export default async function PlannerPage() {
     supabase.from("planning_blocks").select(PLANNING_BLOCK_COLUMNS).order("created_at", { ascending: true }),
     supabase
       .from("Sales Board")
-      .select("id, deal_name, company, stage, estimated_hours, proposal_date, created_at, lost_at")
+      .select("id, deal_name, company, stage, estimated_hours, proposal_date, created_at, lost_at, rfp_date, appointment_date, won_date, start_date, end_date")
       .is("lost_at", null),
     supabase.from("stage_effort_defaults").select("stage, default_hours"),
     supabase.from("planning_placements").select("deal_id, block_id, date, position"),
@@ -54,5 +59,24 @@ export default async function PlannerPage() {
     position: r.position as number,
   }));
 
-  return <PlannerClient blocks={blocks} deals={deals} initialDefaults={defaults} initialPlacements={placements} />;
+  // Per-deal stage-transition dates, used to paint each row's stage-history band.
+  const stageDates: DealStageDates[] = ((dealsRes.data ?? []) as unknown as RawDeal[]).map((d) => ({
+    dealId: d.id,
+    rfp: d.rfp_date,
+    appointment: d.appointment_date,
+    proposal: d.proposal_date,
+    won: d.won_date,
+    start: d.start_date,
+    end: d.end_date,
+  }));
+
+  return (
+    <PlannerClient
+      blocks={blocks}
+      deals={deals}
+      initialDefaults={defaults}
+      initialPlacements={placements}
+      stageDates={stageDates}
+    />
+  );
 }

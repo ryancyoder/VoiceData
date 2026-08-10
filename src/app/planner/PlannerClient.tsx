@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { PlanningBlock } from "@/lib/planning/blocks";
+import { STAGE_COLORS, type PlanningBlock } from "@/lib/planning/blocks";
 import type { ForecastDeal } from "@/lib/planning/schedule";
 import { computeBoard, type Placement } from "@/lib/planning/board";
+import type { Stage } from "@/lib/salesBoard";
 import styles from "./planner.module.css";
 
 const PX_PER_DAY = 26;
@@ -40,6 +41,54 @@ interface StageWindow {
   date: string;
 }
 
+// Per-deal stage-transition dates that drive the row's stage-history band.
+export interface DealStageDates {
+  dealId: number;
+  rfp: string | null; // Lead begins
+  appointment: string | null; // → Propose
+  proposal: string | null; // → Sent
+  won: string | null; // → Sold
+  start: string | null; // → Project Management (production start)
+  end: string | null; // production end
+}
+
+// The stage a deal is in during each span, keyed to the date that span begins.
+const BAND_STAGE_ORDER: { stage: Stage; key: keyof DealStageDates }[] = [
+  { stage: "Lead", key: "rfp" },
+  { stage: "Propose", key: "appointment" },
+  { stage: "Sent", key: "proposal" },
+  { stage: "Sold", key: "won" },
+  { stage: "Project Management", key: "start" },
+];
+
+interface StageSegment {
+  stage: Stage;
+  start: string; // inclusive
+  endEx: string; // exclusive
+}
+
+// Turn a deal's transition dates into contiguous colored spans. Each stage runs
+// from its own date until the next defined transition; the last known stage runs
+// to today (still ongoing), and Project Management runs to the production end
+// date. Segments with no positive width (missing/out-of-order dates) are dropped.
+function buildSegments(d: DealStageDates, today: string): StageSegment[] {
+  const seq = BAND_STAGE_ORDER.map((o) => ({ stage: o.stage, date: d[o.key] as string | null })).filter(
+    (p): p is { stage: Stage; date: string } => !!p.date
+  );
+  const segs: StageSegment[] = [];
+  for (let i = 0; i < seq.length; i++) {
+    const cur = seq[i];
+    const endEx =
+      cur.stage === "Project Management"
+        ? d.end
+          ? addDays(d.end, 1)
+          : addDays(today, 1)
+        : seq[i + 1]?.date ?? addDays(today, 1);
+    if (endEx > cur.date) segs.push({ stage: cur.stage, start: cur.date, endEx });
+  }
+  return segs;
+}
+
 async function patchPlacement(dealId: number, blockId: string, date: string, position: number) {
   await fetch(`/api/planning/placements/${dealId}`, {
     method: "PATCH",
@@ -53,11 +102,13 @@ export default function PlannerClient({
   deals,
   initialDefaults,
   initialPlacements,
+  stageDates,
 }: {
   blocks: PlanningBlock[];
   deals: ForecastDeal[];
   initialDefaults: Record<string, number>;
   initialPlacements: Placement[];
+  stageDates: DealStageDates[];
 }) {
   const [horizonWeeks, setHorizonWeeks] = useState(12);
   const [today] = useState(todayKey);
@@ -72,48 +123,11 @@ export default function PlannerClient({
     [blocks, deals, initialDefaults, placements, today, horizonWeeks]
   );
 
-  // Axis range: today → last block window (min 2 weeks), capped at the horizon.
-  const lastWindow = board.stages
-    .flatMap((s) => s.windows.map((w) => w.date))
-    .reduce((mx, d) => (d > mx ? d : mx), today);
-  const minEnd = addDays(today, 13);
-  const rangeEnd = lastWindow > minEnd ? lastWindow : minEnd;
-  const endKey = rangeEnd > board.horizonEnd ? board.horizonEnd : rangeEnd;
-  const totalDays = daysBetween(today, endKey) + 1;
-  const innerWidth = totalDays * PX_PER_DAY;
-  const ticks = Array.from({ length: Math.ceil(totalDays / 7) }, (_, i) => ({
-    offset: i * 7,
-    label: fmtTick(addDays(today, i * 7)),
-  }));
-
-  // Per-day columns (day-of-month numbers) and the month segments above them.
-  const days = Array.from({ length: totalDays }, (_, i) => {
-    const key = addDays(today, i);
-    const [y, m, d] = key.split("-").map(Number);
-    return {
-      offset: i,
-      dayOfMonth: d,
-      monthKey: `${y}-${m}`,
-      monthLabel: `${String(m).padStart(2, "0")}/${String(y).slice(-2)}`,
-    };
-  });
-  const monthSegments = days
-    .filter((d, i) => i === 0 || days[i - 1].monthKey !== d.monthKey)
-    .map((d) => ({ key: d.monthKey, offset: d.offset, label: d.monthLabel }));
-
-  // Valid drop targets (block windows) per stage, in the visible range.
-  const windowsByStage = useMemo(() => {
-    const m = new Map<string, StageWindow[]>();
-    for (const s of board.stages) {
-      m.set(
-        s.stage,
-        s.windows
-          .map((w) => ({ offset: daysBetween(today, w.date), blockId: w.blockId, date: w.date }))
-          .filter((w) => w.offset >= 0 && w.offset < totalDays)
-      );
-    }
+  const datesById = useMemo(() => {
+    const m = new Map<number, DealStageDates>();
+    for (const d of stageDates) m.set(d.dealId, d);
     return m;
-  }, [board, today, totalDays]);
+  }, [stageDates]);
 
   const allRows = board.stages
     .flatMap((s) => s.rows.map((r) => ({ ...r, stage: s.stage, color: s.color })))
@@ -123,6 +137,63 @@ export default function PlannerClient({
       return ad === bd ? a.orderDate.localeCompare(b.orderDate) : ad.localeCompare(bd);
     });
   const fullHeight = AXIS_H + Math.max(1, allRows.length) * ROW_H;
+
+  // The timeline's left edge is pulled back to the earliest stage-history date
+  // among the shown deals, so each row's history band is visible (not just the
+  // today-forward scheduling range). Everything is measured from this origin.
+  const rangeStart = allRows.reduce((min, r) => {
+    const dd = datesById.get(r.dealId);
+    if (!dd) return min;
+    const cand = [dd.rfp, dd.appointment, dd.proposal, dd.won, dd.start, dd.end].filter((x): x is string => !!x);
+    return cand.reduce((m, k) => (k < m ? k : m), min);
+  }, today);
+  const todayOffset = daysBetween(rangeStart, today);
+
+  // Forward end: today → last block window (min 2 weeks), capped at the horizon.
+  const lastWindow = board.stages
+    .flatMap((s) => s.windows.map((w) => w.date))
+    .reduce((mx, d) => (d > mx ? d : mx), today);
+  const minEnd = addDays(today, 13);
+  const rangeEnd = lastWindow > minEnd ? lastWindow : minEnd;
+  const endKey = rangeEnd > board.horizonEnd ? board.horizonEnd : rangeEnd;
+  const totalDays = daysBetween(rangeStart, endKey) + 1;
+  const innerWidth = totalDays * PX_PER_DAY;
+  const ticks = Array.from({ length: Math.ceil(totalDays / 7) }, (_, i) => ({
+    offset: i * 7,
+    label: fmtTick(addDays(rangeStart, i * 7)),
+  }));
+
+  // Per-day columns (day-of-month numbers) and the month segments above them.
+  const days = Array.from({ length: totalDays }, (_, i) => {
+    const key = addDays(rangeStart, i);
+    const [y, m, d] = key.split("-").map(Number);
+    return {
+      offset: i,
+      key,
+      dayOfMonth: d,
+      monthKey: `${y}-${m}`,
+      monthLabel: `${String(m).padStart(2, "0")}/${String(y).slice(-2)}`,
+    };
+  });
+  const monthSegments = days
+    .filter((d, i) => i === 0 || days[i - 1].monthKey !== d.monthKey)
+    .map((d) => ({ key: d.monthKey, offset: d.offset, label: d.monthLabel }));
+
+  // Valid drop targets (block windows) per stage, in the visible range. (Plain
+  // const — the React Compiler memoizes it; a manual useMemo whose deps are
+  // themselves derived consts can't be preserved.)
+  const windowsByStage: Map<string, StageWindow[]> = (() => {
+    const m = new Map<string, StageWindow[]>();
+    for (const s of board.stages) {
+      m.set(
+        s.stage,
+        s.windows
+          .map((w) => ({ offset: daysBetween(rangeStart, w.date), blockId: w.blockId, date: w.date }))
+          .filter((w) => w.offset >= 0 && w.offset < totalDays)
+      );
+    }
+    return m;
+  })();
 
   // ── Drag to reschedule (snap to the deal's stage block windows) ───────────
   const innerRef = useRef<HTMLDivElement>(null);
@@ -184,7 +255,7 @@ export default function PlannerClient({
       dealId: row.dealId,
       color: row.color,
       guides: windows.map((w) => w.offset),
-      targetOffset: row.placement ? daysBetween(today, row.placement.date) : 0,
+      targetOffset: row.placement ? daysBetween(rangeStart, row.placement.date) : todayOffset,
     });
     window.addEventListener("pointermove", onDragMove, { signal: ctrl.signal });
     window.addEventListener("pointerup", onDragUp, { signal: ctrl.signal });
@@ -283,6 +354,31 @@ export default function PlannerClient({
           <div className={styles.board}>
             <div className={styles.scroll}>
               <div ref={innerRef} className={styles.inner} style={{ width: innerWidth, height: fullHeight }}>
+                {/* Stage-history bands (row backgrounds): each deal's time in a
+                    stage, colored by the stage. Behind the grid and drag rows. */}
+                {allRows.map((r, i) => {
+                  const dd = datesById.get(r.dealId);
+                  if (!dd) return null;
+                  return buildSegments(dd, today).map((seg, si) => {
+                    const from = Math.max(0, daysBetween(rangeStart, seg.start));
+                    const to = Math.min(totalDays, daysBetween(rangeStart, seg.endEx));
+                    if (to <= from) return null;
+                    return (
+                      <div
+                        key={`sb${r.dealId}-${si}`}
+                        className={styles.stageBand}
+                        style={{
+                          left: from * PX_PER_DAY,
+                          width: (to - from) * PX_PER_DAY,
+                          top: AXIS_H + i * ROW_H,
+                          height: ROW_H,
+                          ["--band-color" as string]: STAGE_COLORS[seg.stage],
+                        }}
+                        title={`${r.name} · ${seg.stage}`}
+                      />
+                    );
+                  });
+                })}
                 {allRows.map((r, i) => (
                   <div
                     key={`bg${r.dealId}`}
@@ -307,7 +403,7 @@ export default function PlannerClient({
                       style={{ left: off * PX_PER_DAY, width: PX_PER_DAY, top: AXIS_H, height: fullHeight - AXIS_H, ["--stage-color" as string]: drag.color }}
                     />
                   ))}
-                <div className={styles.today} style={{ height: fullHeight }} />
+                <div className={styles.today} style={{ left: todayOffset * PX_PER_DAY, height: fullHeight }} />
                 <div className={styles.axis} style={{ height: AXIS_H }}>
                   {monthSegments.map((m) => (
                     <span key={m.key} className={styles.monthLabel} style={{ left: m.offset * PX_PER_DAY + 3 }}>
@@ -317,7 +413,7 @@ export default function PlannerClient({
                   {days.map((d) => (
                     <span
                       key={`dn${d.offset}`}
-                      className={`${styles.dayNum} ${d.offset === 0 ? styles.dayNumToday : ""}`}
+                      className={`${styles.dayNum} ${d.key === today ? styles.dayNumToday : ""}`}
                       style={{ left: d.offset * PX_PER_DAY, width: PX_PER_DAY }}
                     >
                       {d.dayOfMonth}
@@ -328,7 +424,7 @@ export default function PlannerClient({
                 {allRows.map((r, i) => {
                   const placed = !!r.placement;
                   const isDragging = drag?.dealId === r.dealId;
-                  const offset = isDragging ? drag!.targetOffset : placed ? daysBetween(today, r.placement!.date) : 0;
+                  const offset = isDragging ? drag!.targetOffset : placed ? daysBetween(rangeStart, r.placement!.date) : todayOffset;
                   if (!isDragging && placed && (offset < 0 || offset >= totalDays)) return null;
                   const left = offset * PX_PER_DAY;
                   const chipCls = r.issue ? styles.chipIssue : r.placement?.manual ? styles.chipPinned : styles.chipAuto;

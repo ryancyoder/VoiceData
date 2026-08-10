@@ -187,6 +187,15 @@
   background: color-mix(in srgb, var(--warn) 14%, transparent);
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
 }
+/* Stage-history band: a deal's time in one stage, as a light row background.
+   Colored by the universal stage color; segments abut at each transition. */
+.stageBand {
+  position: absolute;
+  background: color-mix(in srgb, var(--band-color) 15%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--band-color) 30%, transparent);
+  pointer-events: none;
+}
+
 /* Light day separators */
 .dayGrid {
   position: absolute;
