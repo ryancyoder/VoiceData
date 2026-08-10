@@ -166,6 +166,19 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.stageHead:focus-visible {
+  outline: 2px solid var(--stage-color);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.caret {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  width: 0.9em;
+  display: inline-block;
 }
 .stageHead h2 {
   font-size: 1.05rem;

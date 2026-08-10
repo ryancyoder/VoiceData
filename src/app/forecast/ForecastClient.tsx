@@ -39,6 +39,16 @@ export default function ForecastClient({
   const defaults = initialDefaults;
   const [horizonWeeks, setHorizonWeeks] = useState(12);
   const [today] = useState(todayKey);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+
+  function toggleStage(stage: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  }
 
   const forecast = useMemo(
     () => computeForecast(blocks, deals, defaults, { todayKey: today, horizonWeeks }),
@@ -99,9 +109,26 @@ export default function ForecastClient({
           .filter((d) => d.stage === stage.stage)
           .sort((a, b) => (a.orderDate === b.orderDate ? a.id - b.id : a.orderDate.localeCompare(b.orderDate)));
 
+        const isCollapsed = collapsed.has(stage.stage);
+
         return (
           <section key={stage.stage} className={styles.stage} style={{ ["--stage-color" as string]: stage.color }}>
-            <div className={styles.stageHead}>
+            <div
+              className={styles.stageHead}
+              role="button"
+              tabIndex={0}
+              aria-expanded={!isCollapsed}
+              onClick={() => toggleStage(stage.stage)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleStage(stage.stage);
+                }
+              }}
+            >
+              <span className={styles.caret} aria-hidden>
+                {isCollapsed ? "▸" : "▾"}
+              </span>
               <span className={styles.stageDot} />
               <h2>{stage.stage}</h2>
               <span className={styles.metric}>{stage.dealCount} deals</span>
@@ -128,6 +155,8 @@ export default function ForecastClient({
               )}
             </div>
 
+            {!isCollapsed && (
+              <>
             {/* Timeline: block windows (chronological) with packed deal bars */}
             {stage.windows.length === 0 ? (
               <p className={styles.noWindows}>No blocks for this stage within the horizon.</p>
@@ -216,6 +245,8 @@ export default function ForecastClient({
                 )}
               </tbody>
             </table>
+              </>
+            )}
           </section>
         );
       })}
