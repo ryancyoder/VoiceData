@@ -383,42 +383,55 @@ export default function CalendarClient({
   // Planning-block drag/resize — mirrors the event drag, but works in
   // minutes-of-day and PATCHes the block's start/end time.
   const [isBlockDragging, setIsBlockDragging] = useState(false);
-  const [blockDragPreview, setBlockDragPreview] = useState<{ blockId: string; startMin: number; endMin: number } | null>(null);
+  const [blockDragPreview, setBlockDragPreview] = useState<{
+    blockId: string;
+    startMin: number;
+    endMin: number;
+    targetDate: string;
+  } | null>(null);
   const blockDragRef = useRef<{
     blockId: string;
     mode: "move" | "resize-start" | "resize-end";
+    oneOff: boolean;
     startClientY: number;
     origStartMin: number;
     origEndMin: number;
     curStartMin: number;
     curEndMin: number;
+    origDate: string;
+    curDate: string;
     moved: boolean;
   } | null>(null);
   const suppressBlockClickRef = useRef(false);
 
-  function beginBlockDrag(block: PlanningBlock, mode: "move" | "resize-start" | "resize-end", clientY: number) {
+  function beginBlockDrag(block: PlanningBlock, mode: "move" | "resize-start" | "resize-end", clientY: number, originDate: string) {
     const origStartMin = timeToMin(block.startTime);
     const origEndMin = timeToMin(block.endTime);
     blockDragRef.current = {
       blockId: block.id,
       mode,
+      oneOff: block.kind === "one_off",
       startClientY: clientY,
       origStartMin,
       origEndMin,
       curStartMin: origStartMin,
       curEndMin: origEndMin,
+      origDate: originDate,
+      curDate: originDate,
       moved: false,
     };
-    setBlockDragPreview({ blockId: block.id, startMin: origStartMin, endMin: origEndMin });
+    setBlockDragPreview({ blockId: block.id, startMin: origStartMin, endMin: origEndMin, targetDate: originDate });
     setIsBlockDragging(true);
   }
 
-  async function saveBlockTimes(blockId: string, startMin: number, endMin: number) {
+  async function saveBlockDrag(blockId: string, startMin: number, endMin: number, blockDate?: string) {
     try {
+      const body: Record<string, unknown> = { startTime: minToTime(startMin), endTime: minToTime(endMin) };
+      if (blockDate) body.blockDate = blockDate;
       const res = await fetch(`/api/planning/blocks/${blockId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startTime: minToTime(startMin), endTime: minToTime(endMin) }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string };
@@ -452,9 +465,18 @@ export default function CalendarClient({
       } else {
         en = Math.min(1440, Math.max(d.origEndMin + deltaMin, d.origStartMin + SNAP));
       }
-      const moved = d.moved || Math.abs(deltaPx) > 3;
-      blockDragRef.current = { ...d, curStartMin: s, curEndMin: en, moved };
-      setBlockDragPreview({ blockId: d.blockId, startMin: s, endMin: en });
+      // Horizontal (cross-day) move — one-off blocks only. The dragging band has
+      // pointer-events:none, so elementFromPoint sees the day column beneath it.
+      let targetDate = d.curDate;
+      if (d.mode === "move" && d.oneOff) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const dateEl = el?.closest("[data-date]");
+        const dd = dateEl?.getAttribute("data-date");
+        if (dd) targetDate = dd;
+      }
+      const moved = d.moved || Math.abs(deltaPx) > 3 || targetDate !== d.origDate;
+      blockDragRef.current = { ...d, curStartMin: s, curEndMin: en, curDate: targetDate, moved };
+      setBlockDragPreview({ blockId: d.blockId, startMin: s, endMin: en, targetDate });
     }
 
     function onUp() {
@@ -462,9 +484,11 @@ export default function CalendarClient({
       blockDragRef.current = null;
       setIsBlockDragging(false);
       setBlockDragPreview(null);
-      if (d && d.moved && (d.curStartMin !== d.origStartMin || d.curEndMin !== d.origEndMin)) {
+      const timesChanged = d && (d.curStartMin !== d.origStartMin || d.curEndMin !== d.origEndMin);
+      const dayChanged = d && d.oneOff && d.curDate !== d.origDate;
+      if (d && d.moved && (timesChanged || dayChanged)) {
         suppressBlockClickRef.current = true;
-        saveBlockTimes(d.blockId, d.curStartMin, d.curEndMin);
+        saveBlockDrag(d.blockId, d.curStartMin, d.curEndMin, dayChanged ? d.curDate : undefined);
       }
     }
 
@@ -1017,11 +1041,21 @@ export default function CalendarClient({
           </div>
           {weekDays.map((day) => {
             const laidOut = layoutDay(day, eventsForLayout);
-            const dayBlocks = blocksForDay(day, blocks);
             const dayKey = localDateKey(day);
+            // While dragging a one-off block across days, render it in the target
+            // column (remove it from its natural column).
+            const dayBlocks = (() => {
+              const base = blocksForDay(day, blocks);
+              if (!blockDragPreview) return base;
+              const dragged = blocks.find((b) => b.id === blockDragPreview.blockId);
+              if (!dragged || dragged.kind !== "one_off") return base;
+              const without = base.filter((db) => db.block.id !== blockDragPreview.blockId);
+              return blockDragPreview.targetDate === dayKey ? [...without, { block: dragged, top: 0, height: 0 }] : without;
+            })();
             return (
               <div
                 key={day.toISOString()}
+                data-date={dayKey}
                 className={styles["day-column"]}
                 style={{ height: HOUR_HEIGHT * 24, ["--hour-height" as string]: `${HOUR_HEIGHT}px` }}
               >
@@ -1047,7 +1081,7 @@ export default function CalendarClient({
                       title={`Planning block · ${block.stage} — drag to move, edges to resize`}
                       onPointerDown={(e) => {
                         e.preventDefault();
-                        beginBlockDrag(block, "move", e.clientY);
+                        beginBlockDrag(block, "move", e.clientY, dayKey);
                       }}
                       onClick={() => {
                         if (suppressBlockClickRef.current) {
@@ -1069,7 +1103,7 @@ export default function CalendarClient({
                         onPointerDown={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          beginBlockDrag(block, "resize-start", e.clientY);
+                          beginBlockDrag(block, "resize-start", e.clientY, dayKey);
                         }}
                       />
                       <span
@@ -1100,7 +1134,7 @@ export default function CalendarClient({
                         onPointerDown={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          beginBlockDrag(block, "resize-end", e.clientY);
+                          beginBlockDrag(block, "resize-end", e.clientY, dayKey);
                         }}
                       />
                     </div>

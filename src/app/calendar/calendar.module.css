@@ -608,6 +608,8 @@
   z-index: 6;
   cursor: grabbing;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  /* Let elementFromPoint see the day column underneath so cross-day drag works. */
+  pointer-events: none;
 }
 .planning-block-label {
   display: block;
