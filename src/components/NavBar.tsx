@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/properties", label: "Properties" },
   { href: "/calendar", label: "Calendar" },
   { href: "/forecast", label: "Forecast" },
+  { href: "/planner", label: "Planner" },
   { href: "/photos", label: "Photos" },
   { href: "/settings", label: "Settings" },
 ];
