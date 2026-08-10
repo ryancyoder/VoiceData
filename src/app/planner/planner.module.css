@@ -192,8 +192,7 @@
   position: absolute;
   top: 0;
   width: 1px;
-  background: var(--border);
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--text-muted) 28%, transparent);
   pointer-events: none;
 }
 /* Darker week separators (drawn over the day lines) */
