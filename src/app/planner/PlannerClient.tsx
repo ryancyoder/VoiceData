@@ -37,6 +37,7 @@ function fmtTick(key: string): string {
 
 interface StageWindow {
   offset: number;
+  px: number; // left pixel under the non-uniform time scale
   blockId: string;
   date: string;
 }
@@ -187,6 +188,15 @@ export default function PlannerClient({
   }, today);
   const todayOffset = daysBetween(rangeStart, today);
 
+  // Non-uniform time scale: the past is compressed to weekly resolution (a whole
+  // week occupies one day's width) so history stays compact, while the present
+  // and future run at full daily resolution so the forecast has room to breathe.
+  const PAST_PX_PER_DAY = PX_PER_DAY / 7;
+  const pastWidth = todayOffset * PAST_PX_PER_DAY;
+  // Left pixel of the day that is `offset` days from rangeStart.
+  const xOf = (offset: number) =>
+    Math.min(offset, todayOffset) * PAST_PX_PER_DAY + Math.max(0, offset - todayOffset) * PX_PER_DAY;
+
   // Forward end: today → last block window (min 2 weeks), capped at the horizon.
   const lastWindow = board.stages
     .flatMap((s) => s.windows.map((w) => w.date))
@@ -195,7 +205,7 @@ export default function PlannerClient({
   const rangeEnd = lastWindow > minEnd ? lastWindow : minEnd;
   const endKey = rangeEnd > board.horizonEnd ? board.horizonEnd : rangeEnd;
   const totalDays = daysBetween(rangeStart, endKey) + 1;
-  const innerWidth = totalDays * PX_PER_DAY;
+  const innerWidth = xOf(totalDays);
   const ticks = Array.from({ length: Math.ceil(totalDays / 7) }, (_, i) => ({
     offset: i * 7,
     label: fmtTick(addDays(rangeStart, i * 7)),
@@ -213,20 +223,27 @@ export default function PlannerClient({
       monthLabel: `${String(m).padStart(2, "0")}/${String(y).slice(-2)}`,
     };
   });
+  // Day-of-month labels: one per day in the uncompressed present/future, but only
+  // weekly in the compressed past (per-day would overlap).
+  const dayMarks = days.filter((d) => d.offset >= todayOffset || d.offset % 7 === 0);
   const monthSegments = days
     .filter((d, i) => i === 0 || days[i - 1].monthKey !== d.monthKey)
     .map((d) => ({ key: d.monthKey, offset: d.offset, label: d.monthLabel }));
 
-  // Valid drop targets (block windows) per stage, in the visible range. (Plain
-  // const — the React Compiler memoizes it; a manual useMemo whose deps are
-  // themselves derived consts can't be preserved.)
+  // Valid drop targets (block windows) per stage, in the visible range, each with
+  // its pixel position under the non-uniform scale. (Plain const — the React
+  // Compiler memoizes it; a manual useMemo over derived-const deps can't be
+  // preserved.)
   const windowsByStage: Map<string, StageWindow[]> = (() => {
     const m = new Map<string, StageWindow[]>();
     for (const s of board.stages) {
       m.set(
         s.stage,
         s.windows
-          .map((w) => ({ offset: daysBetween(rangeStart, w.date), blockId: w.blockId, date: w.date }))
+          .map((w) => {
+            const offset = daysBetween(rangeStart, w.date);
+            return { offset, px: xOf(offset), blockId: w.blockId, date: w.date };
+          })
           .filter((w) => w.offset >= 0 && w.offset < totalDays)
       );
     }
@@ -243,7 +260,9 @@ export default function PlannerClient({
     moved: boolean;
     ctrl: AbortController;
   } | null>(null);
-  const [drag, setDrag] = useState<{ dealId: number; color: string; guides: number[]; targetOffset: number } | null>(null);
+  // guides / targetPx are in pixels (the non-uniform scale means offsets no
+  // longer map linearly to x).
+  const [drag, setDrag] = useState<{ dealId: number; color: string; guides: number[]; targetPx: number } | null>(null);
 
   const onDragMove = useCallback((e: PointerEvent) => {
     const d = dragRef.current;
@@ -252,7 +271,7 @@ export default function PlannerClient({
     let best = 0;
     let bestDist = Infinity;
     d.windows.forEach((w, i) => {
-      const dist = Math.abs(w.offset * PX_PER_DAY + PX_PER_DAY / 2 - x);
+      const dist = Math.abs(w.px + PX_PER_DAY / 2 - x);
       if (dist < bestDist) {
         bestDist = dist;
         best = i;
@@ -260,7 +279,7 @@ export default function PlannerClient({
     });
     d.targetIdx = best;
     d.moved = true;
-    setDrag((prev) => (prev ? { ...prev, targetOffset: d.windows[best].offset } : prev));
+    setDrag((prev) => (prev ? { ...prev, targetPx: d.windows[best].px } : prev));
   }, []);
 
   const onDragUp = useCallback(() => {
@@ -292,8 +311,8 @@ export default function PlannerClient({
     setDrag({
       dealId: row.dealId,
       color: row.color,
-      guides: windows.map((w) => w.offset),
-      targetOffset: row.placement ? daysBetween(rangeStart, row.placement.date) : todayOffset,
+      guides: windows.map((w) => w.px),
+      targetPx: row.placement ? xOf(daysBetween(rangeStart, row.placement.date)) : pastWidth,
     });
     window.addEventListener("pointermove", onDragMove, { signal: ctrl.signal });
     window.addEventListener("pointerup", onDragUp, { signal: ctrl.signal });
@@ -429,8 +448,8 @@ export default function PlannerClient({
                         key={`sb${r.dealId}-${si}`}
                         className={styles.stageBand}
                         style={{
-                          left: from * PX_PER_DAY,
-                          width: (to - from) * PX_PER_DAY,
+                          left: xOf(from),
+                          width: xOf(to) - xOf(from),
                           top: AXIS_H + i * ROW_H,
                           height: ROW_H,
                           ["--band-color" as string]: STAGE_COLORS[seg.stage],
@@ -449,33 +468,38 @@ export default function PlannerClient({
                     title={`${r.name} — drag anywhere on this row to reschedule`}
                   />
                 ))}
-                {Array.from({ length: totalDays }, (_, i) => i).map((off) => (
-                  <div key={`d${off}`} className={styles.dayGrid} style={{ left: off * PX_PER_DAY, height: fullHeight }} />
-                ))}
+                {/* Light day separators — only in the uncompressed present/future. */}
+                {Array.from({ length: totalDays + 1 }, (_, i) => i)
+                  .filter((off) => off >= todayOffset)
+                  .map((off) => (
+                    <div key={`d${off}`} className={styles.dayGrid} style={{ left: xOf(off), height: fullHeight }} />
+                  ))}
+                {/* Darker weekly separators — across the whole range (the primary
+                    gridlines in the compressed past). */}
                 {ticks.map((t) => (
-                  <div key={`g${t.offset}`} className={styles.grid} style={{ left: t.offset * PX_PER_DAY, height: fullHeight }} />
+                  <div key={`g${t.offset}`} className={styles.grid} style={{ left: xOf(t.offset), height: fullHeight }} />
                 ))}
                 {/* drop-target guides while dragging */}
                 {drag &&
-                  drag.guides.map((off) => (
+                  drag.guides.map((px) => (
                     <div
-                      key={`gd${off}`}
-                      className={`${styles.dropGuide} ${off === drag.targetOffset ? styles.dropTarget : ""}`}
-                      style={{ left: off * PX_PER_DAY, width: PX_PER_DAY, top: AXIS_H, height: fullHeight - AXIS_H, ["--stage-color" as string]: drag.color }}
+                      key={`gd${px}`}
+                      className={`${styles.dropGuide} ${px === drag.targetPx ? styles.dropTarget : ""}`}
+                      style={{ left: px, width: PX_PER_DAY, top: AXIS_H, height: fullHeight - AXIS_H, ["--stage-color" as string]: drag.color }}
                     />
                   ))}
-                <div className={styles.today} style={{ left: todayOffset * PX_PER_DAY, height: fullHeight }} />
+                <div className={styles.today} style={{ left: pastWidth, height: fullHeight }} />
                 <div className={styles.axis} style={{ height: AXIS_H }}>
                   {monthSegments.map((m) => (
-                    <span key={m.key} className={styles.monthLabel} style={{ left: m.offset * PX_PER_DAY + 3 }}>
+                    <span key={m.key} className={styles.monthLabel} style={{ left: xOf(m.offset) + 3 }}>
                       {m.label}
                     </span>
                   ))}
-                  {days.map((d) => (
+                  {dayMarks.map((d) => (
                     <span
                       key={`dn${d.offset}`}
                       className={`${styles.dayNum} ${d.key === today ? styles.dayNumToday : ""}`}
-                      style={{ left: d.offset * PX_PER_DAY, width: PX_PER_DAY }}
+                      style={{ left: xOf(d.offset), width: PX_PER_DAY }}
                     >
                       {d.dayOfMonth}
                     </span>
@@ -496,7 +520,7 @@ export default function PlannerClient({
                       <div
                         key={r.dealId}
                         className={styles.pmTile}
-                        style={{ ["--stage-color" as string]: r.color, left: from * PX_PER_DAY, width: (to - from) * PX_PER_DAY, top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
+                        style={{ ["--stage-color" as string]: r.color, left: xOf(from), width: xOf(to) - xOf(from), top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
                         title={`${r.name} · Project Management · ${fmtTick(pmDates.start)} – ${fmtTick(end)}`}
                       >
                         <span className={styles.pmTileName}>{r.name}</span>
@@ -505,9 +529,9 @@ export default function PlannerClient({
                   }
                   const placed = !!r.placement;
                   const isDragging = drag?.dealId === r.dealId;
-                  const offset = isDragging ? drag!.targetOffset : placed ? daysBetween(rangeStart, r.placement!.date) : todayOffset;
+                  const offset = placed ? daysBetween(rangeStart, r.placement!.date) : todayOffset;
                   if (!isDragging && placed && (offset < 0 || offset >= totalDays)) return null;
-                  const left = offset * PX_PER_DAY;
+                  const left = isDragging ? drag!.targetPx : xOf(offset);
                   const chipCls = r.issue ? styles.chipIssue : r.placement?.manual ? styles.chipPinned : styles.chipAuto;
                   const issueLabel =
                     r.issue === "needsEstimate"
