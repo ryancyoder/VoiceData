@@ -55,6 +55,11 @@ export default function ForecastClient({
     [blocks, deals, defaults, today, horizonWeeks]
   );
 
+  const allCollapsed = forecast.stages.length > 0 && forecast.stages.every((s) => collapsed.has(s.stage));
+  function toggleAll() {
+    setCollapsed(allCollapsed ? new Set() : new Set(forecast.stages.map((s) => s.stage)));
+  }
+
   async function commitDealHours(dealId: number, raw: string) {
     const trimmed = raw.trim();
     const hours = trimmed === "" ? null : Number(trimmed);
@@ -74,16 +79,23 @@ export default function ForecastClient({
           <h1>Forecast</h1>
           <p>How far out your pipeline runs, packing deals into planning blocks by stage.</p>
         </div>
-        <label className={styles.horizon}>
-          Horizon
-          <select value={horizonWeeks} onChange={(e) => setHorizonWeeks(Number(e.target.value))}>
-            {HORIZONS.map((w) => (
-              <option key={w} value={w}>
-                {w} weeks
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className={styles.controls}>
+          {forecast.stages.length > 0 && (
+            <button type="button" className={styles.collapseAll} onClick={toggleAll}>
+              {allCollapsed ? "Expand all" : "Collapse all"}
+            </button>
+          )}
+          <label className={styles.horizon}>
+            Horizon
+            <select value={horizonWeeks} onChange={(e) => setHorizonWeeks(Number(e.target.value))}>
+              {HORIZONS.map((w) => (
+                <option key={w} value={w}>
+                  {w} weeks
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       <p className={styles.defaultsHint}>
