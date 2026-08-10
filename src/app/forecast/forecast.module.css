@@ -370,9 +370,29 @@
   font-size: 0.9rem;
   font-weight: 700;
 }
+.ganttHeadRight {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.weekendToggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
 .ganttHint {
   font-size: 0.72rem;
   color: var(--text-muted);
+}
+.weekSep {
+  position: absolute;
+  top: 0;
+  width: 0;
+  border-left: 1px dotted color-mix(in srgb, var(--text-muted) 55%, transparent);
 }
 .ganttBody {
   display: flex;

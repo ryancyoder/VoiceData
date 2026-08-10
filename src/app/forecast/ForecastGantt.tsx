@@ -1,13 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { addDaysKey, type ForecastResult } from "@/lib/planning/schedule";
 import styles from "./forecast.module.css";
 
 // Continuous real-time-scale overview: a horizontal date axis starting today,
 // one swim lane per stage. Every block window is drawn as a slot on its real
-// date (height = capacity, shared scale across lanes); the scheduled portion is
-// filled in. Days with no block show as gaps, so you can see the whole
-// allocated schedule and the empty space between blocks.
+// date (height = capacity, shared scale); the scheduled portion is filled and
+// the open capacity is hatched. Days with no block show as gaps.
+//
+// "Hide weekends" collapses Sat/Sun to zero width (a dotted line between weeks)
+// so the workweek reads denser. Positioning is driven by a per-day width
+// prefix-sum so both modes share one code path.
 
 const PX_PER_DAY = 30;
 const LANE_H = 46;
@@ -27,10 +31,12 @@ function fmtTick(key: string): string {
 }
 
 export default function ForecastGantt({ forecast, todayKey }: { forecast: ForecastResult; todayKey: string }) {
+  const [hideWeekends, setHideWeekends] = useState(false);
+
   const lanes = forecast.stages;
   if (lanes.length === 0) return null;
 
-  // Per stage: block-window capacity per date, and scheduled (used) hours per date.
+  // Per stage: block-window capacity per date, and scheduled hours per date.
   const laneData = lanes.map((stage) => {
     const cap = new Map<string, number>();
     for (const w of stage.windows) cap.set(w.date, (cap.get(w.date) ?? 0) + w.capacityHours);
@@ -45,9 +51,7 @@ export default function ForecastGantt({ forecast, todayKey }: { forecast: Foreca
     return { stage, cap, used, dates };
   });
 
-  // Shared vertical scale = the biggest single-day block capacity.
   const maxDayHours = Math.max(1, ...laneData.flatMap((l) => [...l.cap.values()]));
-  // Range end = the last block window (min 2 weeks out), capped at the horizon.
   const lastKey = laneData.reduce((mx, l) => {
     const d = l.dates.length ? l.dates[l.dates.length - 1] : todayKey;
     return d > mx ? d : mx;
@@ -55,9 +59,19 @@ export default function ForecastGantt({ forecast, todayKey }: { forecast: Foreca
   const minEnd = addDaysKey(todayKey, 13);
   const rangeEnd = lastKey > minEnd ? lastKey : minEnd;
   const endKey = rangeEnd > forecast.horizonEnd ? forecast.horizonEnd : rangeEnd;
-
   const totalDays = daysBetween(todayKey, endKey) + 1;
-  const innerWidth = totalDays * PX_PER_DAY;
+
+  const todayWd = parseKey(todayKey).getDay();
+  const isWeekend = (offset: number) => {
+    const wd = (todayWd + offset) % 7;
+    return wd === 0 || wd === 6;
+  };
+
+  // Per-day width and its left-edge prefix sum (xAt[offset]); weekends collapse
+  // to 0 width when hidden.
+  const widths = Array.from({ length: totalDays }, (_, i) => (hideWeekends && isWeekend(i) ? 0 : PX_PER_DAY));
+  const xAt = widths.reduce<number[]>((acc, w) => [...acc, acc[acc.length - 1] + w], [0]);
+  const innerWidth = xAt[totalDays];
   const fullHeight = AXIS_H + lanes.length * LANE_H;
   const barTrack = LANE_H - 14;
 
@@ -66,18 +80,22 @@ export default function ForecastGantt({ forecast, todayKey }: { forecast: Foreca
     return { offset, label: fmtTick(addDaysKey(todayKey, offset)) };
   });
 
-  // Weekend day offsets (Sat/Sun) for faint shading.
-  const todayWd = parseKey(todayKey).getDay();
-  const weekendOffsets = Array.from({ length: totalDays }, (_, i) => i).filter((i) => {
-    const wd = (todayWd + i) % 7;
-    return wd === 0 || wd === 6;
-  });
+  const allOffsets = Array.from({ length: totalDays }, (_, i) => i);
+  const weekendOffsets = allOffsets.filter(isWeekend);
+  // One dotted separator per weekend (anchored on Saturday's collapsed edge).
+  const separatorOffsets = weekendOffsets.filter((i) => (todayWd + i) % 7 === 6);
 
   return (
     <div className={styles.gantt}>
       <div className={styles.ganttHead}>
         <span>Timeline</span>
-        <span className={styles.ganttHint}>each slot = a block window · filled = scheduled · height ∝ capacity</span>
+        <div className={styles.ganttHeadRight}>
+          <label className={styles.weekendToggle}>
+            <input type="checkbox" checked={hideWeekends} onChange={(e) => setHideWeekends(e.target.checked)} />
+            Hide weekends
+          </label>
+          <span className={styles.ganttHint}>slot = block · filled = scheduled · hatched = open</span>
+        </div>
       </div>
       <div className={styles.ganttBody}>
         {/* Fixed stage-label column */}
@@ -98,16 +116,20 @@ export default function ForecastGantt({ forecast, todayKey }: { forecast: Foreca
         {/* Scrollable timeline */}
         <div className={styles.scroll}>
           <div className={styles.inner} style={{ width: innerWidth, height: fullHeight }}>
-            {weekendOffsets.map((off) => (
-              <div key={`w${off}`} className={styles.weekend} style={{ left: off * PX_PER_DAY, width: PX_PER_DAY, height: fullHeight }} />
-            ))}
+            {hideWeekends
+              ? separatorOffsets.map((off) => (
+                  <div key={`s${off}`} className={styles.weekSep} style={{ left: xAt[off], height: fullHeight }} />
+                ))
+              : weekendOffsets.map((off) => (
+                  <div key={`w${off}`} className={styles.weekend} style={{ left: xAt[off], width: widths[off], height: fullHeight }} />
+                ))}
             {ticks.map((t) => (
-              <div key={`g${t.offset}`} className={styles.grid} style={{ left: t.offset * PX_PER_DAY, height: fullHeight }} />
+              <div key={`g${t.offset}`} className={styles.grid} style={{ left: xAt[t.offset], height: fullHeight }} />
             ))}
             <div className={styles.today} style={{ height: fullHeight }} />
             <div className={styles.axis} style={{ height: AXIS_H }}>
               {ticks.map((t) => (
-                <span key={`t${t.offset}`} className={styles.tick} style={{ left: t.offset * PX_PER_DAY + 4 }}>
+                <span key={`t${t.offset}`} className={styles.tick} style={{ left: xAt[t.offset] + 4 }}>
                   {t.offset === 0 ? "Today" : t.label}
                 </span>
               ))}
@@ -117,6 +139,8 @@ export default function ForecastGantt({ forecast, todayKey }: { forecast: Foreca
                 {dates.map((date) => {
                   const offset = daysBetween(todayKey, date);
                   if (offset < 0 || offset >= totalDays) return null;
+                  const w = widths[offset];
+                  if (w === 0) return null; // collapsed weekend
                   const capH = cap.get(date) ?? 0;
                   const u = used.get(date);
                   const usedH = u?.hours ?? 0;
@@ -126,7 +150,7 @@ export default function ForecastGantt({ forecast, todayKey }: { forecast: Foreca
                     <div
                       key={date}
                       className={styles.slot}
-                      style={{ left: offset * PX_PER_DAY + 2, width: PX_PER_DAY - 4, height: slotH }}
+                      style={{ left: xAt[offset] + 2, width: w - 4, height: slotH }}
                       title={`${fmtTick(date)} · ${usedH}/${capH}h${u ? "\n" + u.names.join("\n") : " · open"}`}
                     >
                       {fillH > 0 && <div className={styles.slotFill} style={{ height: Math.min(slotH, fillH) }} />}
