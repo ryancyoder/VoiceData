@@ -6,7 +6,7 @@
 // a full-resolution canvas and uploaded as a new annotated image (the original
 // is preserved server-side so the edit can be reverted).
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { dealPhotoUrl, type DealPhoto } from "@/lib/salesBoard";
 import styles from "./photoAnnotator.module.css";
 
@@ -31,6 +31,58 @@ const VERTEX_LOCK_DELAY = 600; // ms of continued stillness (after a line snaps)
 // instead of locking it straight.
 const PEN_CURVE_CUE_DELAY = 820; // ms after settle → yellow cue appears
 const PEN_VERTEX_LOCK_DELAY = 1460; // ms after settle → blue vertex lock (window = ~640ms)
+
+// Toolbar icons as inline SVG (stroke = currentColor). Unicode/emoji glyphs
+// rendered dark and low-contrast on iOS Safari (it substitutes the color-emoji
+// font and ignores CSS color); these are guaranteed legible and consistent.
+const ICON_PATHS: Record<string, ReactNode> = {
+  pen: (
+    <>
+      <path d="M4 20l4.5-1L20 7.5a2.1 2.1 0 0 0-3-3L5.5 16 4 20z" />
+      <path d="M13.5 6.5l3 3" />
+    </>
+  ),
+  curve: <path d="M3 16.5C7 8 17 8 21 16.5" />,
+  text: <path d="M5 6h14M12 6v12" />,
+  eraser: (
+    <>
+      <path d="M4 15l7-7 6 6-4 4H8z" />
+      <path d="M9 20h11" />
+    </>
+  ),
+  fill: <path d="M7 4h10l4 8-4 8H7l-4-8z" />,
+  prism: (
+    <>
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+      <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
+    </>
+  ),
+  add: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 8.5v7M8.5 12h7" />
+    </>
+  ),
+  undo: (
+    <>
+      <path d="M4 9h10a6 6 0 0 1 0 12H9" />
+      <path d="M8 5L4 9l4 4" />
+    </>
+  ),
+  redo: (
+    <>
+      <path d="M20 9H10a6 6 0 0 0 0 12h5" />
+      <path d="M16 5l4 4-4 4" />
+    </>
+  ),
+};
+function Ico({ name }: { name: keyof typeof ICON_PATHS }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICON_PATHS[name]}
+    </svg>
+  );
+}
 
 interface Pt {
   x: number;
@@ -458,10 +510,10 @@ export default function PhotoAnnotator({
     panRef.current = null;
     if (!tap || tap.moved || e.timeStamp - tap.startT > 350) return;
     const n = tap.maxFingers;
-    if (n !== 2 && n !== 3) return;
+    if (n !== 1 && n !== 2) return; // 1-finger double-tap = undo, 2-finger = redo
     const last = lastTapRef.current;
     if (last.n === n && e.timeStamp - last.t < 400) {
-      if (n === 2) undo();
+      if (n === 1) undo();
       else redo();
       navigator.vibrate?.(10);
       lastTapRef.current = { n: 0, t: 0 }; // consume so a 3rd tap doesn't re-fire
@@ -1555,7 +1607,7 @@ export default function PhotoAnnotator({
           title="Pen — hold still to snap to a straight line; keep holding in place to drop a polygon vertex (or tap Shift); hold Option/Alt to bow an edge, release to keep the curve and drop the vertex at its end"
           onClick={() => selectTool("pen")}
         >
-          ✏
+          <Ico name="pen" />
         </button>
         <button
           type="button"
@@ -1563,7 +1615,7 @@ export default function PhotoAnnotator({
           title="Curve pen — draw and hold still to smooth into a curve, optionally drag to shape it, then keep holding in place to lock it and chain another curve (or tap Shift)"
           onClick={() => selectTool("curvepen")}
         >
-          ⌣
+          <Ico name="curve" />
         </button>
         <button
           type="button"
@@ -1571,10 +1623,10 @@ export default function PhotoAnnotator({
           title="Text label (tap again to toggle move mode)"
           onClick={onTextButton}
         >
-          T
+          <Ico name="text" />
         </button>
         <button type="button" className={`${styles.toolBtn} ${tool === "eraser" ? styles.active : ""}`} title="Eraser" onClick={() => selectTool("eraser")}>
-          ⌫
+          <Ico name="eraser" />
         </button>
         <button
           type="button"
@@ -1582,7 +1634,7 @@ export default function PhotoAnnotator({
           title="Polygon fill — draw an edge, hold still in place (or tap Shift) to drop corners, hold Option/Alt to bow an edge and release to keep the curve and drop the corner, lift to close and fill"
           onClick={() => selectTool("fill")}
         >
-          ⬢
+          <Ico name="fill" />
         </button>
         <button
           type="button"
@@ -1590,7 +1642,7 @@ export default function PhotoAnnotator({
           title="Prism — draw a polygon like fill (hold/Shift for corners, Option/Alt to bow), lift to finish, then press and drag up or down to extrude it into a prism"
           onClick={() => selectTool("prism")}
         >
-          ⧉
+          <Ico name="prism" />
         </button>
         <div className={styles.sep} />
         {SWATCHES.map((c) => (
@@ -1668,13 +1720,13 @@ export default function PhotoAnnotator({
         )}
         <div className={styles.sep} />
         <button type="button" className={styles.utilBtn} title="Add image / sticker" onClick={() => fileInputRef.current?.click()}>
-          ⊕
+          <Ico name="add" />
         </button>
-        <button type="button" className={styles.utilBtn} title="Undo (or two-finger double-tap)" onClick={undo}>
-          ↩
+        <button type="button" className={styles.utilBtn} title="Undo (or one-finger double-tap)" onClick={undo}>
+          <Ico name="undo" />
         </button>
-        <button type="button" className={styles.utilBtn} title="Redo (or three-finger double-tap)" onClick={redo}>
-          ↪
+        <button type="button" className={styles.utilBtn} title="Redo (or two-finger double-tap)" onClick={redo}>
+          <Ico name="redo" />
         </button>
         {/* Finish controls live in the toolbar so they're always visible beside
             the tools (the top header can sit under iPad Safari's own toolbar). */}
