@@ -161,6 +161,18 @@
   border-color: #007aff;
   color: #4a9eff;
 }
+/* Force the SVG icon color via CSS. iOS Safari doesn't reliably resolve
+   `currentColor` on an SVG presentation attribute (it can fall back to black),
+   so set stroke explicitly here — CSS overrides the attribute. */
+.toolBtn svg,
+.utilBtn svg {
+  stroke: #fff;
+  fill: none;
+  display: block;
+}
+.toolBtn.textMove svg {
+  stroke: #4a9eff;
+}
 .sep {
   flex-basis: 100%;
   width: 100%;
