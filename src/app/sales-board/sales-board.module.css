@@ -21,11 +21,11 @@
   --c-lead: #9CA3AF;
   --c-propose: #EAB308;
   --c-send: #0891B2;
-  --c-sold: #16A34A;
+  --c-sold: #9333EA;
   --c-schedule: #0D9488;
-  --c-pm: #DC2626;
+  --c-pm: #16A34A;
   --c-jobcosting: #CA8A04;
-  --c-invoiced: #2563EB;
+  --c-invoiced: #DC2626;
   --c-paid: #16A34A;
 
   display: flex;
@@ -60,11 +60,11 @@
     --c-lead: #A8ADB8;
     --c-propose: #FACC15;
     --c-send: #22D3EE;
-    --c-sold: #4ADE80;
+    --c-sold: #C084FC;
     --c-schedule: #2DD4BF;
-    --c-pm: #F87171;
+    --c-pm: #4ADE80;
     --c-jobcosting: #FACC15;
-    --c-invoiced: #60A5FA;
+    --c-invoiced: #F87171;
     --c-paid: #4ADE80;
   }
 }
