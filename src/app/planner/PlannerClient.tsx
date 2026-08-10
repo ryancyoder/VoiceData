@@ -8,7 +8,7 @@ import styles from "./planner.module.css";
 
 const PX_PER_DAY = 26;
 const ROW_H = 40;
-const AXIS_H = 28;
+const AXIS_H = 36;
 const HORIZONS = [4, 8, 12, 26];
 
 function todayKey(): string {
@@ -85,6 +85,21 @@ export default function PlannerClient({
     offset: i * 7,
     label: fmtTick(addDays(today, i * 7)),
   }));
+
+  // Per-day columns (day-of-month numbers) and the month segments above them.
+  const days = Array.from({ length: totalDays }, (_, i) => {
+    const key = addDays(today, i);
+    const [y, m, d] = key.split("-").map(Number);
+    return {
+      offset: i,
+      dayOfMonth: d,
+      monthKey: `${y}-${m}`,
+      monthLabel: new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+    };
+  });
+  const monthSegments = days
+    .filter((d, i) => i === 0 || days[i - 1].monthKey !== d.monthKey)
+    .map((d) => ({ key: d.monthKey, offset: d.offset, label: d.monthLabel }));
 
   // Valid drop targets (block windows) per stage, in the visible range.
   const windowsByStage = useMemo(() => {
@@ -294,9 +309,18 @@ export default function PlannerClient({
                   ))}
                 <div className={styles.today} style={{ height: fullHeight }} />
                 <div className={styles.axis} style={{ height: AXIS_H }}>
-                  {ticks.map((t) => (
-                    <span key={`t${t.offset}`} className={styles.tick} style={{ left: t.offset * PX_PER_DAY + 4 }}>
-                      {t.offset === 0 ? "Today" : t.label}
+                  {monthSegments.map((m) => (
+                    <span key={m.key} className={styles.monthLabel} style={{ left: m.offset * PX_PER_DAY + 3 }}>
+                      {m.label}
+                    </span>
+                  ))}
+                  {days.map((d) => (
+                    <span
+                      key={`dn${d.offset}`}
+                      className={`${styles.dayNum} ${d.offset === 0 ? styles.dayNumToday : ""}`}
+                      style={{ left: d.offset * PX_PER_DAY, width: PX_PER_DAY }}
+                    >
+                      {d.dayOfMonth}
                     </span>
                   ))}
                 </div>

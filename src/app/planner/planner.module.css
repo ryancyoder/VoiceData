@@ -222,6 +222,28 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
+/* Month name spanning the columns of that month */
+.monthLabel {
+  position: absolute;
+  top: 2px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+/* Day-of-month number under each column */
+.dayNum {
+  position: absolute;
+  top: 19px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.dayNumToday {
+  color: var(--c-propose);
+  font-weight: 700;
+}
 /* On-board deal label: its left edge aligns to the scheduled date. */
 .item {
   position: absolute;
