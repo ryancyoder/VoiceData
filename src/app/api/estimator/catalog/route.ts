@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { catalogPhotoUrl, type CatalogPhoto } from "@/lib/estimator/catalogPhotos";
+import {
+  CATALOG_ITEM_COLUMNS,
+  rowToItem,
+  itemToRow,
+  type CatalogItem,
+  type CatalogItemRow,
+} from "@/lib/estimator/catalogItemColumns";
 
 // The catalog is edited locally in the Catalog Editor and persisted as a
 // whole on Save (matching the app's existing edit-then-save UX), so this is a
 // collection endpoint: GET returns the full catalog + delivery rate + photos,
-// PUT replaces items + delivery rate. Each row's `data` jsonb is the full
-// frontend (camelCase) item. Photos are managed separately (per-item routes).
+// PUT replaces items + delivery rate. Each item's fields live in first-class
+// typed columns (the source of truth); the legacy `data` jsonb is kept in sync
+// via dual-write during the transition. Photos are managed separately.
 
 export async function GET() {
   const [itemsRes, settingsRes, photosRes] = await Promise.all([
-    supabase.from("catalog_items").select("data").order("sort_order", { ascending: true }),
+    supabase.from("catalog_items").select(CATALOG_ITEM_COLUMNS).order("sort_order", { ascending: true }),
     supabase.from("estimator_settings").select("delivery_rate").eq("id", 1).maybeSingle(),
     supabase
       .from("catalog_item_photos")
@@ -28,7 +36,7 @@ export async function GET() {
     return NextResponse.json({ error: photosRes.error.message }, { status: 500 });
   }
 
-  const items = (itemsRes.data ?? []).map((row) => row.data);
+  const items = ((itemsRes.data ?? []) as unknown as CatalogItemRow[]).map(rowToItem);
   const deliveryRate = settingsRes.data?.delivery_rate ?? 80;
 
   // Group photos by catalog item id, cover first.
@@ -44,11 +52,6 @@ export async function GET() {
   return NextResponse.json({ items, deliveryRate: Number(deliveryRate), photos });
 }
 
-interface CatalogItem {
-  id: string;
-  [key: string]: unknown;
-}
-
 export async function PUT(req: NextRequest) {
   const body = (await req.json()) as { items?: CatalogItem[]; deliveryRate?: number };
   const items = body.items ?? [];
@@ -61,7 +64,9 @@ export async function PUT(req: NextRequest) {
   }
 
   // Upsert everything the client sent, stamping sort_order from array position.
-  const rows = items.map((item, idx) => ({ id: item.id, sort_order: idx, data: item, updated_at: new Date().toISOString() }));
+  // itemToRow writes both the typed columns (source of truth) and the legacy
+  // `data` jsonb (kept in sync until the column is dropped).
+  const rows = items.map((item, idx) => itemToRow(item, idx));
   if (rows.length > 0) {
     const { error: upsertError } = await supabase.from("catalog_items").upsert(rows);
     if (upsertError) {
