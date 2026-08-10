@@ -6,14 +6,14 @@
   --text: #12161c;
   --text-muted: #5b6472;
   --warn: #b3261e;
-  --c-lead: #6366f1;
-  --c-propose: #2563eb;
+  --c-lead: #9CA3AF;
+  --c-propose: #EAB308;
   --c-send: #0891b2;
-  --c-sold: #0b939d;
+  --c-sold: #16A34A;
   --c-schedule: #0d9488;
-  --c-pm: #65a30d;
+  --c-pm: #DC2626;
   --c-jobcosting: #ca8a04;
-  --c-invoiced: #ea580c;
+  --c-invoiced: #2563EB;
   --c-paid: #16a34a;
 
   min-height: 100dvh;
@@ -33,14 +33,14 @@
     --text: #e7eaef;
     --text-muted: #9099a8;
     --warn: #f87171;
-    --c-lead: #818cf8;
-    --c-propose: #60a5fa;
+    --c-lead: #A8ADB8;
+    --c-propose: #FACC15;
     --c-send: #22d3ee;
-    --c-sold: #28d4d7;
+    --c-sold: #4ADE80;
     --c-schedule: #2dd4bf;
-    --c-pm: #a3e635;
+    --c-pm: #F87171;
     --c-jobcosting: #facc15;
-    --c-invoiced: #fb923c;
+    --c-invoiced: #60A5FA;
     --c-paid: #4ade80;
   }
 }
