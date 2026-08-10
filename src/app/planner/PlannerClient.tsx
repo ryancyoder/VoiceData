@@ -7,8 +7,8 @@ import { computeBoard, type Placement } from "@/lib/planning/board";
 import styles from "./planner.module.css";
 
 const PX_PER_DAY = 26;
-const ROW_H = 26;
-const AXIS_H = 24;
+const ROW_H = 40;
+const AXIS_H = 28;
 const HORIZONS = [4, 8, 12, 26];
 
 function todayKey(): string {
@@ -273,6 +273,8 @@ export default function PlannerClient({
                     key={`bg${r.dealId}`}
                     className={styles.ganttRow}
                     style={{ top: AXIS_H + i * ROW_H, width: innerWidth, height: ROW_H }}
+                    onPointerDown={(e) => beginDrag(e, r)}
+                    title={`${r.name} — drag anywhere on this row to reschedule`}
                   />
                 ))}
                 {ticks.map((t) => (
