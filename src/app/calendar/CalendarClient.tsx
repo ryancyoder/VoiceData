@@ -75,6 +75,12 @@ export interface ProductionDeal {
 // Row height (bar + gap) for a stacked production bar in the all-day track.
 const ALLDAY_BAR_H = 22;
 
+// Shift a 'YYYY-MM-DD' key by n whole days (local calendar).
+function shiftDateKey(key: string, n: number): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return localDateKey(new Date(y, m - 1, d + n));
+}
+
 interface ProductionBar {
   dealId: number;
   name: string;
@@ -487,6 +493,104 @@ export default function CalendarClient({
     moved: boolean;
   } | null>(null);
   const suppressBlockClickRef = useRef(false);
+
+  // Dragging a production bar in the all-day track (horizontal / day-based).
+  const allDayTrackRef = useRef<HTMLDivElement>(null);
+  const [isProdDragging, setIsProdDragging] = useState(false);
+  const [prodDragPreview, setProdDragPreview] = useState<{ dealId: number; startDate: string; endDate: string } | null>(null);
+  const prodDragRef = useRef<{
+    dealId: number;
+    mode: "move" | "resize-start" | "resize-end";
+    startClientX: number;
+    dayWidthPx: number;
+    origStart: string;
+    origEnd: string;
+    curStart: string;
+    curEnd: string;
+    moved: boolean;
+  } | null>(null);
+  const suppressProdClickRef = useRef(false);
+
+  function beginProdDrag(bar: ProductionBar, mode: "move" | "resize-start" | "resize-end", clientX: number, dayCount: number) {
+    const deal = productionDeals.find((d) => d.id === bar.dealId);
+    if (!deal) return;
+    const origStart = (deal.startDate || deal.endDate) as string;
+    const origEnd = (deal.endDate || deal.startDate) as string;
+    const trackW = allDayTrackRef.current?.clientWidth ?? 0;
+    const dayWidthPx = trackW > 0 ? trackW / Math.max(1, dayCount) : 40;
+    prodDragRef.current = {
+      dealId: bar.dealId,
+      mode,
+      startClientX: clientX,
+      dayWidthPx,
+      origStart,
+      origEnd,
+      curStart: origStart,
+      curEnd: origEnd,
+      moved: false,
+    };
+    setProdDragPreview({ dealId: bar.dealId, startDate: origStart, endDate: origEnd });
+    setIsProdDragging(true);
+  }
+
+  async function saveProdDrag(dealId: number, startDate: string, endDate: string) {
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ start_date: startDate, end_date: endDate }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error || "Failed to reschedule production");
+      }
+      router.refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to reschedule production");
+      router.refresh();
+    }
+  }
+
+  useEffect(() => {
+    if (!isProdDragging) return;
+    function onMove(e: PointerEvent) {
+      const d = prodDragRef.current;
+      if (!d) return;
+      const deltaDays = Math.round((e.clientX - d.startClientX) / d.dayWidthPx);
+      let s = d.origStart;
+      let en = d.origEnd;
+      if (d.mode === "move") {
+        s = shiftDateKey(d.origStart, deltaDays);
+        en = shiftDateKey(d.origEnd, deltaDays);
+      } else if (d.mode === "resize-start") {
+        s = shiftDateKey(d.origStart, deltaDays);
+        if (s > en) s = en; // don't cross the end
+      } else {
+        en = shiftDateKey(d.origEnd, deltaDays);
+        if (en < s) en = s; // don't cross the start
+      }
+      const moved = d.moved || Math.abs(e.clientX - d.startClientX) > 3;
+      prodDragRef.current = { ...d, curStart: s, curEnd: en, moved };
+      setProdDragPreview({ dealId: d.dealId, startDate: s, endDate: en });
+    }
+    function onUp() {
+      const d = prodDragRef.current;
+      prodDragRef.current = null;
+      setIsProdDragging(false);
+      setProdDragPreview(null);
+      if (d && d.moved && (d.curStart !== d.origStart || d.curEnd !== d.origEnd)) {
+        suppressProdClickRef.current = true;
+        saveProdDrag(d.dealId, d.curStart, d.curEnd);
+      }
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProdDragging]);
 
   function beginBlockDrag(block: PlanningBlock, mode: "move" | "resize-start" | "resize-end", clientY: number, originDate: string) {
     const origStartMin = timeToMin(block.startTime);
@@ -995,10 +1099,18 @@ export default function CalendarClient({
     );
   }, [eventsInWeek, dragPreview]);
 
-  // Production windows plotted as multi-day bars in the all-day track.
-  const productionBars = useMemo(
-    () => layoutProductionBars(productionDeals, weekDays.map((d) => localDateKey(d))),
-    [productionDeals, weekDays]
+  // Production windows plotted as multi-day bars in the all-day track. While a
+  // bar is being dragged, the grabbed deal's dates are swapped for the live
+  // preview so the bar follows the cursor. (Left un-memoized — the React
+  // Compiler handles memoization; a manual chain here can't be preserved.)
+  const prodDealsForLayout = prodDragPreview
+    ? productionDeals.map((d) =>
+        d.id === prodDragPreview.dealId ? { ...d, startDate: prodDragPreview.startDate, endDate: prodDragPreview.endDate } : d
+      )
+    : productionDeals;
+  const productionBars = layoutProductionBars(
+    prodDealsForLayout,
+    weekDays.map((d) => localDateKey(d))
   );
 
   const today = new Date();
@@ -1146,27 +1258,66 @@ export default function CalendarClient({
 
         <div className={styles["allday-row"]}>
           <div className={styles["allday-gutter"]}>Production</div>
-          <div className={styles["allday-track"]} style={{ height: productionBars.rows * ALLDAY_BAR_H + 6 }}>
+          <div ref={allDayTrackRef} className={styles["allday-track"]} style={{ height: productionBars.rows * ALLDAY_BAR_H + 6 }}>
             {productionBars.bars.map((bar) => {
               const span = bar.endIdx - bar.startIdx + 1;
               const color = STAGE_COLORS[bar.stage] ?? STAGE_COLORS["Project Management"];
+              const dragging = prodDragPreview?.dealId === bar.dealId;
               return (
-                <a
+                <div
                   key={bar.dealId}
-                  href={`/sales-board?deal=${bar.dealId}`}
-                  className={`${styles["allday-bar"]} ${bar.clippedStart ? styles["clip-start"] : ""} ${
-                    bar.clippedEnd ? styles["clip-end"] : ""
-                  }`}
+                  className={`${styles["allday-bar"]} ${dragging ? styles["allday-bar-dragging"] : ""} ${
+                    bar.clippedStart ? styles["clip-start"] : ""
+                  } ${bar.clippedEnd ? styles["clip-end"] : ""}`}
                   style={{
                     left: `calc(${bar.startIdx} * (100% / ${weekDays.length}) + 1px)`,
                     width: `calc(${span} * (100% / ${weekDays.length}) - 2px)`,
                     top: bar.row * ALLDAY_BAR_H + 2,
                     ["--bar-color" as string]: color,
                   }}
-                  title={`${bar.name} · production`}
+                  title={`${bar.name} · production (drag to reschedule)`}
+                  role="button"
+                  tabIndex={0}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    beginProdDrag(bar, "move", e.clientX, weekDays.length);
+                  }}
+                  onClick={() => {
+                    if (suppressProdClickRef.current) {
+                      suppressProdClickRef.current = false;
+                      return;
+                    }
+                    router.push(`/sales-board?deal=${bar.dealId}`);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/sales-board?deal=${bar.dealId}`);
+                    }
+                  }}
                 >
+                  {!bar.clippedStart && (
+                    <span
+                      className={styles["allday-resize-start"]}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        beginProdDrag(bar, "resize-start", e.clientX, weekDays.length);
+                      }}
+                    />
+                  )}
                   <span className={styles["allday-bar-label"]}>{bar.name}</span>
-                </a>
+                  {!bar.clippedEnd && (
+                    <span
+                      className={styles["allday-resize-end"]}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        beginProdDrag(bar, "resize-end", e.clientX, weekDays.length);
+                      }}
+                    />
+                  )}
+                </div>
               );
             })}
           </div>

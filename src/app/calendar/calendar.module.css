@@ -195,10 +195,29 @@
   font-weight: 600;
   text-decoration: none;
   overflow: hidden;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 .allday-bar:hover { background: color-mix(in srgb, var(--bar-color) 36%, transparent); }
-.allday-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.allday-bar-dragging {
+  cursor: grabbing;
+  z-index: 5;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+.allday-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; pointer-events: none; }
+/* Edge grips for resizing the window's start / stop day. */
+.allday-resize-start,
+.allday-resize-end {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.allday-resize-start { left: 0; }
+.allday-resize-end { right: 0; }
 /* Dashed open edge when the window runs past the visible week. */
 .clip-start { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-style: dashed; }
 .clip-end { border-top-right-radius: 0; border-bottom-right-radius: 0; }
