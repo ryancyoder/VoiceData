@@ -720,21 +720,32 @@ export default function DealModal({
             <label htmlFor="dm-proposal-number">Proposal #</label>
             <input id="dm-proposal-number" autoComplete="off" value={form.proposal_number} onChange={(e) => set("proposal_number", e.target.value)} />
           </div>
-          <div className={styles["card-edit-field"]}>
-            <label htmlFor="dm-proposal-date">Proposal date</label>
-            <input id="dm-proposal-date" type="date" value={form.proposal_date} onChange={(e) => set("proposal_date", e.target.value)} />
-          </div>
-          <div className={styles["card-edit-field"]}>
-            <label htmlFor="dm-appointment-date">Appointment date</label>
-            <input id="dm-appointment-date" type="date" value={form.appointment_date} onChange={(e) => set("appointment_date", e.target.value)} />
-          </div>
-          <div className={styles["card-edit-field"]}>
-            <label htmlFor="dm-start-date">Production start day</label>
-            <input id="dm-start-date" type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
-          </div>
-          <div className={styles["card-edit-field"]}>
-            <label htmlFor="dm-end-date">Production stop day</label>
-            <input id="dm-end-date" type="date" value={form.end_date} min={form.start_date || undefined} onChange={(e) => set("end_date", e.target.value)} />
+          {/* Key dates, grouped and ordered by the pipeline stage each one
+              belongs to: Lead → Propose → Project Management. */}
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            <span className={styles["card-edit-subhead"]}>Key dates</span>
+            <div className={styles["date-stage-grid"]}>
+              <div className={styles["date-stage-cell"]}>
+                <span className={styles["date-stage-tag"]}>Lead</span>
+                <label htmlFor="dm-appointment-date">Appointment date</label>
+                <input id="dm-appointment-date" type="date" value={form.appointment_date} onChange={(e) => set("appointment_date", e.target.value)} />
+              </div>
+              <div className={styles["date-stage-cell"]}>
+                <span className={styles["date-stage-tag"]}>Propose</span>
+                <label htmlFor="dm-proposal-date">Proposal date</label>
+                <input id="dm-proposal-date" type="date" value={form.proposal_date} onChange={(e) => set("proposal_date", e.target.value)} />
+              </div>
+              <div className={styles["date-stage-cell"]}>
+                <span className={styles["date-stage-tag"]}>Project Management</span>
+                <label htmlFor="dm-start-date">Production start day</label>
+                <input id="dm-start-date" type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
+              </div>
+              <div className={styles["date-stage-cell"]}>
+                <span className={styles["date-stage-tag"]}>Project Management</span>
+                <label htmlFor="dm-end-date">Production stop day</label>
+                <input id="dm-end-date" type="date" value={form.end_date} min={form.start_date || undefined} onChange={(e) => set("end_date", e.target.value)} />
+              </div>
+            </div>
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-aspire-link">Aspire opportunity link</label>

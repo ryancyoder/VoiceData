@@ -450,6 +450,47 @@
 .card-edit-field input:focus, .card-edit-field textarea:focus, .card-edit-field select:focus { border-color: var(--accent); }
 .card-edit-error { grid-column: 1 / -1; font-size: 0.7rem; color: var(--danger); }
 
+/* "Key dates" — the deal's stage-specific dates, grouped and ordered by the
+   stage each belongs to. */
+.card-edit-subhead {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.date-stage-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+.date-stage-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+.date-stage-cell label { font-size: 0.64rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.date-stage-cell input {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 0.74rem;
+  font-family: inherit;
+  color: inherit;
+}
+.date-stage-cell input:focus { border-color: var(--accent); }
+.date-stage-tag {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
 .aspire-link-row { display: flex; gap: 6px; }
 .aspire-link-row input { flex: 1; min-width: 0; }
 .aspire-parse-btn {

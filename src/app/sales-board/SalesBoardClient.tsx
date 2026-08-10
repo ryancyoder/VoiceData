@@ -43,36 +43,48 @@ const EMPTY_ADD_FORM = {
   proposal_description: "",
 };
 
-// Every column starts sorted by date, nearest (earliest) first — so the deals
-// with the soonest dates surface at the top. Users can still re-sort per column.
-const DEFAULT_COLUMN_SORT = "date_asc";
 
-// The board sorts by production start day (falling back to stop day when a
-// deal has only a stop set). Deals with no production date sort to the end
-// regardless of direction — there's no meaningful "earliest"/"latest" position
-// for a date that isn't set, and burying them at the bottom keeps whichever
-// direction is active from being dominated by undated deals landing first.
-function productionSortKey(d: UiDeal): string | null {
-  return d.start_date || d.end_date || null;
+// Each stage has its own "specific date" — the date that stage is organized
+// around. The date sort (and each column's default order) keys off whichever
+// date belongs to that column's stage; stages without a dedicated date can't
+// be date-sorted at all. "production" resolves to the start day (falling back
+// to the stop day when only a stop is set).
+type StageDateField = "appointment_date" | "proposal_date" | "production";
+
+const STAGE_DATE: Partial<Record<Stage, { field: StageDateField; short: string }>> = {
+  Lead: { field: "appointment_date", short: "Appt" },
+  Propose: { field: "proposal_date", short: "Prop" },
+  Sent: { field: "proposal_date", short: "Prop" },
+  "Project Management": { field: "production", short: "Prod" },
+};
+
+function stageDateValue(d: UiDeal, field: StageDateField): string | null {
+  if (field === "production") return d.start_date || d.end_date || null;
+  if (field === "appointment_date") return d.appointment_date || null;
+  return d.proposal_date || null;
 }
 
-function compareProductionDate(a: UiDeal, b: UiDeal, direction: 1 | -1) {
-  const ka = productionSortKey(a);
-  const kb = productionSortKey(b);
+// Deals with no date for the active field sort to the end regardless of
+// direction — there's no meaningful "earliest"/"latest" for a missing date,
+// and burying them at the bottom keeps whichever direction is active from
+// being dominated by undated deals landing first.
+function compareStageDate(a: UiDeal, b: UiDeal, field: StageDateField, direction: 1 | -1) {
+  const ka = stageDateValue(a, field);
+  const kb = stageDateValue(b, field);
   if (!ka && !kb) return 0;
   if (!ka) return 1;
   if (!kb) return -1;
   return direction * (new Date(ka).getTime() - new Date(kb).getTime());
 }
 
-function sortDeals(list: UiDeal[], mode: string) {
+function sortDeals(list: UiDeal[], mode: string, dateField: StageDateField | null) {
   const sorted = [...list];
   if (mode === "value_desc") sorted.sort((a, b) => (b.value || 0) - (a.value || 0));
   else if (mode === "value_asc") sorted.sort((a, b) => (a.value || 0) - (b.value || 0));
   else if (mode === "alpha_asc") sorted.sort((a, b) => a.deal_name.localeCompare(b.deal_name));
   else if (mode === "alpha_desc") sorted.sort((a, b) => b.deal_name.localeCompare(a.deal_name));
-  else if (mode === "date_desc") sorted.sort((a, b) => compareProductionDate(a, b, -1));
-  else if (mode === "date_asc") sorted.sort((a, b) => compareProductionDate(a, b, 1));
+  else if (mode === "date_desc" && dateField) sorted.sort((a, b) => compareStageDate(a, b, dateField, -1));
+  else if (mode === "date_asc" && dateField) sorted.sort((a, b) => compareStageDate(a, b, dateField, 1));
   return sorted;
 }
 
@@ -137,8 +149,11 @@ export default function SalesBoardClient({
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
+  // Each column defaults to sorting by its own stage's date, nearest (earliest)
+  // first — Propose by proposal date, Project Management by production date, etc.
+  // Stages with no dedicated date start unsorted (server/created order).
   const [columnSortState, setColumnSortState] = useState<Record<string, string>>(() =>
-    Object.fromEntries(STAGES.map((s) => [s, DEFAULT_COLUMN_SORT]))
+    Object.fromEntries(STAGES.map((s) => [s, STAGE_DATE[s] ? "date_asc" : ""]))
   );
   const [columnCollapsedState, setColumnCollapsedState] = useState<Record<string, boolean>>({});
   const [addFormOpen, setAddFormOpen] = useState(false);
@@ -796,6 +811,7 @@ export default function SalesBoardClient({
             const color = STAGE_COLORS[stage];
             const collapsed = !!columnCollapsedState[stage];
             const sortMode = columnSortState[stage] || "";
+            const stageDate = STAGE_DATE[stage] ?? null;
 
             if (collapsed) {
               return (
@@ -860,17 +876,19 @@ export default function SalesBoardClient({
                     >
                       {"A/Z" + (sortMode === "alpha_asc" ? "▴" : sortMode === "alpha_desc" ? "▾" : "")}
                     </button>
-                    <button
-                      type="button"
-                      className={`${styles["column-sort-btn"]} ${sortMode.indexOf("date_") === 0 ? styles["is-active"] : ""}`}
-                      aria-label={`Sort ${stage} by production date`}
-                      title="Sort by production start day"
-                      onClick={() =>
-                        setColumnSortState((s) => ({ ...s, [stage]: nextDateSort(sortMode) }))
-                      }
-                    >
-                      {"Prod" + (sortMode === "date_desc" ? "▾" : sortMode === "date_asc" ? "▴" : "")}
-                    </button>
+                    {stageDate && (
+                      <button
+                        type="button"
+                        className={`${styles["column-sort-btn"]} ${sortMode.indexOf("date_") === 0 ? styles["is-active"] : ""}`}
+                        aria-label={`Sort ${stage} by its ${stageDate.field === "production" ? "production" : stageDate.field === "appointment_date" ? "appointment" : "proposal"} date`}
+                        title="Sort by this stage's date"
+                        onClick={() =>
+                          setColumnSortState((s) => ({ ...s, [stage]: nextDateSort(sortMode) }))
+                        }
+                      >
+                        {stageDate.short + (sortMode === "date_desc" ? "▾" : sortMode === "date_asc" ? "▴" : "")}
+                      </button>
+                    )}
                   </div>
                   <span className={styles["column-count"]}>{stageDeals.length}</span>
                 </div>
@@ -879,7 +897,7 @@ export default function SalesBoardClient({
                   {stageDeals.length === 0 ? (
                     <div className={styles["column-empty"]}>No deals</div>
                   ) : (
-                    sortDeals(stageDeals, sortMode).map((deal) => (
+                    sortDeals(stageDeals, sortMode, stageDate?.field ?? null).map((deal) => (
                       <DealCard
                         key={deal.id}
                         deal={deal}
