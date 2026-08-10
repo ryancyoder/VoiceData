@@ -277,6 +277,9 @@ export default function PlannerClient({
                     title={`${r.name} — drag anywhere on this row to reschedule`}
                   />
                 ))}
+                {Array.from({ length: totalDays }, (_, i) => i).map((off) => (
+                  <div key={`d${off}`} className={styles.dayGrid} style={{ left: off * PX_PER_DAY, height: fullHeight }} />
+                ))}
                 {ticks.map((t) => (
                   <div key={`g${t.offset}`} className={styles.grid} style={{ left: t.offset * PX_PER_DAY, height: fullHeight }} />
                 ))}

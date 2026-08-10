@@ -187,12 +187,21 @@
   background: color-mix(in srgb, var(--warn) 14%, transparent);
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
 }
-.grid {
+/* Light day separators */
+.dayGrid {
   position: absolute;
   top: 0;
   width: 1px;
   background: var(--border);
-  opacity: 0.6;
+  opacity: 0.55;
+  pointer-events: none;
+}
+/* Darker week separators (drawn over the day lines) */
+.grid {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
   pointer-events: none;
 }
 .today {
