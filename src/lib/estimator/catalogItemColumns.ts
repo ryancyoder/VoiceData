@@ -3,9 +3,11 @@
 //
 // Background: catalog items used to live entirely inside a `data` jsonb blob.
 // Each jsonb key has been promoted to a first-class column so the catalog can
-// be a typed, queryable source of truth shared across apps. The `data` column
-// is kept in sync during the transition (dual-write) so older readers keep
-// working; new code reads the columns via `rowToItem`.
+// be a typed, queryable source of truth shared across apps. The app now reads
+// AND writes only the typed columns. The legacy `data` column still exists for
+// readers not yet migrated (e.g. main), but it is a DB-maintained derived copy
+// kept in sync by the `catalog_items_sync_data` trigger — the app never writes
+// it, so dropping the column requires no app change.
 
 // A catalog item as consumed by the frontend. Loosely typed on purpose: the
 // editor carries a few optional feature flags and the object is passed around
@@ -95,9 +97,9 @@ export function rowToItem(row: CatalogItemRow): CatalogItem {
   return item;
 }
 
-// Build the full DB row (typed columns + transitional `data` copy) to upsert
-// from a camelCase frontend item. `data` is kept in sync so code still reading
-// the jsonb blob stays correct until the column is dropped.
+// Build the DB row (typed columns only) to upsert from a camelCase frontend
+// item. The app does not write `data`; the DB trigger derives it from these
+// columns, so the app is fully independent of the jsonb column.
 export function itemToRow(item: CatalogItem, sortOrder: number): Record<string, unknown> {
   return {
     id: item.id,
@@ -118,7 +120,6 @@ export function itemToRow(item: CatalogItem, sortOrder: number): Record<string, 
     is_wall_assembly: !!item.isWallAssembly,
     price_per_face_ft: num(item.pricePerFaceFt),
     price_per_linear_ft: num(item.pricePerLinearFt),
-    data: item,
     updated_at: new Date().toISOString(),
   };
 }

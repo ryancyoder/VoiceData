@@ -13,8 +13,9 @@ import {
 // whole on Save (matching the app's existing edit-then-save UX), so this is a
 // collection endpoint: GET returns the full catalog + delivery rate + photos,
 // PUT replaces items + delivery rate. Each item's fields live in first-class
-// typed columns (the source of truth); the legacy `data` jsonb is kept in sync
-// via dual-write during the transition. Photos are managed separately.
+// typed columns, which the app both reads and writes. The legacy `data` jsonb
+// is a DB-derived copy (maintained by a trigger) for readers not yet migrated;
+// the app never writes it. Photos are managed separately.
 
 export async function GET() {
   const [itemsRes, settingsRes, photosRes] = await Promise.all([
@@ -64,8 +65,7 @@ export async function PUT(req: NextRequest) {
   }
 
   // Upsert everything the client sent, stamping sort_order from array position.
-  // itemToRow writes both the typed columns (source of truth) and the legacy
-  // `data` jsonb (kept in sync until the column is dropped).
+  // itemToRow emits only the typed columns; the DB trigger derives `data`.
   const rows = items.map((item, idx) => itemToRow(item, idx));
   if (rows.length > 0) {
     const { error: upsertError } = await supabase.from("catalog_items").upsert(rows);
