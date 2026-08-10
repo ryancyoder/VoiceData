@@ -47,15 +47,22 @@ const EMPTY_ADD_FORM = {
 // with the soonest dates surface at the top. Users can still re-sort per column.
 const DEFAULT_COLUMN_SORT = "date_asc";
 
-// Deals with no proposal_date sort to the end regardless of direction —
-// there's no meaningful "earliest"/"latest" position for a date that isn't
-// set, and burying them at the bottom keeps whichever direction is active
-// from being dominated by undated deals landing first.
-function compareProposalDate(a: UiDeal, b: UiDeal, direction: 1 | -1) {
-  if (!a.proposal_date && !b.proposal_date) return 0;
-  if (!a.proposal_date) return 1;
-  if (!b.proposal_date) return -1;
-  return direction * (new Date(a.proposal_date).getTime() - new Date(b.proposal_date).getTime());
+// The board sorts by production start day (falling back to stop day when a
+// deal has only a stop set). Deals with no production date sort to the end
+// regardless of direction — there's no meaningful "earliest"/"latest" position
+// for a date that isn't set, and burying them at the bottom keeps whichever
+// direction is active from being dominated by undated deals landing first.
+function productionSortKey(d: UiDeal): string | null {
+  return d.start_date || d.end_date || null;
+}
+
+function compareProductionDate(a: UiDeal, b: UiDeal, direction: 1 | -1) {
+  const ka = productionSortKey(a);
+  const kb = productionSortKey(b);
+  if (!ka && !kb) return 0;
+  if (!ka) return 1;
+  if (!kb) return -1;
+  return direction * (new Date(ka).getTime() - new Date(kb).getTime());
 }
 
 function sortDeals(list: UiDeal[], mode: string) {
@@ -64,8 +71,8 @@ function sortDeals(list: UiDeal[], mode: string) {
   else if (mode === "value_asc") sorted.sort((a, b) => (a.value || 0) - (b.value || 0));
   else if (mode === "alpha_asc") sorted.sort((a, b) => a.deal_name.localeCompare(b.deal_name));
   else if (mode === "alpha_desc") sorted.sort((a, b) => b.deal_name.localeCompare(a.deal_name));
-  else if (mode === "date_desc") sorted.sort((a, b) => compareProposalDate(a, b, -1));
-  else if (mode === "date_asc") sorted.sort((a, b) => compareProposalDate(a, b, 1));
+  else if (mode === "date_desc") sorted.sort((a, b) => compareProductionDate(a, b, -1));
+  else if (mode === "date_asc") sorted.sort((a, b) => compareProductionDate(a, b, 1));
   return sorted;
 }
 
@@ -731,7 +738,7 @@ export default function SalesBoardClient({
             />
           </div>
           <div className={styles.field}>
-            <label htmlFor="f-start-date">Start day</label>
+            <label htmlFor="f-start-date">Production start day</label>
             <input
               id="f-start-date"
               type="date"
@@ -740,7 +747,7 @@ export default function SalesBoardClient({
             />
           </div>
           <div className={styles.field}>
-            <label htmlFor="f-end-date">Stop day</label>
+            <label htmlFor="f-end-date">Production stop day</label>
             <input
               id="f-end-date"
               type="date"
@@ -853,18 +860,17 @@ export default function SalesBoardClient({
                     >
                       {"A/Z" + (sortMode === "alpha_asc" ? "▴" : sortMode === "alpha_desc" ? "▾" : "")}
                     </button>
-                    {stage === "Sent" && (
-                      <button
-                        type="button"
-                        className={`${styles["column-sort-btn"]} ${sortMode.indexOf("date_") === 0 ? styles["is-active"] : ""}`}
-                        aria-label={`Sort ${stage} by proposal date`}
-                        onClick={() =>
-                          setColumnSortState((s) => ({ ...s, [stage]: nextDateSort(sortMode) }))
-                        }
-                      >
-                        {"Date" + (sortMode === "date_desc" ? "▾" : sortMode === "date_asc" ? "▴" : "")}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className={`${styles["column-sort-btn"]} ${sortMode.indexOf("date_") === 0 ? styles["is-active"] : ""}`}
+                      aria-label={`Sort ${stage} by production date`}
+                      title="Sort by production start day"
+                      onClick={() =>
+                        setColumnSortState((s) => ({ ...s, [stage]: nextDateSort(sortMode) }))
+                      }
+                    >
+                      {"Prod" + (sortMode === "date_desc" ? "▾" : sortMode === "date_asc" ? "▴" : "")}
+                    </button>
                   </div>
                   <span className={styles["column-count"]}>{stageDeals.length}</span>
                 </div>

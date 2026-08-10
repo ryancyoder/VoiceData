@@ -154,7 +154,7 @@ export default function DealCard({
       )}
 
       {formatDateWindow(deal.start_date, deal.end_date) && (
-        <div className={styles["card-schedule-date"]}>🗓 {formatDateWindow(deal.start_date, deal.end_date)}</div>
+        <div className={styles["card-schedule-date"]}>🗓 Production {formatDateWindow(deal.start_date, deal.end_date)}</div>
       )}
 
       {showNextAction && deal.next_action && (

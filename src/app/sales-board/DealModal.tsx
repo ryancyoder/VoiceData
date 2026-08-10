@@ -729,11 +729,11 @@ export default function DealModal({
             <input id="dm-appointment-date" type="date" value={form.appointment_date} onChange={(e) => set("appointment_date", e.target.value)} />
           </div>
           <div className={styles["card-edit-field"]}>
-            <label htmlFor="dm-start-date">Start day</label>
+            <label htmlFor="dm-start-date">Production start day</label>
             <input id="dm-start-date" type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
           </div>
           <div className={styles["card-edit-field"]}>
-            <label htmlFor="dm-end-date">Stop day</label>
+            <label htmlFor="dm-end-date">Production stop day</label>
             <input id="dm-end-date" type="date" value={form.end_date} min={form.start_date || undefined} onChange={(e) => set("end_date", e.target.value)} />
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
