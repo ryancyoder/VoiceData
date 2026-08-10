@@ -122,6 +122,8 @@ export interface Deal {
   // RFP (Request for Proposal) date — the Lead stage's key date, when the
   // customer requested a proposal. All-day (date only, no time).
   rfp_date: string | null;
+  // Won date — the Sold stage's key date, when the deal was won. All-day.
+  won_date: string | null;
   // The deal's scheduled work window — all-day (date only, no time). start_date
   // is the first day on the job, end_date the last. Either may be null.
   start_date: string | null;
@@ -223,6 +225,7 @@ export interface DealInput {
   proposal_description?: string | null;
   appointment_date?: string | null;
   rfp_date?: string | null;
+  won_date?: string | null;
   start_date?: string | null;
   end_date?: string | null;
   property_id?: number | null;

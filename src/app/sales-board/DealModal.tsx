@@ -296,6 +296,7 @@ export default function DealModal({
     proposal_number: deal.proposal_number || "",
     proposal_date: deal.proposal_date || "",
     rfp_date: deal.rfp_date || "",
+    won_date: deal.won_date || "",
     appointment_date: deal.appointment_date || "",
     start_date: deal.start_date || "",
     end_date: deal.end_date || "",
@@ -619,6 +620,7 @@ export default function DealModal({
         proposal_number: form.proposal_number.trim() || null,
         proposal_date: form.proposal_date || null,
         rfp_date: form.rfp_date || null,
+        won_date: form.won_date || null,
         appointment_date: form.appointment_date || null,
         start_date: form.start_date || null,
         end_date: form.end_date || null,
@@ -723,7 +725,7 @@ export default function DealModal({
             <input id="dm-proposal-number" autoComplete="off" value={form.proposal_number} onChange={(e) => set("proposal_number", e.target.value)} />
           </div>
           {/* Key dates, grouped and ordered by the pipeline stage each one
-              belongs to: Lead → Propose → Sent → Project Management. */}
+              belongs to: Lead → Propose → Sent → Sold → Project Management. */}
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <span className={styles["card-edit-subhead"]}>Key dates</span>
             <div className={styles["date-stage-grid"]}>
@@ -741,6 +743,11 @@ export default function DealModal({
                 <span className={styles["date-stage-tag"]}>Sent</span>
                 <label htmlFor="dm-proposal-date">Proposal date</label>
                 <input id="dm-proposal-date" type="date" value={form.proposal_date} onChange={(e) => set("proposal_date", e.target.value)} />
+              </div>
+              <div className={styles["date-stage-cell"]}>
+                <span className={styles["date-stage-tag"]}>Sold</span>
+                <label htmlFor="dm-won-date">Won date</label>
+                <input id="dm-won-date" type="date" value={form.won_date} onChange={(e) => set("won_date", e.target.value)} />
               </div>
               <div className={styles["date-stage-cell"]}>
                 <span className={styles["date-stage-tag"]}>Project Management</span>

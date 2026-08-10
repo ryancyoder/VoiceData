@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       proposal_description: body.proposal_description ?? null,
       appointment_date: body.appointment_date ?? null,
       rfp_date: body.rfp_date ?? null,
+      won_date: body.won_date ?? null,
       start_date: body.start_date ?? null,
       end_date: body.end_date ?? null,
       aspire_link: body.aspire_link?.trim() || null,

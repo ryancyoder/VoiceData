@@ -37,6 +37,7 @@ const EMPTY_ADD_FORM = {
   proposal_number: "",
   proposal_date: "",
   rfp_date: "",
+  won_date: "",
   appointment_date: "",
   start_date: "",
   end_date: "",
@@ -50,12 +51,13 @@ const EMPTY_ADD_FORM = {
 // date belongs to that column's stage; stages without a dedicated date can't
 // be date-sorted at all. "production" resolves to the start day (falling back
 // to the stop day when only a stop is set).
-type StageDateField = "rfp_date" | "appointment_date" | "proposal_date" | "production";
+type StageDateField = "rfp_date" | "appointment_date" | "proposal_date" | "won_date" | "production";
 
 const STAGE_DATE: Partial<Record<Stage, { field: StageDateField; short: string }>> = {
   Lead: { field: "rfp_date", short: "RFP" },
   Propose: { field: "appointment_date", short: "Appt" },
   Sent: { field: "proposal_date", short: "Prop" },
+  Sold: { field: "won_date", short: "Won" },
   "Project Management": { field: "production", short: "Prod" },
 };
 
@@ -63,6 +65,7 @@ function stageDateValue(d: UiDeal, field: StageDateField): string | null {
   if (field === "production") return d.start_date || d.end_date || null;
   if (field === "rfp_date") return d.rfp_date || null;
   if (field === "appointment_date") return d.appointment_date || null;
+  if (field === "won_date") return d.won_date || null;
   return d.proposal_date || null;
 }
 
@@ -540,6 +543,7 @@ export default function SalesBoardClient({
           proposal_number: addForm.proposal_number.trim() || null,
           proposal_date: addForm.proposal_date || null,
           rfp_date: addForm.rfp_date || null,
+          won_date: addForm.won_date || null,
           appointment_date: addForm.appointment_date || null,
           start_date: addForm.start_date || null,
           end_date: addForm.end_date || null,
@@ -753,6 +757,15 @@ export default function SalesBoardClient({
               type="date"
               value={addForm.proposal_date}
               onChange={(e) => setAddForm((f) => ({ ...f, proposal_date: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-won-date">Won date</label>
+            <input
+              id="f-won-date"
+              type="date"
+              value={addForm.won_date}
+              onChange={(e) => setAddForm((f) => ({ ...f, won_date: e.target.value }))}
             />
           </div>
           <div className={styles.field}>
