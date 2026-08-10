@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import { STAGE_COLORS, type PlanningBlock } from "@/lib/planning/blocks";
 import type { ForecastDeal } from "@/lib/planning/schedule";
 import { computeBoard, type Placement, type BoardDealRow } from "@/lib/planning/board";
@@ -516,15 +516,25 @@ export default function PlannerClient({
                     const from = Math.max(0, daysBetween(rangeStart, pmDates.start));
                     const to = Math.min(totalDays, daysBetween(rangeStart, end) + 1);
                     if (to <= from) return null;
+                    const tileLeft = xOf(from);
+                    const tileRight = xOf(to);
+                    const title = `${r.name} · Project Management · ${fmtTick(pmDates.start)} – ${fmtTick(end)}`;
                     return (
-                      <div
-                        key={r.dealId}
-                        className={styles.pmTile}
-                        style={{ ["--stage-color" as string]: r.color, left: xOf(from), width: xOf(to) - xOf(from), top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
-                        title={`${r.name} · Project Management · ${fmtTick(pmDates.start)} – ${fmtTick(end)}`}
-                      >
-                        <span className={styles.pmTileName}>{r.name}</span>
-                      </div>
+                      <Fragment key={r.dealId}>
+                        <div
+                          className={styles.pmTile}
+                          style={{ ["--stage-color" as string]: r.color, left: tileLeft, width: tileRight - tileLeft, top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
+                          title={title}
+                        />
+                        {/* Name sits to the right of the tile so it's never clipped. */}
+                        <span
+                          className={styles.pmTileName}
+                          style={{ left: tileRight + 6, top: AXIS_H + i * ROW_H, height: ROW_H }}
+                          title={title}
+                        >
+                          {r.name}
+                        </span>
+                      </Fragment>
                     );
                   }
                   const placed = !!r.placement;
