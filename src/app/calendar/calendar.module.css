@@ -156,6 +156,53 @@
   margin-top: 2px;
 }
 
+/* All-day production bars, pinned between the day headers and the scrolling
+   hour grid. The 1fr track spans the same width as all the day columns, so a
+   bar positioned by percentage lines up with the columns below. */
+.allday-row {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.allday-gutter {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 5px 6px 0 0;
+  text-align: right;
+  align-self: start;
+}
+.allday-track {
+  position: relative;
+  min-height: 26px;
+}
+.allday-bar {
+  position: absolute;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 5px;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--bar-color) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bar-color) 55%, transparent);
+  border-left: 3px solid var(--bar-color);
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  cursor: pointer;
+}
+.allday-bar:hover { background: color-mix(in srgb, var(--bar-color) 36%, transparent); }
+.allday-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Dashed open edge when the window runs past the visible week. */
+.clip-start { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-style: dashed; }
+.clip-end { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
 .week-body {
   flex: 1;
   min-height: 0;

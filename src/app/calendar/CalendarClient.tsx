@@ -13,7 +13,8 @@ import ImportOutlookEvent from "./ImportOutlookEvent";
 import PhotoAnnotator from "@/components/PhotoAnnotator";
 import type { DealPhoto } from "@/lib/salesBoard";
 import BlockEditorModal from "./BlockEditorModal";
-import { blockColor, blockHours, blockOccursOn, type PlanningBlock } from "@/lib/planning/blocks";
+import { blockColor, blockHours, blockOccursOn, STAGE_COLORS, type PlanningBlock } from "@/lib/planning/blocks";
+import type { Stage } from "@/lib/salesBoard";
 import { computeForecast, type Assignment, type ForecastDeal, type Placement } from "@/lib/planning/schedule";
 
 export interface GeoPhoto {
@@ -58,6 +59,86 @@ export interface DealOption {
   // to suggest a likely-matching deal when an event's property shares the
   // same contact last name.
   contactLastName: string | null;
+}
+
+// An active deal with a production window, plotted as a multi-day all-day bar
+// at the top of the calendar. startDate/endDate are 'YYYY-MM-DD' (either may be
+// null — a lone date renders as a single-day bar).
+export interface ProductionDeal {
+  id: number;
+  name: string;
+  stage: Stage;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+// Row height (bar + gap) for a stacked production bar in the all-day track.
+const ALLDAY_BAR_H = 22;
+
+interface ProductionBar {
+  dealId: number;
+  name: string;
+  stage: Stage;
+  startIdx: number; // first visible day-column index the bar covers
+  endIdx: number; // last visible day-column index the bar covers
+  clippedStart: boolean; // window begins before the visible week
+  clippedEnd: boolean; // window ends after the visible week
+  row: number; // stacking row (0-based)
+}
+
+// Lay production windows out across the visible week's day columns, packing
+// non-overlapping bars onto the same row (interval partitioning). weekKeys are
+// the visible days' 'YYYY-MM-DD' keys, in order (may skip weekends in work-week
+// mode). A window that falls entirely in a skipped gap is dropped.
+function layoutProductionBars(deals: ProductionDeal[], weekKeys: string[]): { bars: ProductionBar[]; rows: number } {
+  const dayCount = weekKeys.length;
+  if (dayCount === 0) return { bars: [], rows: 1 };
+  const weekStartKey = weekKeys[0];
+  const weekEndKey = weekKeys[dayCount - 1];
+
+  const placed = deals
+    .map((d): Omit<ProductionBar, "row"> | null => {
+      const a = d.startDate || d.endDate;
+      const b = d.endDate || d.startDate;
+      if (!a || !b) return null;
+      const start = a <= b ? a : b;
+      const end = a <= b ? b : a;
+      if (end < weekStartKey || start > weekEndKey) return null;
+      const startIdx = weekKeys.findIndex((k) => k >= start);
+      if (startIdx === -1) return null;
+      let endIdx = -1;
+      for (let i = dayCount - 1; i >= 0; i--) {
+        if (weekKeys[i] <= end) {
+          endIdx = i;
+          break;
+        }
+      }
+      if (endIdx === -1 || startIdx > endIdx) return null;
+      return {
+        dealId: d.id,
+        name: d.name,
+        stage: d.stage,
+        startIdx,
+        endIdx,
+        clippedStart: start < weekStartKey,
+        clippedEnd: end > weekEndKey,
+      };
+    })
+    .filter((x): x is Omit<ProductionBar, "row"> => x !== null)
+    .sort((x, y) => x.startIdx - y.startIdx || x.endIdx - y.endIdx);
+
+  const rowEnds: number[] = []; // last covered index per row
+  const bars: ProductionBar[] = placed.map((bar) => {
+    let row = rowEnds.findIndex((end) => end < bar.startIdx);
+    if (row === -1) {
+      row = rowEnds.length;
+      rowEnds.push(bar.endIdx);
+    } else {
+      rowEnds[row] = bar.endIdx;
+    }
+    return { ...bar, row };
+  });
+  return { bars, rows: Math.max(1, rowEnds.length) };
 }
 
 const HOUR_HEIGHT = 48;
@@ -240,6 +321,7 @@ export default function CalendarClient({
   forecastDeals,
   stageDefaults,
   forecastPlacements,
+  productionDeals,
 }: {
   events: CalendarEvent[];
   ungeotaggedCount: number;
@@ -249,6 +331,7 @@ export default function CalendarClient({
   forecastDeals: ForecastDeal[];
   stageDefaults: Record<string, number>;
   forecastPlacements: Placement[];
+  productionDeals: ProductionDeal[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -912,6 +995,12 @@ export default function CalendarClient({
     );
   }, [eventsInWeek, dragPreview]);
 
+  // Production windows plotted as multi-day bars in the all-day track.
+  const productionBars = useMemo(
+    () => layoutProductionBars(productionDeals, weekDays.map((d) => localDateKey(d))),
+    [productionDeals, weekDays]
+  );
+
   const today = new Date();
   const rangeLabel = `${weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDays[weekDays.length - 1].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
@@ -1053,6 +1142,34 @@ export default function CalendarClient({
               <div className={styles["day-num"]}>{day.getDate()}</div>
             </div>
           ))}
+        </div>
+
+        <div className={styles["allday-row"]}>
+          <div className={styles["allday-gutter"]}>Production</div>
+          <div className={styles["allday-track"]} style={{ height: productionBars.rows * ALLDAY_BAR_H + 6 }}>
+            {productionBars.bars.map((bar) => {
+              const span = bar.endIdx - bar.startIdx + 1;
+              const color = STAGE_COLORS[bar.stage] ?? STAGE_COLORS["Project Management"];
+              return (
+                <a
+                  key={bar.dealId}
+                  href={`/sales-board?deal=${bar.dealId}`}
+                  className={`${styles["allday-bar"]} ${bar.clippedStart ? styles["clip-start"] : ""} ${
+                    bar.clippedEnd ? styles["clip-end"] : ""
+                  }`}
+                  style={{
+                    left: `calc(${bar.startIdx} * (100% / ${weekDays.length}) + 1px)`,
+                    width: `calc(${span} * (100% / ${weekDays.length}) - 2px)`,
+                    top: bar.row * ALLDAY_BAR_H + 2,
+                    ["--bar-color" as string]: color,
+                  }}
+                  title={`${bar.name} · production`}
+                >
+                  <span className={styles["allday-bar-label"]}>{bar.name}</span>
+                </a>
+              );
+            })}
+          </div>
         </div>
 
         {eventsInWeek.length === 0 && <div className={styles["empty-week"]}>No located photo events this week.</div>}

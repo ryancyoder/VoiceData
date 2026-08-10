@@ -3,7 +3,7 @@ import type { Deal, DealPhoto, PropertyOption, Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import { PLANNING_BLOCK_COLUMNS, rowToBlock, type PlanningBlockRow } from "@/lib/planning/blocks";
 import type { ForecastDeal, Placement } from "@/lib/planning/schedule";
-import CalendarClient, { type CalendarEvent, type DealOption } from "./CalendarClient";
+import CalendarClient, { type CalendarEvent, type DealOption, type ProductionDeal } from "./CalendarClient";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ export default async function CalendarPage() {
       .order("start_time", { ascending: true }),
     supabase
       .from("Sales Board")
-      .select("id, deal_name, company, stage, lost_at, estimated_hours, proposal_date, created_at, properties(contacts(last_name))")
+      .select("id, deal_name, company, stage, lost_at, estimated_hours, proposal_date, created_at, start_date, end_date, properties(contacts(last_name))")
       .order("deal_name", { ascending: true }),
     supabase
       .from("properties")
@@ -64,6 +64,8 @@ export default async function CalendarPage() {
     estimated_hours: number | null;
     proposal_date: string | null;
     created_at: string | null;
+    start_date: string | null;
+    end_date: string | null;
   })[];
   const dealOptions: DealOption[] = rawDeals.map((d) => ({
     id: d.id,
@@ -98,6 +100,18 @@ export default async function CalendarPage() {
       estimatedHours: d.estimated_hours != null ? Number(d.estimated_hours) : null,
       orderDate: d.proposal_date ?? ((d.created_at ?? "").slice(0, 10) || "9999-12-31"),
     }));
+  // Active deals with a production window (start and/or stop day set) — plotted
+  // as multi-day all-day bars at the top of the calendar.
+  const productionDeals: ProductionDeal[] = rawDeals
+    .filter((d) => d.lost_at == null && (d.start_date || d.end_date))
+    .map((d) => ({
+      id: d.id,
+      name: d.deal_name,
+      stage: d.stage as Stage,
+      startDate: d.start_date,
+      endDate: d.end_date,
+    }));
+
   const stageDefaults: Record<string, number> = {};
   for (const row of stageDefaultsRes.data ?? []) stageDefaults[row.stage as string] = Number(row.default_hours);
   const forecastPlacements: Placement[] = (placementsRes.data ?? []).map((r) => ({
@@ -172,6 +186,7 @@ export default async function CalendarPage() {
       forecastDeals={forecastDeals}
       stageDefaults={stageDefaults}
       forecastPlacements={forecastPlacements}
+      productionDeals={productionDeals}
     />
   );
 }
