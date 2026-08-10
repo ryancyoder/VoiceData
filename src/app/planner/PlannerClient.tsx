@@ -70,8 +70,9 @@ interface StageSegment {
 // Turn a deal's transition dates into colored spans. Each stage runs from its
 // own date until the next defined transition; the last known stage runs to today
 // (still ongoing). Two special cases: Project Management runs to the production
-// end date, and Sold always runs to the current date (won → today), regardless
-// of when production is scheduled. Zero/negative-width spans are dropped.
+// end date, and Sold always runs from the won date through yesterday (won →
+// today-exclusive), regardless of when production is scheduled. Zero/negative-
+// width spans are dropped.
 function buildSegments(d: DealStageDates, today: string): StageSegment[] {
   const seq = BAND_STAGE_ORDER.map((o) => ({ stage: o.stage, date: d[o.key] as string | null })).filter(
     (p): p is { stage: Stage; date: string } => !!p.date
@@ -85,7 +86,7 @@ function buildSegments(d: DealStageDates, today: string): StageSegment[] {
           ? addDays(d.end, 1)
           : addDays(today, 1)
         : cur.stage === "Sold"
-          ? addDays(today, 1)
+          ? today // ends yesterday (today is exclusive)
           : seq[i + 1]?.date ?? addDays(today, 1);
     if (endEx > cur.date) segs.push({ stage: cur.stage, start: cur.date, endEx });
   }
@@ -482,6 +483,26 @@ export default function PlannerClient({
                 </div>
                 {/* deal labels: left edge at the scheduled date, colored by stage */}
                 {rows.map((r, i) => {
+                  // Project Management deals aren't block-backed — instead of a
+                  // point chip they show as a solid tile spanning their
+                  // production window (start → end day).
+                  const pmDates = datesById.get(r.dealId);
+                  if (r.stage === "Project Management" && pmDates?.start) {
+                    const end = pmDates.end && pmDates.end >= pmDates.start ? pmDates.end : pmDates.start;
+                    const from = Math.max(0, daysBetween(rangeStart, pmDates.start));
+                    const to = Math.min(totalDays, daysBetween(rangeStart, end) + 1);
+                    if (to <= from) return null;
+                    return (
+                      <div
+                        key={r.dealId}
+                        className={styles.pmTile}
+                        style={{ ["--stage-color" as string]: r.color, left: from * PX_PER_DAY, width: (to - from) * PX_PER_DAY, top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
+                        title={`${r.name} · Project Management · ${fmtTick(pmDates.start)} – ${fmtTick(end)}`}
+                      >
+                        <span className={styles.pmTileName}>{r.name}</span>
+                      </div>
+                    );
+                  }
                   const placed = !!r.placement;
                   const isDragging = drag?.dealId === r.dealId;
                   const offset = isDragging ? drag!.targetOffset : placed ? daysBetween(rangeStart, r.placement!.date) : todayOffset;
