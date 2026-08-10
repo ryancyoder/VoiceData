@@ -73,6 +73,17 @@ export default function PlannerClient({
     label: fmtTick(addDays(today, i * 7)),
   }));
 
+  // All deals from every stage on one chart, ordered chronologically by their
+  // scheduled date (unplaced sink to the end); each keeps its stage color.
+  const allRows = board.stages
+    .flatMap((s) => s.rows.map((r) => ({ ...r, stage: s.stage, color: s.color })))
+    .sort((a, b) => {
+      const ad = a.placement?.date ?? "9999-99-99";
+      const bd = b.placement?.date ?? "9999-99-99";
+      return ad === bd ? a.orderDate.localeCompare(b.orderDate) : ad.localeCompare(bd);
+    });
+  const fullHeight = AXIS_H + Math.max(1, allRows.length) * ROW_H;
+
   return (
     <div className={styles.planner}>
       <div className={styles.header}>
@@ -95,109 +106,84 @@ export default function PlannerClient({
         </label>
       </div>
 
-      {board.stages.length === 0 && (
+      {board.stages.length === 0 ? (
         <div className={styles.empty}>
           No planning blocks yet. Add blocks on the <a href="/calendar">calendar</a> to build a schedule.
         </div>
-      )}
+      ) : (
+        <>
+          <div className={styles.legend}>
+            {board.stages.map((s) => (
+              <span key={s.stage} className={styles.legendItem} style={{ ["--stage-color" as string]: s.color }}>
+                <span className={styles.legendDot} />
+                {s.stage}
+              </span>
+            ))}
+          </div>
 
-      {board.stages.map((stage) => {
-        const placedCount = stage.rows.filter((r) => r.placement).length;
-        const issues = stage.rows.filter((r) => r.issue).length;
-        const fullHeight = AXIS_H + Math.max(1, stage.rows.length) * ROW_H;
-
-        return (
-          <section key={stage.stage} className={styles.stage} style={{ ["--stage-color" as string]: stage.color }}>
-            <div className={styles.stageHead}>
-              <span className={styles.dot} />
-              <h2>{stage.stage}</h2>
-              <span className={styles.metric}>{stage.rows.length} deals</span>
-              <span className={styles.metric}>{placedCount} scheduled</span>
-              {issues > 0 && <span className={styles.warn}>{issues} unplaced</span>}
-            </div>
-
-            <div className={styles.board}>
-              <div className={styles.scroll}>
-                <div className={styles.inner} style={{ width: innerWidth, height: fullHeight }}>
-                  {/* row separators */}
-                  {stage.rows.map((r, i) => (
-                    <div
-                      key={`bg${r.dealId}`}
-                      className={styles.ganttRow}
-                      style={{ top: AXIS_H + i * ROW_H, width: innerWidth, height: ROW_H }}
-                    />
-                  ))}
-                  {/* block-window guide bands (full lane height) */}
-                  {stage.windows.map((w, i) => {
-                    const offset = daysBetween(today, w.date);
-                    if (offset < 0 || offset >= totalDays) return null;
-                    const over = (stage.used[`${w.blockId}|${w.date}`] ?? 0) > w.capacityHours + 1e-9;
-                    return (
-                      <div
-                        key={`${w.blockId}-${w.date}-${i}`}
-                        className={`${styles.windowBand} ${over ? styles.windowOver : ""}`}
-                        style={{ left: offset * PX_PER_DAY, width: PX_PER_DAY, top: AXIS_H, height: fullHeight - AXIS_H }}
-                        title={`${fmtTick(w.date)} · ${stage.used[`${w.blockId}|${w.date}`] ?? 0}/${w.capacityHours}h`}
-                      />
-                    );
-                  })}
+          <div className={styles.board}>
+            <div className={styles.scroll}>
+              <div className={styles.inner} style={{ width: innerWidth, height: fullHeight }}>
+                {/* row separators */}
+                {allRows.map((r, i) => (
+                  <div
+                    key={`bg${r.dealId}`}
+                    className={styles.ganttRow}
+                    style={{ top: AXIS_H + i * ROW_H, width: innerWidth, height: ROW_H }}
+                  />
+                ))}
+                {ticks.map((t) => (
+                  <div key={`g${t.offset}`} className={styles.grid} style={{ left: t.offset * PX_PER_DAY, height: fullHeight }} />
+                ))}
+                <div className={styles.today} style={{ height: fullHeight }} />
+                <div className={styles.axis} style={{ height: AXIS_H }}>
                   {ticks.map((t) => (
-                    <div key={`g${t.offset}`} className={styles.grid} style={{ left: t.offset * PX_PER_DAY, height: fullHeight }} />
+                    <span key={`t${t.offset}`} className={styles.tick} style={{ left: t.offset * PX_PER_DAY + 4 }}>
+                      {t.offset === 0 ? "Today" : t.label}
+                    </span>
                   ))}
-                  <div className={styles.today} style={{ height: fullHeight }} />
-                  <div className={styles.axis} style={{ height: AXIS_H }}>
-                    {ticks.map((t) => (
-                      <span key={`t${t.offset}`} className={styles.tick} style={{ left: t.offset * PX_PER_DAY + 4 }}>
-                        {t.offset === 0 ? "Today" : t.label}
-                      </span>
-                    ))}
-                  </div>
-                  {/* on-board deal labels: the label's left edge sits at the scheduled date */}
-                  {stage.rows.map((r, i) => {
-                    const placed = !!r.placement;
-                    const offset = placed ? daysBetween(today, r.placement!.date) : 0;
-                    if (placed && (offset < 0 || offset >= totalDays)) return null;
-                    const left = placed ? offset * PX_PER_DAY : 0;
-                    const chipCls = r.issue
-                      ? styles.chipIssue
-                      : r.placement?.manual
-                        ? styles.chipPinned
-                        : styles.chipAuto;
-                    const issueLabel =
-                      r.issue === "needsEstimate"
-                        ? "needs estimate"
-                        : r.issue === "oversized"
-                          ? "too big for a block"
-                          : r.issue === "unplaced"
-                            ? "no room in horizon"
-                            : "";
-                    return (
-                      <div
-                        key={r.dealId}
-                        className={styles.item}
-                        style={{ left, top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
-                        title={
-                          placed
-                            ? `${r.name} · ${r.hours}h · ${fmtTick(r.placement!.date)}${r.placement!.manual ? " (pinned)" : " (auto)"}`
-                            : `${r.name} · ${issueLabel}`
-                        }
-                      >
-                        <span className={chipCls} />
-                        <span className={`${styles.itemName} ${r.issue ? styles.nameIssue : r.placement?.manual ? "" : styles.nameAuto}`}>
-                          {r.name}
-                        </span>
-                        <span className={r.issue ? styles.itemIssueTag : styles.itemMeta}>
-                          {r.issue ? issueLabel : `${r.hours}h`}
-                        </span>
-                      </div>
-                    );
-                  })}
                 </div>
+                {/* on-board deal labels: left edge at the scheduled date, colored by stage */}
+                {allRows.map((r, i) => {
+                  const placed = !!r.placement;
+                  const offset = placed ? daysBetween(today, r.placement!.date) : 0;
+                  if (placed && (offset < 0 || offset >= totalDays)) return null;
+                  const left = placed ? offset * PX_PER_DAY : 0;
+                  const chipCls = r.issue ? styles.chipIssue : r.placement?.manual ? styles.chipPinned : styles.chipAuto;
+                  const issueLabel =
+                    r.issue === "needsEstimate"
+                      ? "needs estimate"
+                      : r.issue === "oversized"
+                        ? "too big for a block"
+                        : r.issue === "unplaced"
+                          ? "no room in horizon"
+                          : "";
+                  return (
+                    <div
+                      key={r.dealId}
+                      className={styles.item}
+                      style={{ ["--stage-color" as string]: r.color, left, top: AXIS_H + i * ROW_H + 3, height: ROW_H - 6 }}
+                      title={
+                        placed
+                          ? `${r.name} · ${r.stage} · ${r.hours}h · ${fmtTick(r.placement!.date)}${r.placement!.manual ? " (pinned)" : " (auto)"}`
+                          : `${r.name} · ${r.stage} · ${issueLabel}`
+                      }
+                    >
+                      <span className={chipCls} />
+                      <span className={`${styles.itemName} ${r.issue ? styles.nameIssue : r.placement?.manual ? "" : styles.nameAuto}`}>
+                        {r.name}
+                      </span>
+                      <span className={r.issue ? styles.itemIssueTag : styles.itemMeta}>
+                        {r.issue ? issueLabel : `${r.hours}h`}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </section>
-        );
-      })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

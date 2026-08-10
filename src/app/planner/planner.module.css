@@ -134,6 +134,26 @@
   padding: 2px 9px;
 }
 
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--stage-color);
+}
+
 .board {
   border: 1px solid var(--border);
   border-radius: 10px;
