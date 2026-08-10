@@ -227,7 +227,7 @@
   position: absolute;
   top: 2px;
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text);
   white-space: nowrap;
 }

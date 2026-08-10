@@ -94,7 +94,7 @@ export default function PlannerClient({
       offset: i,
       dayOfMonth: d,
       monthKey: `${y}-${m}`,
-      monthLabel: new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+      monthLabel: `${m}/${y}`,
     };
   });
   const monthSegments = days
