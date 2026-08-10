@@ -1,0 +1,311 @@
+.forecast {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;
+  --border: #e2e5ea;
+  --text: #12161c;
+  --text-muted: #5b6472;
+  --warn: #b3261e;
+  --ok: #0d9488;
+  /* Deal-stage colors, mirrored from the Sales Board. */
+  --c-lead: #6366f1;
+  --c-propose: #2563eb;
+  --c-send: #0891b2;
+  --c-sold: #0b939d;
+  --c-schedule: #0d9488;
+  --c-pm: #65a30d;
+  --c-jobcosting: #ca8a04;
+  --c-invoiced: #ea580c;
+  --c-paid: #16a34a;
+
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px 24px 64px;
+  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  .forecast {
+    --bg: #0e1116;
+    --surface: #161a21;
+    --surface-2: #1c212a;
+    --border: #262c36;
+    --text: #e7eaef;
+    --text-muted: #9099a8;
+    --warn: #f87171;
+    --ok: #2dd4bf;
+    --c-lead: #818cf8;
+    --c-propose: #60a5fa;
+    --c-send: #22d3ee;
+    --c-sold: #28d4d7;
+    --c-schedule: #2dd4bf;
+    --c-pm: #a3e635;
+    --c-jobcosting: #facc15;
+    --c-invoiced: #fb923c;
+    --c-paid: #4ade80;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.header h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.header p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+.horizon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.horizon select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.defaultsPanel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 22px;
+}
+.defaultsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.defaultsHead button {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.defaultsHead button:disabled {
+  opacity: 0.6;
+}
+.defaultsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px 14px;
+}
+.defaultItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.defaultItem input {
+  width: 64px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: right;
+}
+
+.empty {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty a {
+  color: var(--c-propose);
+  text-decoration: underline;
+}
+
+.stage {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+.stageHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.stageHead h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.stageDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--stage-color);
+}
+.metric {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.through {
+  font-size: 0.78rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--stage-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--stage-color) 40%, transparent);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.warn {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.noWindows {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 8px 0 14px;
+}
+
+.timeline {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 14px;
+}
+.window {
+  display: flex;
+  flex-direction: column;
+  min-width: 128px;
+  flex: 0 0 auto;
+}
+.windowHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.windowCap {
+  color: var(--stage-color);
+  font-weight: 700;
+}
+.windowBar {
+  position: relative;
+  width: 100%;
+  min-height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--surface-2) 0,
+    var(--surface-2) 21px,
+    var(--border) 21px,
+    var(--border) 22px
+  );
+  overflow: hidden;
+}
+.dealBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  border-radius: 5px;
+  border-left: 3px solid var(--stage-color);
+  background: color-mix(in srgb, var(--stage-color) 22%, var(--surface));
+  padding: 2px 5px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.15;
+}
+.dealBarLabel {
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dealBarHours {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.dealTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 6px;
+}
+.dealTable th {
+  text-align: left;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.dealTable td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--surface-2);
+  vertical-align: middle;
+}
+.company {
+  color: var(--text-muted);
+}
+.since {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hoursInput {
+  width: 84px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: right;
+}
+.ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+.muted {
+  color: var(--text-muted);
+}
