@@ -387,6 +387,7 @@ export default function CalendarClient({
     blockId: string;
     startMin: number;
     endMin: number;
+    originDate: string;
     targetDate: string;
   } | null>(null);
   const blockDragRef = useRef<{
@@ -420,7 +421,7 @@ export default function CalendarClient({
       curDate: originDate,
       moved: false,
     };
-    setBlockDragPreview({ blockId: block.id, startMin: origStartMin, endMin: origEndMin, targetDate: originDate });
+    setBlockDragPreview({ blockId: block.id, startMin: origStartMin, endMin: origEndMin, originDate, targetDate: originDate });
     setIsBlockDragging(true);
   }
 
@@ -440,6 +441,26 @@ export default function CalendarClient({
       router.refresh();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to update block");
+      router.refresh();
+    }
+  }
+
+  // Dragging one occurrence of a recurring block detaches it into a standalone
+  // one-off at the new date/time; the rest of the series is unchanged.
+  async function detachBlock(blockId: string, originDate: string, targetDate: string, startMin: number, endMin: number) {
+    try {
+      const res = await fetch(`/api/planning/blocks/${blockId}/detach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: originDate, blockDate: targetDate, startTime: minToTime(startMin), endTime: minToTime(endMin) }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error || "Failed to move block");
+      }
+      router.refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to move block");
       router.refresh();
     }
   }
@@ -465,10 +486,10 @@ export default function CalendarClient({
       } else {
         en = Math.min(1440, Math.max(d.origEndMin + deltaMin, d.origStartMin + SNAP));
       }
-      // Horizontal (cross-day) move — one-off blocks only. The dragging band has
-      // pointer-events:none, so elementFromPoint sees the day column beneath it.
+      // Horizontal (cross-day) move. The dragging band has pointer-events:none,
+      // so elementFromPoint sees the day column beneath it.
       let targetDate = d.curDate;
-      if (d.mode === "move" && d.oneOff) {
+      if (d.mode === "move") {
         const el = document.elementFromPoint(e.clientX, e.clientY);
         const dateEl = el?.closest("[data-date]");
         const dd = dateEl?.getAttribute("data-date");
@@ -476,7 +497,7 @@ export default function CalendarClient({
       }
       const moved = d.moved || Math.abs(deltaPx) > 3 || targetDate !== d.origDate;
       blockDragRef.current = { ...d, curStartMin: s, curEndMin: en, curDate: targetDate, moved };
-      setBlockDragPreview({ blockId: d.blockId, startMin: s, endMin: en, targetDate });
+      setBlockDragPreview({ blockId: d.blockId, startMin: s, endMin: en, originDate: d.origDate, targetDate });
     }
 
     function onUp() {
@@ -485,10 +506,15 @@ export default function CalendarClient({
       setIsBlockDragging(false);
       setBlockDragPreview(null);
       const timesChanged = d && (d.curStartMin !== d.origStartMin || d.curEndMin !== d.origEndMin);
-      const dayChanged = d && d.oneOff && d.curDate !== d.origDate;
+      const dayChanged = d && d.curDate !== d.origDate;
       if (d && d.moved && (timesChanged || dayChanged)) {
         suppressBlockClickRef.current = true;
-        saveBlockDrag(d.blockId, d.curStartMin, d.curEndMin, dayChanged ? d.curDate : undefined);
+        if (d.oneOff) {
+          saveBlockDrag(d.blockId, d.curStartMin, d.curEndMin, dayChanged ? d.curDate : undefined);
+        } else {
+          // A recurring occurrence detaches into a one-off at the new day/time.
+          detachBlock(d.blockId, d.origDate, d.curDate, d.curStartMin, d.curEndMin);
+        }
       }
     }
 
@@ -1042,15 +1068,22 @@ export default function CalendarClient({
           {weekDays.map((day) => {
             const laidOut = layoutDay(day, eventsForLayout);
             const dayKey = localDateKey(day);
-            // While dragging a one-off block across days, render it in the target
-            // column (remove it from its natural column).
+            // While dragging, move the grabbed occurrence out of its origin day
+            // into the target day. For a recurring block only that one occurrence
+            // moves; the rest of the series stays in place.
             const dayBlocks = (() => {
               const base = blocksForDay(day, blocks);
               if (!blockDragPreview) return base;
               const dragged = blocks.find((b) => b.id === blockDragPreview.blockId);
-              if (!dragged || dragged.kind !== "one_off") return base;
-              const without = base.filter((db) => db.block.id !== blockDragPreview.blockId);
-              return blockDragPreview.targetDate === dayKey ? [...without, { block: dragged, top: 0, height: 0 }] : without;
+              if (!dragged) return base;
+              const list =
+                dayKey === blockDragPreview.originDate
+                  ? base.filter((db) => db.block.id !== blockDragPreview.blockId)
+                  : base;
+              if (blockDragPreview.targetDate === dayKey && !list.some((db) => db.block.id === blockDragPreview.blockId)) {
+                return [...list, { block: dragged, top: 0, height: 0 }];
+              }
+              return list;
             })();
             return (
               <div

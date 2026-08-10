@@ -17,6 +17,7 @@ export interface PlanningBlock {
   weekdays: number[] | null; // recurring: 0=Sun..6=Sat
   startsOn: string | null; // recurring window start (null = open/today)
   endsOn: string | null; // recurring window end (null = open-ended)
+  excludedDates: string[]; // recurring: dates the series skips (detached instances)
   startTime: string; // 'HH:MM'
   endTime: string; // 'HH:MM'
   createdAt: string;
@@ -33,6 +34,7 @@ export interface PlanningBlockRow {
   weekdays: number[] | null;
   starts_on: string | null;
   ends_on: string | null;
+  excluded_dates: string[] | null;
   start_time: string;
   end_time: string;
   created_at: string;
@@ -40,7 +42,7 @@ export interface PlanningBlockRow {
 }
 
 export const PLANNING_BLOCK_COLUMNS =
-  "id, stage, title, color, kind, block_date, weekdays, starts_on, ends_on, start_time, end_time, created_at, updated_at";
+  "id, stage, title, color, kind, block_date, weekdays, starts_on, ends_on, excluded_dates, start_time, end_time, created_at, updated_at";
 
 const STAGE_SET = new Set<string>(STAGES);
 
@@ -70,6 +72,7 @@ export function blockOccursOn(block: PlanningBlock, dateKey: string, weekday: nu
   if (!block.weekdays?.includes(weekday)) return false;
   if (block.startsOn && dateKey < block.startsOn) return false;
   if (block.endsOn && dateKey > block.endsOn) return false;
+  if (block.excludedDates?.includes(dateKey)) return false; // detached instance
   return true;
 }
 
@@ -91,6 +94,7 @@ export function rowToBlock(r: PlanningBlockRow): PlanningBlock {
     weekdays: r.weekdays,
     startsOn: r.starts_on,
     endsOn: r.ends_on,
+    excludedDates: r.excluded_dates ?? [],
     startTime: (r.start_time ?? "").slice(0, 5),
     endTime: (r.end_time ?? "").slice(0, 5),
     createdAt: r.created_at,
@@ -107,6 +111,7 @@ export interface BlockInput {
   weekdays?: unknown;
   startsOn?: unknown;
   endsOn?: unknown;
+  excludedDates?: unknown;
   startTime?: unknown;
   endTime?: unknown;
 }
@@ -129,6 +134,14 @@ function normTime(v: unknown): string | null {
   const min = Number(m[2]);
   if (h > 23 || min > 59) return null;
   return `${m[1]}:${m[2]}`;
+}
+
+// Array of distinct 'YYYY-MM-DD' strings.
+function normDates(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const set = new Set<string>();
+  for (const d of v) if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) set.add(d);
+  return [...set].sort();
 }
 
 // Array of distinct weekday ints 0-6, sorted. null if none valid.
@@ -172,6 +185,7 @@ export function buildBlockRow(input: BlockInput): { row: Record<string, unknown>
     row.weekdays = null;
     row.starts_on = null;
     row.ends_on = null;
+    row.excluded_dates = [];
   } else {
     const weekdays = normWeekdays(input.weekdays);
     if (!weekdays) return { error: "weekdays (0-6) are required for a recurring block" };
@@ -179,6 +193,7 @@ export function buildBlockRow(input: BlockInput): { row: Record<string, unknown>
     row.block_date = null;
     row.starts_on = dateOrNull(input.startsOn);
     row.ends_on = dateOrNull(input.endsOn);
+    row.excluded_dates = normDates(input.excludedDates);
   }
 
   return { row };
