@@ -350,3 +350,110 @@
 .muted {
   color: var(--text-muted);
 }
+
+/* Continuous-time Gantt overview (ForecastGantt) */
+.gantt {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin-bottom: 22px;
+}
+.ganttHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ganttHead > span:first-child {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.ganttHint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.ganttBody {
+  display: flex;
+  align-items: stretch;
+}
+.labels {
+  flex: 0 0 auto;
+  border-right: 1px solid var(--border);
+}
+.laneLabel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 10px;
+  border-top: 1px solid var(--surface-2);
+}
+.laneDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--stage-color);
+  flex: 0 0 auto;
+}
+.laneName {
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scroll {
+  flex: 1 1 auto;
+  overflow-x: auto;
+}
+.inner {
+  position: relative;
+}
+.grid {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.6;
+}
+.today {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  background: var(--c-propose);
+  z-index: 2;
+}
+.axis {
+  position: relative;
+}
+.tick {
+  position: absolute;
+  top: 5px;
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.lane {
+  position: relative;
+  border-top: 1px solid var(--surface-2);
+}
+.dayBar {
+  position: absolute;
+  bottom: 5px;
+  border-radius: 4px 4px 2px 2px;
+  background: color-mix(in srgb, var(--stage-color) 68%, var(--surface));
+  border: 1px solid var(--stage-color);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+  cursor: default;
+}
+.dayBarCount {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text);
+  padding-top: 1px;
+}

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PlanningBlock } from "@/lib/planning/blocks";
 import { computeForecast, type ForecastDeal } from "@/lib/planning/schedule";
+import ForecastGantt from "./ForecastGantt";
 import styles from "./forecast.module.css";
 
 const HORIZONS = [4, 8, 12, 26];
@@ -102,6 +103,8 @@ export default function ForecastClient({
         Deals without their own estimate use the per-stage default effort — set those in{" "}
         <a href="/settings">Settings</a>. Override an individual deal in its row below.
       </p>
+
+      <ForecastGantt forecast={forecast} todayKey={today} />
 
       {forecast.stages.length === 0 && (
         <div className={styles.empty}>
