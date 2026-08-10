@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabaseClient";
-import type { Deal, DealPhoto, PropertyOption } from "@/lib/salesBoard";
+import type { Deal, DealPhoto, PropertyOption, Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import { PLANNING_BLOCK_COLUMNS, rowToBlock, type PlanningBlockRow } from "@/lib/planning/blocks";
+import type { ForecastDeal } from "@/lib/planning/schedule";
 import CalendarClient, { type CalendarEvent, type DealOption } from "./CalendarClient";
 
 export const dynamic = "force-dynamic";
@@ -25,14 +26,14 @@ type RawEvent = {
 };
 
 export default async function CalendarPage() {
-  const [eventsRes, dealsRes, propertiesRes, ungroupedRes, blocksRes] = await Promise.all([
+  const [eventsRes, dealsRes, propertiesRes, ungroupedRes, blocksRes, stageDefaultsRes] = await Promise.all([
     supabase
       .from("events")
       .select('*, deal_photos(*, deal:"Sales Board"(deal_name, company, stage, properties(address)))')
       .order("start_time", { ascending: true }),
     supabase
       .from("Sales Board")
-      .select("id, deal_name, company, stage, lost_at, properties(contacts(last_name))")
+      .select("id, deal_name, company, stage, lost_at, estimated_hours, proposal_date, created_at, properties(contacts(last_name))")
       .order("deal_name", { ascending: true }),
     supabase
       .from("properties")
@@ -40,6 +41,7 @@ export default async function CalendarPage() {
       .order("address", { ascending: true }),
     supabase.from("deal_photos").select("id", { count: "exact", head: true }).is("event_id", null),
     supabase.from("planning_blocks").select(PLANNING_BLOCK_COLUMNS).order("created_at", { ascending: true }),
+    supabase.from("stage_effort_defaults").select("stage, default_hours"),
   ]);
 
   if (eventsRes.error) {
@@ -58,6 +60,9 @@ export default async function CalendarPage() {
   const rawEvents = (eventsRes.data ?? []) as unknown as RawEvent[];
   const rawDeals = (dealsRes.data ?? []) as unknown as (Omit<DealOption, "contactLastName"> & {
     properties: { contacts: { last_name: string | null } | null } | null;
+    estimated_hours: number | null;
+    proposal_date: string | null;
+    created_at: string | null;
   })[];
   const dealOptions: DealOption[] = rawDeals.map((d) => ({
     id: d.id,
@@ -79,6 +84,22 @@ export default async function CalendarPage() {
   }));
   const ungeotaggedCount = ungroupedRes.count ?? 0;
   const planningBlocks = ((blocksRes.data ?? []) as unknown as PlanningBlockRow[]).map(rowToBlock);
+
+  // Deals + stage defaults feed the same forecast the /forecast view uses, so
+  // the calendar can show which deals land in each block window.
+  const forecastDeals: ForecastDeal[] = rawDeals
+    .filter((d) => d.lost_at == null)
+    .map((d) => ({
+      id: d.id,
+      name: d.deal_name,
+      company: d.company,
+      stage: d.stage as Stage,
+      estimatedHours: d.estimated_hours != null ? Number(d.estimated_hours) : null,
+      orderDate: d.proposal_date ?? ((d.created_at ?? "").slice(0, 10) || "9999-12-31"),
+    }));
+  const stageDefaults: Record<string, number> = {};
+  for (const row of stageDefaultsRes.data ?? []) stageDefaults[row.stage as string] = Number(row.default_hours);
+
   const dealOptionsById = new Map(dealOptions.map((d) => [d.id, d]));
 
   const calendarEvents: CalendarEvent[] = rawEvents.map((event) => {
@@ -141,6 +162,8 @@ export default async function CalendarPage() {
       dealOptions={dealOptions}
       propertyOptions={propertyOptions}
       blocks={planningBlocks}
+      forecastDeals={forecastDeals}
+      stageDefaults={stageDefaults}
     />
   );
 }

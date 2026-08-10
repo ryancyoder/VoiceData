@@ -14,6 +14,7 @@ import PhotoAnnotator from "@/components/PhotoAnnotator";
 import type { DealPhoto } from "@/lib/salesBoard";
 import BlockEditorModal from "./BlockEditorModal";
 import { blockColor, blockHours, blockOccursOn, type PlanningBlock } from "@/lib/planning/blocks";
+import { computeForecast, type Assignment, type ForecastDeal } from "@/lib/planning/schedule";
 
 export interface GeoPhoto {
   id: number;
@@ -225,12 +226,16 @@ export default function CalendarClient({
   dealOptions,
   propertyOptions,
   blocks,
+  forecastDeals,
+  stageDefaults,
 }: {
   events: CalendarEvent[];
   ungeotaggedCount: number;
   dealOptions: DealOption[];
   propertyOptions: PropertyOption[];
   blocks: PlanningBlock[];
+  forecastDeals: ForecastDeal[];
+  stageDefaults: Record<string, number>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -308,6 +313,27 @@ export default function CalendarClient({
   // Which block the editor is open for: an existing block, or a fresh one
   // pre-dated to `date`. null = closed.
   const [blockEditor, setBlockEditor] = useState<{ block: PlanningBlock | null; date: string } | null>(null);
+
+  // Run the same forecast the /forecast view uses, and index the resulting
+  // deal placements by their block instance ("<blockId>|<date>") so each block
+  // band can subtly list the deals scheduled into it.
+  const [forecastTodayKey] = useState(() => localDateKey(new Date()));
+  const assignmentsByWindow = useMemo(() => {
+    const forecast = computeForecast(blocks, forecastDeals, stageDefaults, {
+      todayKey: forecastTodayKey,
+      horizonWeeks: 26,
+    });
+    const map = new Map<string, Assignment[]>();
+    for (const stage of forecast.stages) {
+      for (const a of stage.assignments) {
+        const key = `${a.blockId}|${a.date}`;
+        const list = map.get(key);
+        if (list) list.push(a);
+        else map.set(key, [a]);
+      }
+    }
+    return map;
+  }, [blocks, forecastDeals, stageDefaults, forecastTodayKey]);
 
   const [editingEvent, setEditingEvent] = useState(false);
   const [editForm, setEditForm] = useState<EventFormState | null>(null);
@@ -877,6 +903,7 @@ export default function CalendarClient({
           {weekDays.map((day) => {
             const laidOut = layoutDay(day, eventsForLayout);
             const dayBlocks = blocksForDay(day, blocks);
+            const dayKey = localDateKey(day);
             return (
               <div
                 key={day.toISOString()}
@@ -886,6 +913,7 @@ export default function CalendarClient({
                 {dayBlocks.map(({ block, top, height }) => {
                   const color = blockColor(block);
                   const open = () => setBlockEditor({ block, date: block.blockDate ?? localDateKey(day) });
+                  const bandDeals = assignmentsByWindow.get(`${block.id}|${dayKey}`) ?? [];
                   return (
                     <div
                       key={block.id}
@@ -913,6 +941,22 @@ export default function CalendarClient({
                       >
                         {block.title ?? block.stage}
                       </span>
+                      {bandDeals.length > 0 && (
+                        <div className={styles["planning-block-deals"]}>
+                          {bandDeals.slice(0, 5).map((a) => (
+                            <span
+                              key={a.dealId}
+                              className={styles["planning-block-deal"]}
+                              title={`${a.dealName} · ${a.hours}h`}
+                            >
+                              {a.dealName}
+                            </span>
+                          ))}
+                          {bandDeals.length > 5 && (
+                            <span className={styles["planning-block-deal"]}>+{bandDeals.length - 5} more</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

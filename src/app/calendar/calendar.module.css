@@ -614,3 +614,22 @@
   text-overflow: ellipsis;
   pointer-events: none;
 }
+
+/* Forecasted deals scheduled into a planning block — shown subtly inside the
+   band (clipped by the band's height/overflow when space is tight). */
+.planning-block-deals {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 1px;
+  pointer-events: none;
+}
+.planning-block-deal {
+  font-size: 9px;
+  line-height: 1.25;
+  font-weight: 500;
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
