@@ -66,6 +66,13 @@ export default function ForecastGantt({ forecast, todayKey }: { forecast: Foreca
     return { offset, label: fmtTick(addDaysKey(todayKey, offset)) };
   });
 
+  // Weekend day offsets (Sat/Sun) for faint shading.
+  const todayWd = parseKey(todayKey).getDay();
+  const weekendOffsets = Array.from({ length: totalDays }, (_, i) => i).filter((i) => {
+    const wd = (todayWd + i) % 7;
+    return wd === 0 || wd === 6;
+  });
+
   return (
     <div className={styles.gantt}>
       <div className={styles.ganttHead}>
@@ -91,6 +98,9 @@ export default function ForecastGantt({ forecast, todayKey }: { forecast: Foreca
         {/* Scrollable timeline */}
         <div className={styles.scroll}>
           <div className={styles.inner} style={{ width: innerWidth, height: fullHeight }}>
+            {weekendOffsets.map((off) => (
+              <div key={`w${off}`} className={styles.weekend} style={{ left: off * PX_PER_DAY, width: PX_PER_DAY, height: fullHeight }} />
+            ))}
             {ticks.map((t) => (
               <div key={`g${t.offset}`} className={styles.grid} style={{ left: t.offset * PX_PER_DAY, height: fullHeight }} />
             ))}

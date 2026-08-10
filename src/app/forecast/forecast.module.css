@@ -439,12 +439,27 @@
   position: relative;
   border-top: 1px solid var(--surface-2);
 }
+.weekend {
+  position: absolute;
+  top: 0;
+  background: color-mix(in srgb, var(--text-muted) 7%, transparent);
+}
+/* Open (unused) block capacity reads as a faint diagonal hatch; the solid
+   .slotFill covers the scheduled portion, so remaining hatch = available time. */
 .slot {
   position: absolute;
   bottom: 5px;
   border-radius: 4px 4px 2px 2px;
-  background: color-mix(in srgb, var(--stage-color) 9%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--stage-color) 40%, transparent);
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--stage-color) 16%, transparent) 0,
+      color-mix(in srgb, var(--stage-color) 16%, transparent) 3px,
+      transparent 3px,
+      transparent 6px
+    ),
+    color-mix(in srgb, var(--stage-color) 6%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--stage-color) 42%, transparent);
   overflow: hidden;
   cursor: default;
 }
