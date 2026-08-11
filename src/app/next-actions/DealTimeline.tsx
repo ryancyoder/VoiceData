@@ -10,7 +10,7 @@ export interface TimelineDates {
   appointment: string | null; // Propose — appointment date
   proposal: string | null; // Sent — proposal date
   won: string | null; // Sold — won date
-  production: string | null; // Project Management — production end date
+  production: string | null; // Project Management — production start date
   invoiced: string | null; // Invoiced date
   paid: string | null; // Paid in Full date
 }
@@ -19,7 +19,7 @@ const MILESTONES: { key: keyof TimelineDates; label: string; icon: string }[] = 
   { key: "appointment", label: "Appointment", icon: "🏠" },
   { key: "proposal", label: "Proposal Sent", icon: "📤" },
   { key: "won", label: "Sold", icon: "🤝" },
-  { key: "production", label: "Production complete", icon: "🚧" },
+  { key: "production", label: "Production", icon: "🚧" },
   { key: "invoiced", label: "Invoiced", icon: "🧾" },
   { key: "paid", label: "Paid in Full", icon: "💰" },
 ];

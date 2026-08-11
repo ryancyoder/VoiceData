@@ -13,7 +13,7 @@ type RawDeal = {
   appointment_date: string | null;
   proposal_date: string | null;
   won_date: string | null;
-  end_date: string | null;
+  start_date: string | null;
   invoiced_date: string | null;
   paid_date: string | null;
   properties: { contacts: { last_name: string | null } | null } | null;
@@ -26,7 +26,7 @@ export default async function NextActionsPage() {
     supabase
       .from("Sales Board")
       .select(
-        "id, deal_name, stage, lost_at, appointment_date, proposal_date, won_date, end_date, invoiced_date, paid_date, properties(contacts(last_name))"
+        "id, deal_name, stage, lost_at, appointment_date, proposal_date, won_date, start_date, invoiced_date, paid_date, properties(contacts(last_name))"
       )
       .order("created_at", { ascending: true }),
     supabase
@@ -64,7 +64,7 @@ export default async function NextActionsPage() {
           appointment: d.appointment_date,
           proposal: d.proposal_date,
           won: d.won_date,
-          production: d.end_date, // production end date
+          production: d.start_date, // production start date
           invoiced: d.invoiced_date,
           paid: d.paid_date,
         },
