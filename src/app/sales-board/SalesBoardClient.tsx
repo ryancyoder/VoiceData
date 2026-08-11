@@ -271,9 +271,9 @@ export default function SalesBoardClient({
       ev.preventDefault();
       s.ghost.style.left = ev.clientX - s.offsetX + "px";
       s.ghost.style.top = ev.clientY - s.offsetY + "px";
-      s.ghost.style.visibility = "hidden";
+      // The ghost is pointer-events:none, so elementFromPoint sees the column
+      // beneath it directly — no need to hide/show the ghost each move.
       const el = document.elementFromPoint(ev.clientX, ev.clientY);
-      s.ghost.style.visibility = "";
       const columnEl = el ? (el as HTMLElement).closest<HTMLElement>("[data-column]") : null;
       if (columnEl !== s.currentColumn) {
         if (s.currentColumn) s.currentColumn.classList.remove(styles["is-dragover"]);

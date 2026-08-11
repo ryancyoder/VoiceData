@@ -25,10 +25,13 @@ function formatDateWindow(start: string | null, end: string | null) {
   return formatProposalDate((start || end) as string);
 }
 
-// Hold this long (without moving) to grab the card for dragging. A quick tap
-// opens the deal; a double tap jumps to the deal's photo albums.
+// Finger: hold this long (without moving) to grab a card — leaves quick swipes
+// free to scroll the column. Pen/mouse: no wait — grab as soon as the pointer
+// moves past DRAG_THRESHOLD, so an Apple Pencil just grabs and drags. A quick
+// tap opens the deal; a double tap jumps to the deal's photo albums.
 const DRAG_HOLD_MS = 450;
 const MOVE_TOLERANCE = 10;
+const DRAG_THRESHOLD = 6;
 const DOUBLE_TAP_MS = 300;
 
 export default function DealCard({
@@ -51,7 +54,7 @@ export default function DealCard({
 }) {
   const [pressing, setPressing] = useState(false);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pointerRef = useRef<{ id: number; x: number; y: number; el: HTMLElement } | null>(null);
+  const pointerRef = useRef<{ id: number; x: number; y: number; el: HTMLElement; touch: boolean } | null>(null);
   const draggingRef = useRef(false);
   const lastTapRef = useRef(0);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -64,30 +67,44 @@ export default function DealCard({
     setPressing(false);
   }
 
+  function startDrag(p: { id: number; x: number; y: number; el: HTMLElement }) {
+    clearHold();
+    draggingRef.current = true;
+    onDragActivate(p.el, p.id, p.x, p.y, deal);
+  }
+
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (deal._pending) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const el = e.currentTarget as HTMLElement;
+    const touch = e.pointerType === "touch";
     draggingRef.current = false;
-    pointerRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, el };
+    pointerRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, el, touch };
     setPressing(true);
-    holdTimerRef.current = setTimeout(() => {
-      holdTimerRef.current = null;
-      const p = pointerRef.current;
-      if (!p) return;
-      setPressing(false);
-      draggingRef.current = true;
-      onDragActivate(p.el, p.id, p.x, p.y, deal);
-    }, DRAG_HOLD_MS);
+    // Finger: arm the hold-to-grab timer. Pen/mouse: nothing here — the grab
+    // fires on movement in handlePointerMove instead.
+    if (touch) {
+      holdTimerRef.current = setTimeout(() => {
+        holdTimerRef.current = null;
+        const p = pointerRef.current;
+        if (p) startDrag(p);
+      }, DRAG_HOLD_MS);
+    }
   }
 
   function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
     const p = pointerRef.current;
     if (!p || e.pointerId !== p.id || draggingRef.current) return;
-    // Moved before the hold completed — treat as a scroll, not a hold or tap.
-    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > MOVE_TOLERANCE) {
-      clearHold();
-      pointerRef.current = null;
+    const dist = Math.hypot(e.clientX - p.x, e.clientY - p.y);
+    if (p.touch) {
+      // Finger moved before the hold completed — it's a scroll, not a grab.
+      if (dist > MOVE_TOLERANCE) {
+        clearHold();
+        pointerRef.current = null;
+      }
+    } else if (dist > DRAG_THRESHOLD) {
+      // Pen/mouse crossed the drag threshold — grab immediately.
+      startDrag(p);
     }
   }
 
