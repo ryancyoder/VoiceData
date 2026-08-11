@@ -95,6 +95,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   const [saving, setSaving] = useState<Record<number, boolean>>({});
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<Set<Stage>>(new Set(STAGES));
+  const [stageMenuOpen, setStageMenuOpen] = useState(false);
   const [showLost, setShowLost] = useState(false);
   const [missingOnly, setMissingOnly] = useState(false);
   // "" = every action; otherwise an ACTION_LISTS key (e.g. "call").
@@ -500,18 +501,41 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           onChange={(e) => setSearch(e.target.value)}
           className={styles["search-input"]}
         />
-        <div className={styles["stage-filters"]}>
-          {STAGES.map((stage) => (
-            <button
-              key={stage}
-              type="button"
-              className={`${styles["stage-chip"]} ${stageFilter.has(stage) ? styles["is-active"] : ""}`}
-              style={{ ["--chip-color" as string]: STAGE_COLORS[stage] }}
-              onClick={() => toggleStage(stage)}
-            >
-              {stage}
-            </button>
-          ))}
+        <div className={styles["stage-dropdown"]}>
+          <button
+            type="button"
+            className={styles["stage-dropdown-btn"]}
+            onClick={() => setStageMenuOpen((o) => !o)}
+          >
+            {stageFilter.size === STAGES.length
+              ? "All stages"
+              : stageFilter.size === 0
+                ? "No stages"
+                : `${stageFilter.size} stages`}{" "}
+            ▾
+          </button>
+          {stageMenuOpen && (
+            <>
+              <div className={styles["stage-menu-backdrop"]} onClick={() => setStageMenuOpen(false)} />
+              <div className={styles["stage-menu"]}>
+                <div className={styles["stage-menu-actions"]}>
+                  <button type="button" onClick={() => setStageFilter(new Set(STAGES))}>
+                    All
+                  </button>
+                  <button type="button" onClick={() => setStageFilter(new Set())}>
+                    None
+                  </button>
+                </div>
+                {STAGES.map((stage) => (
+                  <label key={stage} className={styles["stage-menu-item"]}>
+                    <input type="checkbox" checked={stageFilter.has(stage)} onChange={() => toggleStage(stage)} />
+                    <span className={styles["stage-menu-dot"]} style={{ background: STAGE_COLORS[stage] }} />
+                    {stage}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <div className={styles["action-list-filters"]} role="group" aria-label="Action list">
           <button
