@@ -597,6 +597,79 @@
 .tool-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .tool-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* Text-template dropdown on the deal modal's Text button */
+.text-menu { position: relative; display: inline-flex; }
+.text-menu-backdrop { position: fixed; inset: 0; z-index: 60; }
+.text-menu-panel {
+  position: absolute;
+  z-index: 61;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 240px;
+  max-width: 300px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+  padding: 6px;
+}
+.text-menu-row { display: flex; align-items: center; gap: 4px; }
+.text-menu-item {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  color: var(--text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.text-menu-item:hover { background: var(--surface-2); }
+.text-menu-del {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.text-menu-del:hover { color: var(--danger); background: var(--danger-soft); }
+.text-menu-empty { padding: 10px; font-size: 0.8rem; color: var(--text-muted); text-align: center; }
+.text-menu-add {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  background: none;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.text-menu-add:hover { background: var(--surface-2); }
+.text-menu-form { display: flex; flex-direction: column; gap: 6px; padding: 6px 4px 2px; }
+.text-menu-form input,
+.text-menu-form textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.text-menu-form textarea { resize: vertical; }
+.text-menu-form-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
 /* A deal carrying an Aspire opportunity link is outlined in its stage color
    (the default gray border is replaced); no outline means no link. */
 .card.is-linked { border-color: var(--col-color); }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./sales-board.module.css";
 import PropertyPicker from "./PropertyPicker";
+import TextTemplateMenu from "./TextTemplateMenu";
 import {
   dealAttachmentUrl,
   dealCorrespondenceUrl,
@@ -774,17 +775,15 @@ export default function DealModal({
                 </a>
               )}
               {form.contact_phone.replace(/[^\d+]/g, "") && (
-                <a
-                  className={styles["open-link-btn"]}
-                  href={`sms:${form.contact_phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(
-                    form.contact_first_name.trim()
-                      ? `Hi ${form.contact_first_name.trim()}, this is Ryan with Ricci's Landscape Management…`
-                      : "Hi, this is Ryan with Ricci's Landscape Management…"
-                  )}`}
-                  onClick={() => onLogCorrespondence(deal.id, "text")}
-                >
-                  💬 Text
-                </a>
+                <TextTemplateMenu
+                  phone={form.contact_phone}
+                  tokens={{
+                    first_name: form.contact_first_name.trim(),
+                    last_name: form.contact_last_name.trim(),
+                    proposal_number: form.proposal_number.trim(),
+                  }}
+                  onSend={() => onLogCorrespondence(deal.id, "text")}
+                />
               )}
             </div>
           </div>
