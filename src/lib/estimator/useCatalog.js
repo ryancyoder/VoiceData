@@ -14,14 +14,19 @@ const UNIT_OVERRIDES = {
 // Phase 2 persistence: Supabase, via /api/estimator/catalog. The catalog is
 // edited locally and written back as a whole on Save (the app's existing
 // edit-then-save UX). The bundled JSON is only a fallback if the load fails.
-export function useCatalog() {
+// `source` selects the catalog backend: 'legacy' reads catalog_items via
+// /api/estimator/catalog (the default, unchanged); 'master' reads the
+// normalized master tables via /api/estimator/catalog-v2. Master is read-only
+// for now — saving stays disabled until the write path is migrated.
+export function useCatalog(source = 'legacy') {
   const [items, setItems] = useState([]);
   const [deliveryRate, setDeliveryRate] = useState(CATALOG_DELIVERY_RATE);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
-    fetch('/api/estimator/catalog')
+    const url = source === 'master' ? '/api/estimator/catalog-v2' : '/api/estimator/catalog';
+    fetch(url)
       .then(res => (res.ok ? res.json() : Promise.reject(new Error('load failed'))))
       .then(data => {
         if (!active) return;
@@ -36,7 +41,7 @@ export function useCatalog() {
         setLoaded(true);
       });
     return () => { active = false; };
-  }, []);
+  }, [source]);
 
   const updateItem = (id, field, value) => {
     setItems(prev =>
@@ -79,6 +84,8 @@ export function useCatalog() {
   };
 
   const saveCatalog = async (currentItems, currentDeliveryRate) => {
+    // The master catalog is read-only until the write path is migrated.
+    if (source === 'master') return false;
     try {
       const res = await fetch('/api/estimator/catalog', {
         method: 'PUT',

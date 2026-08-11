@@ -27,8 +27,18 @@ import { CATEGORY_COLORS } from '@/lib/estimator/catalog';
 
 export default function App({ estimateId }) {
   const router = useRouter();
-  const { catalogItems, deliveryRate, updateDeliveryRate, updateCatalogItem, addCatalogItem, removeCatalogItem, saveCatalog } = useCatalog();
-  const { kits, saveKit, removeKit, updateKit } = useAssemblyKits();
+  // Catalog data source: 'legacy' (catalog_items) or 'master' (the normalized
+  // tables via the -v2 endpoints). Persisted so a reload keeps the choice.
+  const [catalogSource, setCatalogSource] = useState(() => {
+    if (typeof window === 'undefined') return 'legacy';
+    return localStorage.getItem('estimator_catalog_source') === 'master' ? 'master' : 'legacy';
+  });
+  const switchCatalogSource = (next) => {
+    setCatalogSource(next);
+    try { localStorage.setItem('estimator_catalog_source', next); } catch { /* ignore */ }
+  };
+  const { catalogItems, deliveryRate, updateDeliveryRate, updateCatalogItem, addCatalogItem, removeCatalogItem, saveCatalog } = useCatalog(catalogSource);
+  const { kits, saveKit, removeKit, updateKit } = useAssemblyKits(catalogSource);
 
   const {
     estimate,
@@ -276,6 +286,26 @@ export default function App({ estimateId }) {
             <span className="text-xs text-green-200/90 w-16" aria-live="polite">
               {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Save failed' : ''}
             </span>
+            {/* Catalog data source toggle (Phase 3: compare legacy vs master). */}
+            <div className="flex items-center rounded-lg overflow-hidden border border-green-600 text-xs font-semibold" title="Catalog data source">
+              <button
+                onClick={() => switchCatalogSource('legacy')}
+                className={`px-2.5 py-1 transition-colors ${catalogSource === 'legacy' ? 'bg-white text-green-800' : 'text-green-200 hover:bg-green-700'}`}
+              >
+                Legacy
+              </button>
+              <button
+                onClick={() => switchCatalogSource('master')}
+                className={`px-2.5 py-1 transition-colors ${catalogSource === 'master' ? 'bg-white text-green-800' : 'text-green-200 hover:bg-green-700'}`}
+              >
+                Master
+              </button>
+            </div>
+            {catalogSource === 'master' && (
+              <span className="rounded bg-amber-400/90 px-2 py-0.5 text-[0.65rem] font-bold text-amber-950" title="The master catalog is read-only until the write path is migrated">
+                READ-ONLY
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
