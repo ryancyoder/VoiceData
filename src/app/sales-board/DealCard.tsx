@@ -254,6 +254,13 @@ export default function DealCard({
             📄
           </div>
         )}
+        {deal.opportunity_link && (
+          <div className={styles["card-link-badge"]} title="Has Aspire opportunity link" aria-label="Has Aspire opportunity link">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 15l6-6M10.5 6.5l1-1a3.5 3.5 0 0 1 5 5l-1 1M13.5 17.5l-1 1a3.5 3.5 0 0 1-5-5l1-1" />
+            </svg>
+          </div>
+        )}
       </div>
 
       {deal.stage === "Propose" && deal.appointment_date && (

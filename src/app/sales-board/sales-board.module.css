@@ -523,6 +523,17 @@
   flex-shrink: 0;
   margin-left: auto;
 }
+/* Discrete link glyph — a deal carries an Aspire opportunity link. */
+.card-link-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  margin-left: auto;
+}
 .card-error { font-size: 0.7rem; color: var(--danger); margin-top: 6px; }
 .card-desc {
   font-size: 0.74rem;
