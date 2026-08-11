@@ -523,6 +523,32 @@
   flex-shrink: 0;
   margin-left: auto;
 }
+/* Deal-modal tools row — sleek squared buttons on one line (wraps if many);
+   built to hold more tool buttons alongside Estimate and Design later. */
+.tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.tool-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.tool-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* Discrete link glyph — a deal carries an Aspire opportunity link. */
 .card-link-badge {
   display: flex;

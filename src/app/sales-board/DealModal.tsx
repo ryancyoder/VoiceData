@@ -913,48 +913,36 @@ export default function DealModal({
               )}
             </div>
           </div>
-          <div className={`${styles["card-edit-field"]} ${styles["is-full"]} ${styles["estimate-field"]}`}>
-            <label>Estimate</label>
-            <div className={styles["estimate-actions"]}>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            <label>Tools</label>
+            <div className={styles["tool-actions"]}>
+              {/* Estimate: open the existing one, or create it. */}
               {estimateInfo === undefined ? (
                 <span className={styles["proposal-pdf-busy"]}>Loading…</span>
               ) : estimateInfo ? (
-                <Link href={`/estimator/${estimateInfo.id}`} className={styles["estimate-open"]}>
+                <Link href={`/estimator/${estimateInfo.id}`} className={styles["tool-btn"]}>
                   📐 Open estimate
                   {estimateInfo.total != null
                     ? ` · ${estimateInfo.total.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`
                     : ""}
                 </Link>
               ) : (
-                <button
-                  type="button"
-                  className={styles["estimate-create"]}
-                  onClick={handleCreateEstimate}
-                  disabled={creatingEstimate}
-                >
+                <button type="button" className={styles["tool-btn"]} onClick={handleCreateEstimate} disabled={creatingEstimate}>
                   {creatingEstimate ? "Creating…" : "📐 Create estimate"}
                 </button>
               )}
-            </div>
-          </div>
-          <div className={`${styles["card-edit-field"]} ${styles["is-full"]} ${styles["estimate-field"]}`}>
-            <label>Designs</label>
-            <div className={styles["estimate-actions"]} style={{ flexWrap: "wrap", gap: 8 }}>
+
+              {/* Designs: existing renderings, plus a new one. */}
               {designs === undefined ? (
                 <span className={styles["proposal-pdf-busy"]}>Loading…</span>
               ) : (
                 <>
                   {designs.map((d) => (
-                    <Link key={d.id} href={`/design/${d.id}`} className={styles["estimate-open"]}>
+                    <Link key={d.id} href={`/design/${d.id}`} className={styles["tool-btn"]}>
                       🎨 {d.name}
                     </Link>
                   ))}
-                  <button
-                    type="button"
-                    className={styles["estimate-create"]}
-                    onClick={handleCreateDesign}
-                    disabled={creatingDesign}
-                  >
+                  <button type="button" className={styles["tool-btn"]} onClick={handleCreateDesign} disabled={creatingDesign}>
                     {creatingDesign ? "Creating…" : "🎨 New design"}
                   </button>
                 </>
