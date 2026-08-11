@@ -19,6 +19,24 @@ const STAGE_COLORS: Record<Stage, string> = {
   "Paid in Full": "var(--c-paid)",
 };
 
+// Action lists group next actions by their leading verb — every next action
+// starts with a verb, so "Call the Smiths" lands in the Call list, "Order
+// mulch" in Purchasing, etc. Matched case-insensitively on the first word.
+const ACTION_LISTS: { key: string; label: string; verbs: string[] }[] = [
+  { key: "call", label: "Call", verbs: ["call"] },
+  { key: "email", label: "Email", verbs: ["email"] },
+  { key: "text", label: "Text", verbs: ["text"] },
+  { key: "schedule", label: "Schedule", verbs: ["schedule"] },
+  { key: "send", label: "Send", verbs: ["send"] },
+  { key: "follow", label: "Follow up", verbs: ["follow"] },
+  { key: "purchasing", label: "Purchasing", verbs: ["order", "purchase", "buy"] },
+];
+
+// The leading word of a next action, lowercased and stripped of punctuation.
+function leadingVerb(title: string): string {
+  return (title.trim().toLowerCase().split(/\s+/)[0] ?? "").replace(/[^a-z]/g, "");
+}
+
 export interface NextActionRow {
   id: number;
   dealName: string;
@@ -44,6 +62,8 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   const [stageFilter, setStageFilter] = useState<Set<Stage>>(new Set(STAGES));
   const [showLost, setShowLost] = useState(false);
   const [missingOnly, setMissingOnly] = useState(false);
+  // "" = every action; otherwise an ACTION_LISTS key (e.g. "call").
+  const [actionList, setActionList] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
@@ -110,10 +130,12 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     toastTimerRef.current = setTimeout(() => setToast(null), 5000);
   }
 
+  const activeList = actionList ? ACTION_LISTS.find((l) => l.key === actionList) ?? null : null;
   const visibleRows = rows.filter((r) => {
     if (!showLost && r.lostAt) return false;
     if (!stageFilter.has(r.stage)) return false;
     if (missingOnly && r.nextActionTitle.trim()) return false;
+    if (activeList && !activeList.verbs.includes(leadingVerb(r.nextActionTitle))) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       const haystack = `${r.contactLastName ?? ""} ${r.dealName}`.toLowerCase();
@@ -421,6 +443,25 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
               onClick={() => toggleStage(stage)}
             >
               {stage}
+            </button>
+          ))}
+        </div>
+        <div className={styles["action-list-filters"]} role="group" aria-label="Action list">
+          <button
+            type="button"
+            className={`${styles["action-list-chip"]} ${actionList === "" ? styles["is-active"] : ""}`}
+            onClick={() => setActionList("")}
+          >
+            All actions
+          </button>
+          {ACTION_LISTS.map((list) => (
+            <button
+              key={list.key}
+              type="button"
+              className={`${styles["action-list-chip"]} ${actionList === list.key ? styles["is-active"] : ""}`}
+              onClick={() => setActionList((cur) => (cur === list.key ? "" : list.key))}
+            >
+              {list.label}
             </button>
           ))}
         </div>

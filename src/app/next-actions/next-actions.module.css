@@ -125,6 +125,30 @@
   color: #fff;
 }
 
+/* Action-list filters (Call / Purchasing / …) — group next actions by their
+   leading verb. */
+.action-list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.action-list-chip {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.action-list-chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .filter-toggle {
   display: flex;
   align-items: center;
