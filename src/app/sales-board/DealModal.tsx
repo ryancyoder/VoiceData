@@ -714,7 +714,7 @@ export default function DealModal({
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-description">Proposal description</label>
-            <textarea id="dm-description" rows={3} value={form.proposal_description} onChange={(e) => set("proposal_description", e.target.value)} />
+            <textarea id="dm-description" rows={1} value={form.proposal_description} onChange={(e) => set("proposal_description", e.target.value)} />
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-company">Company</label>
