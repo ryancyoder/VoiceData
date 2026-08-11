@@ -353,6 +353,9 @@
 .card.is-pending { opacity: 0.55; cursor: default; }
 .card.is-error { border-left-color: var(--danger); }
 .card.is-pressing { transform: scale(0.97); }
+/* Pen/mouse long-press has armed opening the deal's opportunity link — a ring
+   cues the user that releasing now opens the link in a new tab. */
+.card.is-link-armed { box-shadow: 0 0 0 2px var(--col-color); }
 
 .card-top { display: flex; align-items: center; gap: 6px; }
 .card-name { font-size: 0.85rem; font-weight: 600; line-height: 1.3; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

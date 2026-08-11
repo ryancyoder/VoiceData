@@ -33,6 +33,10 @@ const DRAG_HOLD_MS = 450;
 const MOVE_TOLERANCE = 10;
 const DRAG_THRESHOLD = 6;
 const DOUBLE_TAP_MS = 300;
+// Pen/mouse: hold still this long (no drag) to arm opening the deal's Aspire
+// opportunity link. The link opens on release — a real user gesture, so the
+// browser won't block the new tab. Any drag past DRAG_THRESHOLD cancels it.
+const LONG_PRESS_MS = 550;
 
 export default function DealCard({
   deal,
@@ -53,7 +57,10 @@ export default function DealCard({
   onAlbums: (deal: UiDeal) => void;
 }) {
   const [pressing, setPressing] = useState(false);
+  const [linkArmed, setLinkArmed] = useState(false);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressReadyRef = useRef(false);
   const pointerRef = useRef<{ id: number; x: number; y: number; el: HTMLElement; touch: boolean } | null>(null);
   const draggingRef = useRef(false);
   const lastTapRef = useRef(0);
@@ -67,8 +74,22 @@ export default function DealCard({
     setPressing(false);
   }
 
+  function clearLongPress() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressReadyRef.current = false;
+    setLinkArmed(false);
+  }
+
+  function openOpportunityLink() {
+    if (deal.opportunity_link) window.open(deal.opportunity_link, "_blank", "noopener,noreferrer");
+  }
+
   function startDrag(p: { id: number; x: number; y: number; el: HTMLElement }) {
     clearHold();
+    clearLongPress();
     draggingRef.current = true;
     // Suppress native scrolling for the rest of a finger drag too (pen/mouse
     // were already suppressed on hover/down).
@@ -96,6 +117,8 @@ export default function DealCard({
     // vertical grab drags instead of scrolling.
     if (!touch) el.style.touchAction = "none";
     draggingRef.current = false;
+    longPressReadyRef.current = false;
+    setLinkArmed(false);
     pointerRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, el, touch };
     setPressing(true);
     // Finger: arm the hold-to-grab timer. Pen/mouse: nothing here — the grab
@@ -106,6 +129,16 @@ export default function DealCard({
         const p = pointerRef.current;
         if (p) startDrag(p);
       }, DRAG_HOLD_MS);
+    } else if (deal.opportunity_link) {
+      // Pen/mouse: holding still (no drag) arms opening the opportunity link on
+      // release. Movement past the drag threshold cancels it in handlePointerMove.
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        if (!draggingRef.current) {
+          longPressReadyRef.current = true;
+          setLinkArmed(true);
+        }
+      }, LONG_PRESS_MS);
     }
   }
 
@@ -127,6 +160,8 @@ export default function DealCard({
 
   function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
     clearHold();
+    const armed = longPressReadyRef.current;
+    clearLongPress();
     const p = pointerRef.current;
     // A finger interaction restores native scrolling on release (pen/mouse keep
     // it suppressed while hovering; pointerleave clears it when they leave).
@@ -134,6 +169,14 @@ export default function DealCard({
     if (draggingRef.current) {
       draggingRef.current = false;
       pointerRef.current = null;
+      return;
+    }
+    // Long press completed without dragging — open the opportunity link and
+    // suppress the tap-to-open that a release would otherwise trigger.
+    if (armed) {
+      pointerRef.current = null;
+      lastTapRef.current = 0;
+      openOpportunityLink();
       return;
     }
     pointerRef.current = null;
@@ -159,6 +202,7 @@ export default function DealCard({
 
   function handlePointerCancel() {
     clearHold();
+    clearLongPress();
     const p = pointerRef.current;
     if (p?.touch) p.el.style.touchAction = "";
     draggingRef.current = false;
@@ -172,6 +216,7 @@ export default function DealCard({
         deal._pending ? styles["is-pending"] : "",
         deal._error ? styles["is-error"] : "",
         pressing ? styles["is-pressing"] : "",
+        linkArmed ? styles["is-link-armed"] : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -180,7 +225,9 @@ export default function DealCard({
       data-id={deal.id}
       tabIndex={0}
       role="button"
-      aria-label={`${deal.deal_name} — tap to open, double-tap for photos, hold to move`}
+      aria-label={`${deal.deal_name} — tap to open, double-tap for photos, hold to move${
+        deal.opportunity_link ? ", long-press to open opportunity link" : ""
+      }`}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
