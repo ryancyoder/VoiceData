@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/sales-board", label: "Sales Board" },
   { href: "/estimator", label: "Estimator" },
   { href: "/catalog", label: "Catalog" },
+  { href: "/master-catalog", label: "Master Catalog" },
   { href: "/design", label: "Design" },
   { href: "/plants", label: "Plants" },
   { href: "/plant-reference", label: "Plant Reference" },

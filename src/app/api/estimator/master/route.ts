@@ -81,9 +81,18 @@ interface EquipmentInput {
 }
 
 export async function PUT(req: NextRequest) {
-  const body = (await req.json()) as { materials?: MaterialInput[]; equipment?: EquipmentInput[] };
+  const body = (await req.json()) as {
+    materials?: MaterialInput[];
+    equipment?: EquipmentInput[];
+    deletedMaterialIds?: string[];
+    deletedApplicationIds?: string[];
+    deletedEquipmentIds?: string[];
+  };
   const materials = body.materials ?? [];
   const equipment = body.equipment ?? [];
+  const delMaterialIds = (body.deletedMaterialIds ?? []).filter((s) => typeof s === "string" && s);
+  const delAppIds = (body.deletedApplicationIds ?? []).filter((s) => typeof s === "string" && s);
+  const delEquipmentIds = (body.deletedEquipmentIds ?? []).filter((s) => typeof s === "string" && s);
   const now = new Date().toISOString();
 
   if (materials.some((m) => !m || typeof m.id !== "string" || !m.id)) {
@@ -131,6 +140,25 @@ export async function PUT(req: NextRequest) {
     sort_order: i,
     updated_at: now,
   }));
+
+  // Deletes first, in FK-safe order: applications RESTRICT their material, and
+  // assembly_roles RESTRICT the applications/equipment they reference — so an
+  // application (or equipment) still used by an assembly can't be removed here,
+  // and that constraint violation surfaces to the editor rather than silently
+  // dropping data. Applications go before materials so a removed material's
+  // rows clear first.
+  if (delAppIds.length) {
+    const { error } = await supabase.from("applications").delete().in("id", delAppIds);
+    if (error) return NextResponse.json({ error: `delete applications: ${error.message}` }, { status: 409 });
+  }
+  if (delMaterialIds.length) {
+    const { error } = await supabase.from("materials").delete().in("id", delMaterialIds);
+    if (error) return NextResponse.json({ error: `delete materials: ${error.message}` }, { status: 409 });
+  }
+  if (delEquipmentIds.length) {
+    const { error } = await supabase.from("equipment").delete().in("id", delEquipmentIds);
+    if (error) return NextResponse.json({ error: `delete equipment: ${error.message}` }, { status: 409 });
+  }
 
   // Upsert materials first (applications FK them), then applications, equipment.
   if (materialRows.length) {
