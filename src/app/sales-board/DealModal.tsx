@@ -1082,6 +1082,22 @@ export default function DealModal({
               {deal.property && (deal.property.latitude != null || deal.property.address) && (
                 <a
                   className={styles["open-link-btn"]}
+                  href={
+                    deal.property.latitude != null && deal.property.longitude != null
+                      ? `https://maps.apple.com/?ll=${deal.property.latitude},${deal.property.longitude}&q=${encodeURIComponent(
+                          deal.property.address || "Jobsite"
+                        )}`
+                      : `https://maps.apple.com/?q=${encodeURIComponent(deal.property.address)}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  📍 Map
+                </a>
+              )}
+              {deal.property && (deal.property.latitude != null || deal.property.address) && (
+                <a
+                  className={styles["open-link-btn"]}
                   href={`https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(
                     deal.property.latitude != null && deal.property.longitude != null
                       ? `${deal.property.latitude},${deal.property.longitude}`
