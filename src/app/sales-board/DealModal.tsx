@@ -720,7 +720,21 @@ export default function DealModal({
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-email">Contact email</label>
-            <input id="dm-email" type="text" inputMode="email" autoComplete="off" value={form.contact_email} onChange={(e) => set("contact_email", e.target.value)} />
+            <div className={styles["aspire-link-row"]}>
+              <input id="dm-email" type="text" inputMode="email" autoComplete="off" value={form.contact_email} onChange={(e) => set("contact_email", e.target.value)} />
+              {form.contact_email.trim() && (
+                <a
+                  className={styles["open-link-btn"]}
+                  href={`mailto:${encodeURIComponent(form.contact_email.trim())}${
+                    form.proposal_number.trim()
+                      ? `?subject=${encodeURIComponent(`Proposal #${form.proposal_number.trim()}`)}`
+                      : ""
+                  }`}
+                >
+                  ✉ Email
+                </a>
+              )}
+            </div>
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-phone">Contact phone</label>
