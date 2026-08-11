@@ -9,7 +9,7 @@ type PhotoMap = Record<string, CatalogPhoto[]>;
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
-export function ItemCatalogClient() {
+export function ItemCatalogClient({ viewToggle }: { viewToggle?: React.ReactNode }) {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [photos, setPhotos] = useState<PhotoMap>({});
   const [loading, setLoading] = useState(true);
@@ -68,22 +68,25 @@ export function ItemCatalogClient() {
             Browse catalog items and their reference photos. Unlock to add or remove photos.
           </p>
         </div>
-        <button
-          onClick={() => {
-            setLocked((v) => !v);
-            setSelectedId(null);
-          }}
-          title={locked ? "Unlock to add or remove photos" : "Lock (read-only)"}
-          aria-pressed={!locked}
-          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-            locked
-              ? "border border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              : "bg-amber-500 text-white hover:bg-amber-600"
-          }`}
-        >
-          {locked ? <Lock size={16} /> : <Unlock size={16} />}
-          <span className="hidden sm:inline">{locked ? "Locked" : "Editing"}</span>
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {viewToggle}
+          <button
+            onClick={() => {
+              setLocked((v) => !v);
+              setSelectedId(null);
+            }}
+            title={locked ? "Unlock to add or remove photos" : "Lock (read-only)"}
+            aria-pressed={!locked}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              locked
+                ? "border border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                : "bg-amber-500 text-white hover:bg-amber-600"
+            }`}
+          >
+            {locked ? <Lock size={16} /> : <Unlock size={16} />}
+            <span className="hidden sm:inline">{locked ? "Locked" : "Editing"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Search */}

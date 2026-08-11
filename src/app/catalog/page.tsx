@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { CatalogClient } from "./CatalogClient";
+import { CatalogPageClient } from "./CatalogPageClient";
 
 export const metadata: Metadata = {
   title: "Catalog · VoiceData",
-  description: "Landscape estimator item catalog.",
+  description: "Landscape estimator item catalog — editor and photo gallery.",
 };
 
 export default function CatalogPage() {
-  return <CatalogClient />;
+  return <CatalogPageClient />;
 }

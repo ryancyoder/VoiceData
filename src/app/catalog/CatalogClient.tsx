@@ -29,7 +29,7 @@ function money(n: number): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 }
 
-export function CatalogClient() {
+export function CatalogClient({ viewToggle }: { viewToggle?: React.ReactNode }) {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [deliveryRate, setDeliveryRate] = useState<number>(0);
   const [photos, setPhotos] = useState<Record<string, CatalogPhoto[]>>({});
@@ -210,6 +210,7 @@ export function CatalogClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {viewToggle}
           {!locked && dirty && (
             <span className="text-xs font-medium text-amber-600 dark:text-amber-500">Unsaved changes</span>
           )}
