@@ -162,6 +162,36 @@ function todayLocalKey() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// Internal "deal won" notice opened when a deal is dragged Sent → Sold.
+const WON_EMAIL_TO = "raquel@rlminc.com";
+const WON_EMAIL_CC = "dean@rlminc.com";
+const WON_EMAIL_SUBJECT = "SOLD: {last_name} # {proposal_number} - {proposal_description}";
+const WON_EMAIL_BODY = "";
+
+// Fills the won-email tokens from a deal. {proposal description} (space) is
+// accepted alongside {proposal_description}.
+function fillWonTokens(text: string, deal: UiDeal): string {
+  const c = deal.property?.contact;
+  return text
+    .replace(/\{first_name\}/gi, c?.first_name ?? "")
+    .replace(/\{last_name\}/gi, c?.last_name ?? "")
+    .replace(/\{proposal_number\}/gi, deal.proposal_number ?? "")
+    .replace(/\{proposal[_ ]description\}/gi, deal.proposal_description ?? "")
+    .replace(/\{deal_name\}/gi, deal.deal_name ?? "");
+}
+
+// Opens the mail app with the won notice pre-addressed (To Raquel, CC Dean) and
+// the subject/body filled in for this deal.
+function openWonEmail(deal: UiDeal) {
+  const subject = fillWonTokens(WON_EMAIL_SUBJECT, deal);
+  const body = fillWonTokens(WON_EMAIL_BODY, deal);
+  const url =
+    `mailto:${WON_EMAIL_TO}?cc=${WON_EMAIL_CC}` +
+    `&subject=${encodeURIComponent(subject)}` +
+    (body ? `&body=${encodeURIComponent(body)}` : "");
+  window.location.href = url;
+}
+
 interface DragState {
   id: number;
   pointerId: number;
@@ -262,6 +292,10 @@ export default function SalesBoardClient({
         d.id === id ? { ...d, stage, ...(wonDate ? { won_date: wonDate } : {}), _pending: true, _error: undefined } : d
       )
     );
+
+    // Dragging Sent → Sold opens the internal "deal won" email. Done here in the
+    // pointerup gesture so the browser allows the mail handler to open.
+    if (previousStage === "Sent" && stage === "Sold") openWonEmail(deal);
 
     fetch(`/api/sales-board/${id}`, {
       method: "PATCH",
