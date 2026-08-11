@@ -35,6 +35,20 @@
   color: var(--text);
   font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* The board is a drag-and-drop surface — text selection here only fights the
+     drag (especially with an Apple Pencil, which otherwise starts selecting
+     card text on press). Selection is re-enabled on form fields below. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Form fields still need to be selectable/editable (add-deal bar, deal modal). */
+.salesBoard input,
+.salesBoard textarea,
+.salesBoard select {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 @media (prefers-color-scheme: dark) {
