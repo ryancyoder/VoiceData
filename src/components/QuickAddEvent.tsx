@@ -34,6 +34,88 @@ function localDateKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// A typeahead picker over a list of options — shows the selected option's
+// label at rest, filters as you type, and clears back to "none" with the ×.
+function SearchSelect({
+  id,
+  placeholder,
+  options,
+  value,
+  onChange,
+}: {
+  id: string;
+  placeholder: string;
+  options: Option[];
+  value: number | "";
+  onChange: (value: number | "") => void;
+}) {
+  const [text, setText] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = value === "" ? null : options.find((o) => o.id === value) ?? null;
+
+  const q = text.trim().toLowerCase();
+  const filtered = (
+    open && q
+      ? options.filter((o) => o.label.toLowerCase().includes(q) || (o.subtitle ?? "").toLowerCase().includes(q))
+      : options
+  ).slice(0, 50);
+
+  const field =
+    "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 pr-8 text-sm outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100";
+
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        className={field}
+        placeholder={placeholder}
+        value={open ? text : selected?.label ?? ""}
+        onFocus={() => {
+          setOpen(true);
+          setText("");
+        }}
+        onBlur={() => setOpen(false)}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (!open) setOpen(true);
+        }}
+      />
+      {selected && !open && (
+        <button
+          type="button"
+          aria-label="Clear"
+          onClick={() => onChange("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+        >
+          ✕
+        </button>
+      )}
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
+          {filtered.map((o) => (
+            <li key={o.id}>
+              <button
+                type="button"
+                // onMouseDown (not onClick) so selection happens before the
+                // input's blur closes the list.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(o.id);
+                  setOpen(false);
+                }}
+                className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-700"
+              >
+                <span className="text-sm text-zinc-900 dark:text-zinc-100">{o.label}</span>
+                {o.subtitle && <span className="text-xs text-zinc-500 dark:text-zinc-400">{o.subtitle}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function emptyForm(): FormState {
   const now = new Date();
   const later = new Date(now.getTime() + 60 * 60 * 1000);
@@ -137,9 +219,11 @@ export default function QuickAddEvent() {
       }
 
       setOpen(false);
-      // Revalidate server components so an open Calendar/Next Actions reflects
-      // the new event.
-      router.refresh();
+      // Jump to the Calendar landed on the new event's week with its detail
+      // open (?event=<id>). Falls back to the plain Calendar if the id is
+      // missing for any reason.
+      const newId = data.event?.id;
+      router.push(newId ? `/calendar?event=${newId}` : "/calendar");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add event");
     } finally {
@@ -216,22 +300,24 @@ export default function QuickAddEvent() {
 
               <div className="mb-3">
                 <label className={label} htmlFor="qae-property">Property</label>
-                <select id="qae-property" className={field} value={form.propertyId} onChange={(e) => set("propertyId", e.target.value === "" ? "" : Number(e.target.value))}>
-                  <option value="">No property</option>
-                  {properties.map((p) => (
-                    <option key={p.id} value={p.id}>{p.label}</option>
-                  ))}
-                </select>
+                <SearchSelect
+                  id="qae-property"
+                  placeholder="Search properties…"
+                  options={properties}
+                  value={form.propertyId}
+                  onChange={(v) => set("propertyId", v)}
+                />
               </div>
 
               <div className="mb-3">
                 <label className={label} htmlFor="qae-deal">Deal</label>
-                <select id="qae-deal" className={field} value={form.dealId} onChange={(e) => set("dealId", e.target.value === "" ? "" : Number(e.target.value))}>
-                  <option value="">No deal</option>
-                  {deals.map((d) => (
-                    <option key={d.id} value={d.id}>{d.label}</option>
-                  ))}
-                </select>
+                <SearchSelect
+                  id="qae-deal"
+                  placeholder="Search deals…"
+                  options={deals}
+                  value={form.dealId}
+                  onChange={(v) => set("dealId", v)}
+                />
               </div>
 
               <div className="mb-1">
