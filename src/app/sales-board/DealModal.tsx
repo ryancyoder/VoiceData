@@ -788,6 +788,16 @@ export default function DealModal({
                 value={form.opportunity_link}
                 onChange={(e) => set("opportunity_link", e.target.value)}
               />
+              {form.opportunity_link.trim() && (
+                <a
+                  className={styles["open-link-btn"]}
+                  href={form.opportunity_link.trim()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open ↗
+                </a>
+              )}
               <button
                 type="button"
                 className={styles["aspire-parse-btn"]}
@@ -801,14 +811,26 @@ export default function DealModal({
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-proposal-link">Proposal link</label>
-            <input
-              id="dm-proposal-link"
-              type="url"
-              autoComplete="off"
-              placeholder="https://..."
-              value={form.aspire_link}
-              onChange={(e) => set("aspire_link", e.target.value)}
-            />
+            <div className={styles["aspire-link-row"]}>
+              <input
+                id="dm-proposal-link"
+                type="url"
+                autoComplete="off"
+                placeholder="https://..."
+                value={form.aspire_link}
+                onChange={(e) => set("aspire_link", e.target.value)}
+              />
+              {form.aspire_link.trim() && (
+                <a
+                  className={styles["open-link-btn"]}
+                  href={form.aspire_link.trim()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open ↗
+                </a>
+              )}
+            </div>
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Proposal PDF</label>

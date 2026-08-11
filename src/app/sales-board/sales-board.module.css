@@ -484,6 +484,23 @@
 .aspire-parse-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .aspire-parse-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* "Open ↗" button beside a URL field — opens the link in a new tab. */
+.open-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 12px;
+  font-size: 0.76rem;
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.open-link-btn:hover { border-color: var(--accent); color: var(--accent); }
+
 .geocode-status { margin-top: 3px; font-size: 0.7rem; color: var(--accent); }
 .geocode-status.is-warn { color: var(--warn); }
 .geocode-status.is-muted { color: var(--text-faint); }
