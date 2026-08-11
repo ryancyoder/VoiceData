@@ -781,6 +781,7 @@ export default function DealModal({
                     first_name: form.contact_first_name.trim(),
                     last_name: form.contact_last_name.trim(),
                     proposal_number: form.proposal_number.trim(),
+                    proposal_description: form.proposal_description.trim(),
                   }}
                   onSend={() => onLogCorrespondence(deal.id, "text")}
                 />

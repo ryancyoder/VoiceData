@@ -13,15 +13,17 @@ interface Tokens {
   first_name: string;
   last_name: string;
   proposal_number: string;
+  proposal_description: string;
 }
 
-// Fills a template body's {first_name}/{last_name}/{proposal_number} tokens
-// with this deal's values (missing values become an empty string).
+// Fills a template body's tokens with this deal's values (missing values
+// become an empty string).
 function fillTokens(body: string, tokens: Tokens): string {
   return body
     .replace(/\{first_name\}/gi, tokens.first_name)
     .replace(/\{last_name\}/gi, tokens.last_name)
-    .replace(/\{proposal_number\}/gi, tokens.proposal_number);
+    .replace(/\{proposal_number\}/gi, tokens.proposal_number)
+    .replace(/\{proposal_description\}/gi, tokens.proposal_description);
 }
 
 export default function TextTemplateMenu({
@@ -152,7 +154,7 @@ export default function TextTemplateMenu({
                 />
                 <textarea
                   rows={3}
-                  placeholder="Message… use {first_name}, {last_name}, {proposal_number}"
+                  placeholder="Message… use {first_name}, {last_name}, {proposal_number}, {proposal_description}"
                   value={newBody}
                   onChange={(e) => setNewBody(e.target.value)}
                 />
