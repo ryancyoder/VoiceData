@@ -12,9 +12,10 @@ const GROUPS: Group[] = [
     title: "Global",
     shortcuts: [
       { combos: [["⌘/Ctrl", "K"]], desc: "Open the command palette (search deals & properties)" },
+      { combos: [["Alt/Option", "E"]], desc: "Quick add an event" },
       { combos: [["↑"], ["↓"]], desc: "Move through palette results" },
       { combos: [["Enter"]], desc: "Open the highlighted palette result" },
-      { combos: [["Esc"]], desc: "Close the command palette" },
+      { combos: [["Esc"]], desc: "Close the command palette or quick-add" },
     ],
   },
   {

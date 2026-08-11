@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import CommandPalette from "@/components/CommandPalette";
 import NavBar from "@/components/NavBar";
 import QuickAddTask from "@/components/QuickAddTask";
+import QuickAddEvent from "@/components/QuickAddEvent";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         <CommandPalette />
         <QuickAddTask />
+        <QuickAddEvent />
       </body>
     </html>
   );
