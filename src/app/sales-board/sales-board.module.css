@@ -775,6 +775,24 @@
   color: var(--text);
   margin-bottom: 2px;
 }
+.card-edit-subhead-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+.date-reset-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--danger);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.date-reset-btn:hover { border-color: var(--danger); background: var(--danger-soft); }
 .date-stage-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -565,6 +565,23 @@ export default function DealModal({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  function resetKeyDates() {
+    if (!window.confirm("Are you sure you want to reset all key dates? This clears every date in this section (saves when you save the deal).")) {
+      return;
+    }
+    setForm((f) => ({
+      ...f,
+      rfp_date: "",
+      appointment_date: "",
+      proposal_date: "",
+      won_date: "",
+      start_date: "",
+      end_date: "",
+      invoiced_date: "",
+      paid_date: "",
+    }));
+  }
+
   async function handleParseAspire() {
     const link = form.aspire_link.trim();
     if (!link) return;
@@ -795,7 +812,12 @@ export default function DealModal({
           {/* Key dates, grouped and ordered by the pipeline stage each one
               belongs to: Lead → Propose → Sent → Sold → Project Management. */}
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
-            <span className={styles["card-edit-subhead"]}>Key dates</span>
+            <div className={styles["card-edit-subhead-row"]}>
+              <span className={styles["card-edit-subhead"]}>Key dates</span>
+              <button type="button" className={styles["date-reset-btn"]} onClick={resetKeyDates}>
+                Reset dates
+              </button>
+            </div>
             <div className={styles["date-stage-grid"]}>
               <div className={styles["date-stage-cell"]}>
                 <span className={styles["date-stage-tag"]}>Lead</span>
