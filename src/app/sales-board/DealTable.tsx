@@ -47,38 +47,55 @@ interface Column {
   // The value used for sorting (numbers sort numerically, strings A→Z; null
   // always sorts to the end regardless of direction).
   sortVal: (d: UiDeal) => string | number | null;
-  render: (d: UiDeal) => React.ReactNode;
+  // Plain-text cell value — reused for search matching and CSV export.
+  text: (d: UiDeal) => string;
+  // Rich cell; defaults to the plain text when omitted.
+  render?: (d: UiDeal) => React.ReactNode;
 }
 
 const COLUMNS: Column[] = [
-  { key: "name", label: "Deal", sortVal: (d) => d.deal_name.toLowerCase(), render: (d) => <span className={styles["dt-name"]}>{d.deal_name}</span> },
-  { key: "company", label: "Company", sortVal: (d) => d.company?.toLowerCase() ?? null, render: (d) => d.company ?? "" },
+  {
+    key: "name",
+    label: "Deal",
+    sortVal: (d) => d.deal_name.toLowerCase(),
+    text: (d) => d.deal_name,
+    render: (d) => <span className={styles["dt-name"]}>{d.deal_name}</span>,
+  },
+  { key: "company", label: "Company", sortVal: (d) => d.company?.toLowerCase() ?? null, text: (d) => d.company ?? "" },
   {
     key: "stage",
     label: "Stage",
     sortVal: (d) => STAGES.indexOf(d.stage),
+    text: (d) => d.stage,
     render: (d) => (
       <span className={styles["dt-stage"]} style={{ ["--col-color" as string]: STAGE_COLOR_VAR[d.stage] }}>
         {d.stage}
       </span>
     ),
   },
-  { key: "value", label: "Value", align: "right", sortVal: (d) => d.value ?? null, render: (d) => (d.value ? currency.format(d.value) : "") },
-  { key: "contact", label: "Contact", sortVal: (d) => contactName(d).toLowerCase() || null, render: (d) => contactName(d) },
-  { key: "jobsite", label: "Jobsite", sortVal: (d) => d.property?.address?.toLowerCase() ?? null, render: (d) => d.property?.address ?? "" },
-  { key: "rfp_date", label: "RFP", sortVal: (d) => d.rfp_date ?? null, render: (d) => fmtDate(d.rfp_date) },
-  { key: "appointment_date", label: "Appt", sortVal: (d) => d.appointment_date ?? null, render: (d) => fmtDate(d.appointment_date) },
-  { key: "proposal_date", label: "Proposal", sortVal: (d) => d.proposal_date ?? null, render: (d) => fmtDate(d.proposal_date) },
-  { key: "won_date", label: "Won", sortVal: (d) => d.won_date ?? null, render: (d) => fmtDate(d.won_date) },
-  { key: "production", label: "Production", sortVal: (d) => d.start_date || d.end_date || null, render: (d) => productionWindow(d) },
-  { key: "invoiced_date", label: "Invoiced", sortVal: (d) => d.invoiced_date ?? null, render: (d) => fmtDate(d.invoiced_date) },
-  { key: "paid_date", label: "Paid", sortVal: (d) => d.paid_date ?? null, render: (d) => fmtDate(d.paid_date) },
-  { key: "next_action", label: "Next action", sortVal: (d) => d.next_action?.toLowerCase() ?? null, render: (d) => d.next_action ?? "" },
+  { key: "value", label: "Value", align: "right", sortVal: (d) => d.value ?? null, text: (d) => (d.value ? currency.format(d.value) : "") },
+  { key: "contact", label: "Contact", sortVal: (d) => contactName(d).toLowerCase() || null, text: (d) => contactName(d) },
+  { key: "jobsite", label: "Jobsite", sortVal: (d) => d.property?.address?.toLowerCase() ?? null, text: (d) => d.property?.address ?? "" },
+  { key: "rfp_date", label: "RFP", sortVal: (d) => d.rfp_date ?? null, text: (d) => fmtDate(d.rfp_date) },
+  { key: "appointment_date", label: "Appt", sortVal: (d) => d.appointment_date ?? null, text: (d) => fmtDate(d.appointment_date) },
+  { key: "proposal_date", label: "Proposal", sortVal: (d) => d.proposal_date ?? null, text: (d) => fmtDate(d.proposal_date) },
+  { key: "won_date", label: "Won", sortVal: (d) => d.won_date ?? null, text: (d) => fmtDate(d.won_date) },
+  { key: "production", label: "Production", sortVal: (d) => d.start_date || d.end_date || null, text: (d) => productionWindow(d) },
+  { key: "invoiced_date", label: "Invoiced", sortVal: (d) => d.invoiced_date ?? null, text: (d) => fmtDate(d.invoiced_date) },
+  { key: "paid_date", label: "Paid", sortVal: (d) => d.paid_date ?? null, text: (d) => fmtDate(d.paid_date) },
+  { key: "next_action", label: "Next action", sortVal: (d) => d.next_action?.toLowerCase() ?? null, text: (d) => d.next_action ?? "" },
 ];
+
+// One CSV field: quote when it contains a comma, quote, or newline; double
+// any inner quotes (RFC 4180).
+function csvCell(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
 
 export default function DealTable({ deals, onOpen }: { deals: UiDeal[]; onOpen: (deal: UiDeal) => void }) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(1);
+  const [query, setQuery] = useState("");
 
   function toggleSort(key: string) {
     if (sortKey === key) {
@@ -94,9 +111,14 @@ export default function DealTable({ deals, onOpen }: { deals: UiDeal[]; onOpen: 
     }
   }
 
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? deals.filter((d) => COLUMNS.some((c) => c.text(d).toLowerCase().includes(q)))
+    : deals;
+
   const activeCol = sortKey ? COLUMNS.find((c) => c.key === sortKey) ?? null : null;
   const rows = activeCol
-    ? [...deals].sort((a, b) => {
+    ? [...filtered].sort((a, b) => {
         const va = activeCol.sortVal(a);
         const vb = activeCol.sortVal(b);
         if (va == null && vb == null) return 0;
@@ -105,10 +127,38 @@ export default function DealTable({ deals, onOpen }: { deals: UiDeal[]; onOpen: 
         if (typeof va === "number" && typeof vb === "number") return sortDir * (va - vb);
         return sortDir * String(va).localeCompare(String(vb));
       })
-    : deals;
+    : filtered;
+
+  function exportCsv() {
+    const header = COLUMNS.map((c) => csvCell(c.label)).join(",");
+    const body = rows.map((d) => COLUMNS.map((c) => csvCell(c.text(d))).join(",")).join("\n");
+    const blob = new Blob([`${header}\n${body}\n`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sales-board.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div className={styles["table-wrap"]}>
+      <div className={styles["dt-toolbar"]}>
+        <input
+          type="search"
+          className={styles["dt-search"]}
+          placeholder="Filter deals…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <span className={styles["dt-count"]}>{rows.length} of {deals.length}</span>
+        <button type="button" className={styles["dt-export"]} onClick={exportCsv} disabled={rows.length === 0}>
+          Export CSV
+        </button>
+      </div>
+      <div className={styles["table-scroll"]}>
       <table className={styles["deal-table"]}>
         <thead>
           <tr>
@@ -145,7 +195,7 @@ export default function DealTable({ deals, onOpen }: { deals: UiDeal[]; onOpen: 
               >
                 {COLUMNS.map((col) => (
                   <td key={col.key} className={col.align === "right" ? styles["dt-right"] : undefined}>
-                    {col.render(d)}
+                    {col.render ? col.render(d) : col.text(d)}
                   </td>
                 ))}
               </tr>
@@ -153,6 +203,7 @@ export default function DealTable({ deals, onOpen }: { deals: UiDeal[]; onOpen: 
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -380,9 +380,44 @@
 .table-wrap {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   padding: 0 16px 24px;
 }
+.table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.dt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 2px;
+}
+.dt-search {
+  flex: 0 1 300px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.dt-count { font-size: 0.78rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.dt-export {
+  margin-left: auto;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dt-export:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.dt-export:disabled { opacity: 0.5; cursor: not-allowed; }
 .deal-table {
   width: 100%;
   border-collapse: collapse;
