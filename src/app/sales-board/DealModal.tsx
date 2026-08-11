@@ -303,7 +303,8 @@ export default function DealModal({
     start_date: deal.start_date || "",
     end_date: deal.end_date || "",
     property_id: deal.property_id,
-    aspire_link: deal.aspire_link || "",
+    aspire_link: deal.aspire_link || "", // "Proposal link"
+    opportunity_link: deal.opportunity_link || "", // "Aspire opportunity link"
     proposal_description: deal.proposal_description || "",
   });
   const [saving, setSaving] = useState(false);
@@ -555,7 +556,7 @@ export default function DealModal({
   }
 
   async function handleParseAspire() {
-    const link = form.aspire_link.trim();
+    const link = form.opportunity_link.trim();
     if (!link) return;
     setParsingAspire(true);
     setAspireParseError("");
@@ -630,6 +631,7 @@ export default function DealModal({
         end_date: form.end_date || null,
         property_id: form.property_id,
         aspire_link: form.aspire_link.trim() || null,
+        opportunity_link: form.opportunity_link.trim() || null,
         proposal_description: form.proposal_description.trim() || null,
       });
       onClose();
@@ -776,26 +778,37 @@ export default function DealModal({
             </div>
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
-            <label htmlFor="dm-aspire-link">Aspire opportunity link</label>
+            <label htmlFor="dm-opportunity-link">Aspire opportunity link</label>
             <div className={styles["aspire-link-row"]}>
               <input
-                id="dm-aspire-link"
+                id="dm-opportunity-link"
                 type="url"
                 autoComplete="off"
                 placeholder="https://cloud.youraspire.com/..."
-                value={form.aspire_link}
-                onChange={(e) => set("aspire_link", e.target.value)}
+                value={form.opportunity_link}
+                onChange={(e) => set("opportunity_link", e.target.value)}
               />
               <button
                 type="button"
                 className={styles["aspire-parse-btn"]}
-                disabled={!form.aspire_link.trim() || parsingAspire}
+                disabled={!form.opportunity_link.trim() || parsingAspire}
                 onClick={handleParseAspire}
               >
                 {parsingAspire ? "Parsing…" : "Parse from Aspire"}
               </button>
             </div>
             {aspireParseError && <div className={styles["card-edit-error"]}>{aspireParseError}</div>}
+          </div>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            <label htmlFor="dm-proposal-link">Proposal link</label>
+            <input
+              id="dm-proposal-link"
+              type="url"
+              autoComplete="off"
+              placeholder="https://..."
+              value={form.aspire_link}
+              onChange={(e) => set("aspire_link", e.target.value)}
+            />
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Proposal PDF</label>

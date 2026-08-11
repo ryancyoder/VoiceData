@@ -33,6 +33,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.start_date !== undefined) updates.start_date = body.start_date;
   if (body.end_date !== undefined) updates.end_date = body.end_date;
   if (body.aspire_link !== undefined) updates.aspire_link = body.aspire_link?.trim() || null;
+  if (body.opportunity_link !== undefined) updates.opportunity_link = body.opportunity_link?.trim() || null;
   if (body.value !== undefined) updates.value = body.value;
   if (body.stage !== undefined) updates.stage = body.stage;
   if (body.lost_at !== undefined) updates.lost_at = body.lost_at;

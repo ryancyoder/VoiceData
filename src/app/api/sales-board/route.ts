@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
       start_date: body.start_date ?? null,
       end_date: body.end_date ?? null,
       aspire_link: body.aspire_link?.trim() || null,
+      opportunity_link: body.opportunity_link?.trim() || null,
       property_id: propertyId,
       value: body.value ?? null,
       stage: body.stage ?? "Lead",

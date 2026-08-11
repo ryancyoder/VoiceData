@@ -141,7 +141,11 @@ export interface Deal {
   status: "Open" | "Closed";
   lost_at: string | null;
   proposal_pdf_path: string | null;
+  // Backs the "Proposal link" field. (Column keeps its historical name; the
+  // Aspire opportunity URL — the one "Parse from Aspire" reads — lives in
+  // opportunity_link.)
   aspire_link: string | null;
+  opportunity_link: string | null;
   // A photo/video is attached to an event first — the event is the base
   // unit of truth — and a deal is made up of the events attached to it.
   // There is no direct deal->photo relationship; every photo is reached by
@@ -237,4 +241,5 @@ export interface DealInput {
   stage?: Stage;
   lost_at?: string | null;
   aspire_link?: string | null;
+  opportunity_link?: string | null;
 }
