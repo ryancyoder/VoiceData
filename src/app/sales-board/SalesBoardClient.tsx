@@ -166,7 +166,7 @@ function todayLocalKey() {
 const WON_EMAIL_TO = "raquel@rlminc.com";
 const WON_EMAIL_CC = "dean@rlminc.com";
 const WON_EMAIL_SUBJECT = "SOLD: {last_name} # {proposal_number} - {proposal_description}";
-const WON_EMAIL_BODY = "";
+const WON_EMAIL_BODY = "Will need locate.";
 
 // Fills the won-email tokens from a deal. {proposal description} (space) is
 // accepted alongside {proposal_description}.
