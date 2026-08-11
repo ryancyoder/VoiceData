@@ -1084,7 +1084,7 @@ export default function DealModal({
                   className={styles["open-link-btn"]}
                   href={
                     deal.property.latitude != null && deal.property.longitude != null
-                      ? `https://maps.apple.com/?ll=${deal.property.latitude},${deal.property.longitude}&q=${encodeURIComponent(
+                      ? `https://maps.apple.com/?ll=${deal.property.latitude},${deal.property.longitude}&z=20&q=${encodeURIComponent(
                           deal.property.address || "Jobsite"
                         )}`
                       : `https://maps.apple.com/?q=${encodeURIComponent(deal.property.address)}`
