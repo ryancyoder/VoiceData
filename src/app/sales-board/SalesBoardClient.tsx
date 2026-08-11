@@ -231,12 +231,10 @@ export default function SalesBoardClient({
       });
   }
 
-  function handleDragStart(e: React.PointerEvent<HTMLSpanElement>, deal: UiDeal) {
-    e.preventDefault();
-    const handle = e.currentTarget;
-    const card = handle.closest<HTMLElement>("[data-card]");
-    if (!card) return;
-
+  // Start dragging a deal card. Called either immediately (grabbing the drag
+  // handle) or after a long hold anywhere on the card — the card element itself
+  // is the drag target, so the whole card, not just the tiny handle, moves.
+  function beginCardDrag(card: HTMLElement, pointerId: number, clientX: number, clientY: number, deal: UiDeal) {
     const rect = card.getBoundingClientRect();
     const ghost = card.cloneNode(true) as HTMLElement;
     ghost.classList.add(styles["drag-ghost"]);
@@ -245,23 +243,32 @@ export default function SalesBoardClient({
     ghost.style.top = rect.top + "px";
     document.body.appendChild(ghost);
     card.classList.add(styles["is-dragging"]);
+    // Suppress the column's touch-scroll for the rest of this gesture so the
+    // grabbed card drags instead of scrolling the list.
+    const prevTouchAction = card.style.touchAction;
+    card.style.touchAction = "none";
 
     const state: DragState = {
       id: deal.id,
-      pointerId: e.pointerId,
-      handle,
+      pointerId,
+      handle: card,
       card,
       ghost,
-      offsetX: e.clientX - rect.left,
-      offsetY: e.clientY - rect.top,
+      offsetX: clientX - rect.left,
+      offsetY: clientY - rect.top,
       currentColumn: null,
     };
     dragStateRef.current = state;
-    handle.setPointerCapture(e.pointerId);
+    try {
+      card.setPointerCapture(pointerId);
+    } catch {
+      /* pointer may already be released */
+    }
 
     function onMove(ev: PointerEvent) {
       const s = dragStateRef.current;
       if (!s || ev.pointerId !== s.pointerId) return;
+      ev.preventDefault();
       s.ghost.style.left = ev.clientX - s.offsetX + "px";
       s.ghost.style.top = ev.clientY - s.offsetY + "px";
       s.ghost.style.visibility = "hidden";
@@ -282,13 +289,14 @@ export default function SalesBoardClient({
       const dealId = s.id;
 
       s.card.classList.remove(styles["is-dragging"]);
+      card.style.touchAction = prevTouchAction;
       if (s.currentColumn) s.currentColumn.classList.remove(styles["is-dragover"]);
       s.ghost.remove();
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onEnd);
-      handle.removeEventListener("pointercancel", onEnd);
+      card.removeEventListener("pointermove", onMove);
+      card.removeEventListener("pointerup", onEnd);
+      card.removeEventListener("pointercancel", onEnd);
       try {
-        handle.releasePointerCapture(ev.pointerId);
+        card.releasePointerCapture(ev.pointerId);
       } catch {
         /* already released */
       }
@@ -299,9 +307,9 @@ export default function SalesBoardClient({
       }
     }
 
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onEnd);
-    handle.addEventListener("pointercancel", onEnd);
+    card.addEventListener("pointermove", onMove);
+    card.addEventListener("pointerup", onEnd);
+    card.addEventListener("pointercancel", onEnd);
   }
 
   async function handleSaveDeal(id: number, updates: Partial<DealInput>) {
@@ -961,9 +969,9 @@ export default function SalesBoardClient({
                         color={color}
                         showDescriptions={showDescriptions}
                         showNextAction={showNextAction}
-                        onDragStart={handleDragStart}
+                        onDragActivate={beginCardDrag}
                         onOpen={(d) => setActiveDealId(d.id)}
-                        onLongPress={(d) => router.push(`/photos?deal=${d.id}`)}
+                        onAlbums={(d) => router.push(`/photos?deal=${d.id}`)}
                       />
                     ))
                   )}

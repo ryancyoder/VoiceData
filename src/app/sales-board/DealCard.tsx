@@ -25,58 +25,105 @@ function formatDateWindow(start: string | null, end: string | null) {
   return formatProposalDate((start || end) as string);
 }
 
-const LONG_PRESS_MS = 550;
-const LONG_PRESS_MOVE_TOLERANCE = 10;
+// Hold this long (without moving) to grab the card for dragging. A quick tap
+// opens the deal; a double tap jumps to the deal's photo albums.
+const DRAG_HOLD_MS = 450;
+const MOVE_TOLERANCE = 10;
+const DOUBLE_TAP_MS = 300;
 
 export default function DealCard({
   deal,
   color,
   showDescriptions,
   showNextAction,
-  onDragStart,
+  onDragActivate,
   onOpen,
-  onLongPress,
+  onAlbums,
 }: {
   deal: UiDeal;
   color: string;
   showDescriptions: boolean;
   showNextAction: boolean;
-  onDragStart: (e: React.PointerEvent<HTMLSpanElement>, deal: UiDeal) => void;
+  // Start dragging the given card element with the active pointer.
+  onDragActivate: (card: HTMLElement, pointerId: number, clientX: number, clientY: number, deal: UiDeal) => void;
   onOpen: (deal: UiDeal) => void;
-  onLongPress: (deal: UiDeal) => void;
+  onAlbums: (deal: UiDeal) => void;
 }) {
   const [pressing, setPressing] = useState(false);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressFiredRef = useRef(false);
-  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerRef = useRef<{ id: number; x: number; y: number; el: HTMLElement } | null>(null);
+  const draggingRef = useRef(false);
+  const lastTapRef = useRef(0);
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function clearLongPress() {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
+  function clearHold() {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
     }
-    pressStartRef.current = null;
     setPressing(false);
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (deal._pending) return;
-    longPressFiredRef.current = false;
-    pressStartRef.current = { x: e.clientX, y: e.clientY };
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const el = e.currentTarget as HTMLElement;
+    draggingRef.current = false;
+    pointerRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, el };
     setPressing(true);
-    longPressTimerRef.current = setTimeout(() => {
-      longPressFiredRef.current = true;
+    holdTimerRef.current = setTimeout(() => {
+      holdTimerRef.current = null;
+      const p = pointerRef.current;
+      if (!p) return;
       setPressing(false);
-      onLongPress(deal);
-    }, LONG_PRESS_MS);
+      draggingRef.current = true;
+      onDragActivate(p.el, p.id, p.x, p.y, deal);
+    }, DRAG_HOLD_MS);
   }
 
   function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    const start = pressStartRef.current;
-    if (!start) return;
-    const dx = e.clientX - start.x;
-    const dy = e.clientY - start.y;
-    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) clearLongPress();
+    const p = pointerRef.current;
+    if (!p || e.pointerId !== p.id || draggingRef.current) return;
+    // Moved before the hold completed — treat as a scroll, not a hold or tap.
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > MOVE_TOLERANCE) {
+      clearHold();
+      pointerRef.current = null;
+    }
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    clearHold();
+    if (draggingRef.current) {
+      draggingRef.current = false;
+      pointerRef.current = null;
+      return;
+    }
+    const p = pointerRef.current;
+    pointerRef.current = null;
+    if (!p || e.pointerId !== p.id) return;
+    // A tap. Distinguish single (open deal) from double (albums).
+    const now = Date.now();
+    if (now - lastTapRef.current < DOUBLE_TAP_MS) {
+      lastTapRef.current = 0;
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+      onAlbums(deal);
+    } else {
+      lastTapRef.current = now;
+      singleTapTimerRef.current = setTimeout(() => {
+        singleTapTimerRef.current = null;
+        lastTapRef.current = 0;
+        onOpen(deal);
+      }, DOUBLE_TAP_MS);
+    }
+  }
+
+  function handlePointerCancel() {
+    clearHold();
+    draggingRef.current = false;
+    pointerRef.current = null;
   }
 
   return (
@@ -94,14 +141,7 @@ export default function DealCard({
       data-id={deal.id}
       tabIndex={0}
       role="button"
-      aria-label={`View details for ${deal.deal_name}`}
-      onClick={() => {
-        if (longPressFiredRef.current) {
-          longPressFiredRef.current = false;
-          return;
-        }
-        onOpen(deal);
-      }}
+      aria-label={`${deal.deal_name} — tap to open, double-tap for photos, hold to move`}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -110,9 +150,8 @@ export default function DealCard({
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onPointerUp={clearLongPress}
-      onPointerCancel={clearLongPress}
-      onPointerLeave={clearLongPress}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
     >
       <div className={styles["card-top"]}>
         <span
@@ -122,8 +161,10 @@ export default function DealCard({
           onPointerDown={(e) => {
             if (deal._pending) return;
             e.stopPropagation();
-            clearLongPress();
-            onDragStart(e, deal);
+            e.preventDefault();
+            clearHold();
+            const card = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-card]");
+            if (card) onDragActivate(card, e.pointerId, e.clientX, e.clientY, deal);
           }}
         >
           <svg viewBox="0 0 10 16" width="10" height="16" fill="currentColor">
