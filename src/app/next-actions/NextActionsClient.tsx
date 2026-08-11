@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { STAGES, type Stage } from "@/lib/salesBoard";
 import { type TaskPhoto, taskPhotoUrl } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
-import DealTimeline, { type TimelineDates } from "./DealTimeline";
+import { type TimelineDates } from "./DealTimeline";
 import styles from "./next-actions.module.css";
 
 const SAVE_TIMEOUT_MS = 15000;
@@ -64,6 +64,10 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   const [missingOnly, setMissingOnly] = useState(false);
   // "" = every action; otherwise an ACTION_LISTS key (e.g. "call").
   const [actionList, setActionList] = useState("");
+  // Row order: grouped by pipeline stage, or a flat alphabetical list.
+  const [orderMode, setOrderMode] = useState<"stage" | "alpha">("stage");
+  // Which stage groups are collapsed (stage order only).
+  const [collapsedStages, setCollapsedStages] = useState<Set<Stage>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
@@ -144,20 +148,32 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     return true;
   });
 
-  // visibleRows is already sorted by stage (see page.tsx), so rows for the
-  // same stage are always contiguous — no need to re-group from scratch.
+  // Alphabetical order sorts the whole list by deal name; stage order keeps
+  // the page's pipeline ordering (rows for a stage are already contiguous).
+  const orderedRows =
+    orderMode === "alpha" ? [...visibleRows].sort((a, b) => a.dealName.localeCompare(b.dealName)) : visibleRows;
+
   const groups: { stage: Stage; rows: NextActionRow[] }[] = [];
-  for (const row of visibleRows) {
+  for (const row of orderedRows) {
     const lastGroup = groups[groups.length - 1];
     if (lastGroup && lastGroup.stage === row.stage) lastGroup.rows.push(row);
     else groups.push({ stage: row.stage, rows: [row] });
   }
 
-  // Keyboard nav (focusRow/handleKeyDown) still operates on the flat
-  // visibleRows ordering — this just looks each row's original position up
-  // without a mutable counter, which the refs-in-render lint rule dislikes
-  // when it's threaded through an inline IIFE in the JSX below.
-  const indexByRowId = new Map<number, number>(visibleRows.map((row, i) => [row.id, i]));
+  // Rows actually on screen — collapsed stage groups render only their header,
+  // so their rows aren't navigable. Keyboard nav (focusRow/handleKeyDown) walks
+  // this list; indexByRowId maps a row to its position in it.
+  const renderedRows =
+    orderMode === "stage" ? orderedRows.filter((r) => !collapsedStages.has(r.stage)) : orderedRows;
+  const indexByRowId = new Map<number, number>(renderedRows.map((row, i) => [row.id, i]));
+
+  const stagesInView = groups.map((g) => g.stage);
+  const allCollapsed = stagesInView.length > 0 && stagesInView.every((s) => collapsedStages.has(s));
+
+  // Stage order renders one collapsible group per stage; alphabetical order is
+  // a single headerless list.
+  const displayGroups: { stage: Stage | null; rows: NextActionRow[] }[] =
+    orderMode === "alpha" ? [{ stage: null, rows: orderedRows }] : groups;
 
   function toggleStage(stage: Stage) {
     setStageFilter((prev) => {
@@ -168,8 +184,21 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     });
   }
 
+  function toggleCollapse(stage: Stage) {
+    setCollapsedStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  }
+
+  function toggleCollapseAll() {
+    setCollapsedStages(allCollapsed ? new Set() : new Set(stagesInView));
+  }
+
   function focusRow(index: number) {
-    const row = visibleRows[index];
+    const row = renderedRows[index];
     if (!row) return;
     const el = inputRefs.current[row.id];
     if (el) {
@@ -475,24 +504,54 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
         </label>
       </div>
 
+      <div className={styles["list-toolbar"]}>
+        <div className={styles["order-toggle"]}>
+          <button
+            type="button"
+            className={`${styles["order-btn"]} ${orderMode === "stage" ? styles["is-active"] : ""}`}
+            onClick={() => setOrderMode("stage")}
+          >
+            Stage
+          </button>
+          <button
+            type="button"
+            className={`${styles["order-btn"]} ${orderMode === "alpha" ? styles["is-active"] : ""}`}
+            onClick={() => setOrderMode("alpha")}
+          >
+            A–Z
+          </button>
+        </div>
+        {orderMode === "stage" && (
+          <button type="button" className={styles["collapse-all-btn"]} onClick={toggleCollapseAll}>
+            {allCollapsed ? "Expand all" : "Collapse all"}
+          </button>
+        )}
+      </div>
+
       <table className={styles.table}>
         <thead>
           <tr>
             <th>Deal</th>
             <th>Next Action</th>
-            <th>Timeline</th>
             <th>Photos</th>
           </tr>
         </thead>
         <tbody>
-          {groups.map((group) => (
-            <Fragment key={group.stage}>
-              <tr className={styles["stage-header-row"]} style={{ ["--row-color" as string]: STAGE_COLORS[group.stage] }}>
-                <td colSpan={4}>
-                  {group.stage} <span className={styles["stage-count"]}>{group.rows.length}</span>
-                </td>
-              </tr>
-              {group.rows.map((row) => {
+          {displayGroups.map((group) => {
+            const collapsed = group.stage != null && collapsedStages.has(group.stage);
+            return (
+            <Fragment key={group.stage ?? "__alpha__"}>
+              {group.stage != null && (
+                <tr className={styles["stage-header-row"]} style={{ ["--row-color" as string]: STAGE_COLORS[group.stage] }}>
+                  <td colSpan={3}>
+                    <button type="button" className={styles["stage-collapse-btn"]} onClick={() => toggleCollapse(group.stage!)}>
+                      <span className={styles["collapse-caret"]}>{collapsed ? "▸" : "▾"}</span>
+                      {group.stage} <span className={styles["stage-count"]}>{group.rows.length}</span>
+                    </button>
+                  </td>
+                </tr>
+              )}
+              {!collapsed && group.rows.map((row) => {
                 const index = indexByRowId.get(row.id)!;
                 return (
                   <tr key={row.id}>
@@ -511,9 +570,6 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                         onKeyDown={(e) => handleKeyDown(e, row.id, index)}
                         onBlur={() => commit(row.id)}
                       />
-                    </td>
-                    <td className={styles["timeline-cell"]}>
-                      <DealTimeline dates={row.milestoneDates} />
                     </td>
                     <td className={styles["photos-cell"]}>
                       <div className={styles["photo-strip"]}>
@@ -589,10 +645,11 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                 );
               })}
             </Fragment>
-          ))}
+            );
+          })}
           {visibleRows.length === 0 && (
             <tr>
-              <td colSpan={4} className={styles["empty-row"]}>
+              <td colSpan={3} className={styles["empty-row"]}>
                 No deals match these filters.
               </td>
             </tr>
