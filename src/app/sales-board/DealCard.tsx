@@ -211,11 +211,6 @@ export default function DealCard({
       )}
 
       {deal._error && <div className={styles["card-error"]}>{deal._error}</div>}
-
-      {/* Only when the "Next Action" toggle is off — with it on, the same
-          text is already showing inline above, so a hover copy would just
-          be redundant. */}
-      {!showNextAction && deal.next_action && <div className={styles["card-hover-tooltip"]}>{deal.next_action}</div>}
     </div>
   );
 }
