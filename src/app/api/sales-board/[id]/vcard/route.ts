@@ -43,7 +43,8 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   const fullName = [first, last].filter(Boolean).join(" ") || data.deal_name || "Contact";
 
   const lines = ["BEGIN:VCARD", "VERSION:3.0", `N:${esc(last)};${esc(first)};;;`, `FN:${esc(fullName)}`];
-  if (data.company) lines.push(`ORG:${esc(data.company)}`);
+  // Tag every saved contact as an RLM client in their address book.
+  lines.push("ORG:RLM client");
   if (contact?.phone) lines.push(`TEL;TYPE=CELL:${esc(contact.phone)}`);
   if (contact?.email) lines.push(`EMAIL;TYPE=INTERNET:${esc(contact.email)}`);
   if (property?.address) lines.push(`ADR;TYPE=WORK:;;${esc(property.address)};;;;`);
