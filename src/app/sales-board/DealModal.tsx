@@ -716,7 +716,17 @@ export default function DealModal({
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-last">Contact last name</label>
-            <input id="dm-last" autoComplete="off" value={form.contact_last_name} onChange={(e) => set("contact_last_name", e.target.value)} />
+            <div className={styles["aspire-link-row"]}>
+              <input id="dm-last" autoComplete="off" value={form.contact_last_name} onChange={(e) => set("contact_last_name", e.target.value)} />
+              {(deal.property?.contact?.first_name ||
+                deal.property?.contact?.last_name ||
+                deal.property?.contact?.phone ||
+                deal.property?.contact?.email) && (
+                <a className={styles["open-link-btn"]} href={`/api/sales-board/${deal.id}/vcard`}>
+                  👤 Add to Contacts
+                </a>
+              )}
+            </div>
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-email">Contact email</label>
