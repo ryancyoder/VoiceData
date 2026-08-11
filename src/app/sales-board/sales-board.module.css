@@ -378,6 +378,8 @@
 }
 .column-sort-btn:hover { color: var(--text); background: var(--surface); }
 .column-sort-btn.is-active { color: var(--accent); background: var(--accent-soft); }
+/* Follow-up sort matches the accent green of the stage-date sort. */
+.column-sort-fu { color: var(--accent); }
 .column-count { font-size: 0.7rem; color: var(--text-muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .column-total { padding: 6px 12px 10px; font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--border); }
 .column-body { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }

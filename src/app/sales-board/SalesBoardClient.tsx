@@ -1026,12 +1026,12 @@ export default function SalesBoardClient({
                     {stage === "Sent" && (
                       <button
                         type="button"
-                        className={`${styles["column-sort-btn"]} ${sortMode.indexOf("corr_") === 0 ? styles["is-active"] : ""}`}
+                        className={`${styles["column-sort-btn"]} ${styles["column-sort-fu"]} ${sortMode.indexOf("corr_") === 0 ? styles["is-active"] : ""}`}
                         aria-label={`Sort ${stage} by last follow-up`}
                         title="Sort by most recent correspondence (last follow-up)"
                         onClick={() => setColumnSortState((s) => ({ ...s, [stage]: nextCorrSort(sortMode) }))}
                       >
-                        {"F/U" + (sortMode === "corr_desc" ? "▾" : sortMode === "corr_asc" ? "▴" : "")}
+                        {"FU" + (sortMode === "corr_desc" ? "▾" : sortMode === "corr_asc" ? "▴" : "")}
                       </button>
                     )}
                   </div>
