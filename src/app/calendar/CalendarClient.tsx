@@ -318,6 +318,23 @@ function eventToForm(event: CalendarEvent): EventFormState {
   };
 }
 
+// When an Appointment event gains a deal (created, attached, or its deal
+// changed), copy the event's local calendar day into the deal's
+// appointment_date so the pipeline (card, column sort, timeline) reflects it.
+// Best-effort: the event↔deal link itself has already been saved.
+async function syncDealAppointmentDate(dealId: number, when: Date, eventType: EventType | null) {
+  if (eventType !== "Appointment") return;
+  try {
+    await fetch(`/api/sales-board/${dealId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appointment_date: localDateKey(when) }),
+    });
+  } catch {
+    /* non-fatal */
+  }
+}
+
 export default function CalendarClient({
   events,
   ungeotaggedCount,
@@ -814,6 +831,13 @@ export default function CalendarClient({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create event");
+      if (newEventForm.dealId !== "") {
+        await syncDealAppointmentDate(
+          newEventForm.dealId,
+          new Date(newEventForm.start),
+          newEventForm.eventType === "" ? null : newEventForm.eventType
+        );
+      }
       setNewEventOpen(false);
       setNewEventForm(emptyEventForm());
       router.refresh();
@@ -852,6 +876,14 @@ export default function CalendarClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save event");
       const newDealId = data.event.deal_id as number | null;
+      // Newly attaching a deal to this appointment sets that deal's appointment date.
+      if (newDealId != null && newDealId !== selectedEvent.dealId) {
+        await syncDealAppointmentDate(
+          newDealId,
+          new Date(editForm.start),
+          editForm.eventType === "" ? null : editForm.eventType
+        );
+      }
       const hasDeal = newDealId == null || selectedEvent.dealIds.includes(newDealId);
       const dealOption = newDealId != null ? dealOptions.find((d) => d.id === newDealId) : undefined;
       setSelectedEvent({
@@ -927,6 +959,8 @@ export default function CalendarClient({
       const eventData = await eventRes.json();
       if (!eventRes.ok) throw new Error(eventData.error || "Failed to attach the new deal to this event");
 
+      await syncDealAppointmentDate(newDeal.id, new Date(selectedEvent.start), selectedEvent.eventType);
+
       setSelectedEvent({
         ...selectedEvent,
         dealId: newDeal.id,
@@ -964,6 +998,8 @@ export default function CalendarClient({
       });
       const eventData = await eventRes.json();
       if (!eventRes.ok) throw new Error(eventData.error || "Failed to connect this deal to the event");
+
+      await syncDealAppointmentDate(dealId, new Date(selectedEvent.start), selectedEvent.eventType);
 
       const dealOption = dealOptions.find((d) => d.id === dealId);
       setSelectedEvent({
