@@ -96,24 +96,24 @@ function compareStageDate(a: UiDeal, b: UiDeal, field: StageDateField, direction
 }
 
 // The most recent correspondence timestamp (any channel log or screenshot) on
-// a deal — its "last follow-up". Null when there's been none.
-function lastCorrespondenceTime(d: UiDeal): number | null {
-  let max: number | null = null;
+// a deal — its "last follow-up". A deal with none is treated as the oldest
+// possible (never followed up), so it ranks as most overdue.
+function lastCorrespondenceTime(d: UiDeal): number {
+  let max = -Infinity;
   for (const c of d.correspondence ?? []) {
     const t = new Date(c.created_at).getTime();
-    if (max == null || t > max) max = t;
+    if (t > max) max = t;
   }
   return max;
 }
 
-// Deals with no correspondence sort to the end regardless of direction.
+// Ascending (oldest-first) surfaces never-contacted deals at the top; descending
+// (newest-first) sends them to the bottom.
 function compareCorrespondence(a: UiDeal, b: UiDeal, direction: 1 | -1) {
   const ta = lastCorrespondenceTime(a);
   const tb = lastCorrespondenceTime(b);
-  if (ta == null && tb == null) return 0;
-  if (ta == null) return 1;
-  if (tb == null) return -1;
-  return direction * (ta - tb);
+  if (ta === tb) return 0;
+  return direction * (ta < tb ? -1 : 1);
 }
 
 function sortDeals(list: UiDeal[], mode: string, dateField: StageDateField | null) {
@@ -1026,7 +1026,7 @@ export default function SalesBoardClient({
                     {stage === "Sent" && (
                       <button
                         type="button"
-                        className={`${styles["column-sort-btn"]} ${styles["column-sort-fu"]} ${sortMode.indexOf("corr_") === 0 ? styles["is-active"] : ""}`}
+                        className={`${styles["column-sort-btn"]} ${sortMode.indexOf("corr_") === 0 ? styles["is-active"] : ""}`}
                         aria-label={`Sort ${stage} by last follow-up`}
                         title="Sort by most recent correspondence (last follow-up)"
                         onClick={() => setColumnSortState((s) => ({ ...s, [stage]: nextCorrSort(sortMode) }))}
