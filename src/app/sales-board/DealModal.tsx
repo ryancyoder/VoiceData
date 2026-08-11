@@ -556,7 +556,7 @@ export default function DealModal({
   }
 
   async function handleParseAspire() {
-    const link = form.opportunity_link.trim();
+    const link = form.aspire_link.trim();
     if (!link) return;
     setParsingAspire(true);
     setAspireParseError("");
@@ -841,16 +841,7 @@ export default function DealModal({
                   Open ↗
                 </a>
               )}
-              <button
-                type="button"
-                className={styles["aspire-parse-btn"]}
-                disabled={!form.opportunity_link.trim() || parsingAspire}
-                onClick={handleParseAspire}
-              >
-                {parsingAspire ? "Parsing…" : "Parse from Aspire"}
-              </button>
             </div>
-            {aspireParseError && <div className={styles["card-edit-error"]}>{aspireParseError}</div>}
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-proposal-link">Proposal link</label>
@@ -873,7 +864,16 @@ export default function DealModal({
                   Open ↗
                 </a>
               )}
+              <button
+                type="button"
+                className={styles["aspire-parse-btn"]}
+                disabled={!form.aspire_link.trim() || parsingAspire}
+                onClick={handleParseAspire}
+              >
+                {parsingAspire ? "Parsing…" : "Parse from Aspire"}
+              </button>
             </div>
+            {aspireParseError && <div className={styles["card-edit-error"]}>{aspireParseError}</div>}
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Proposal PDF</label>
