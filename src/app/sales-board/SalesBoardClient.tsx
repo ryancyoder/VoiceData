@@ -95,6 +95,27 @@ function compareStageDate(a: UiDeal, b: UiDeal, field: StageDateField, direction
   return direction * (new Date(ka).getTime() - new Date(kb).getTime());
 }
 
+// The most recent correspondence timestamp (any channel log or screenshot) on
+// a deal — its "last follow-up". Null when there's been none.
+function lastCorrespondenceTime(d: UiDeal): number | null {
+  let max: number | null = null;
+  for (const c of d.correspondence ?? []) {
+    const t = new Date(c.created_at).getTime();
+    if (max == null || t > max) max = t;
+  }
+  return max;
+}
+
+// Deals with no correspondence sort to the end regardless of direction.
+function compareCorrespondence(a: UiDeal, b: UiDeal, direction: 1 | -1) {
+  const ta = lastCorrespondenceTime(a);
+  const tb = lastCorrespondenceTime(b);
+  if (ta == null && tb == null) return 0;
+  if (ta == null) return 1;
+  if (tb == null) return -1;
+  return direction * (ta - tb);
+}
+
 function sortDeals(list: UiDeal[], mode: string, dateField: StageDateField | null) {
   const sorted = [...list];
   if (mode === "value_desc") sorted.sort((a, b) => (b.value || 0) - (a.value || 0));
@@ -103,6 +124,8 @@ function sortDeals(list: UiDeal[], mode: string, dateField: StageDateField | nul
   else if (mode === "alpha_desc") sorted.sort((a, b) => b.deal_name.localeCompare(a.deal_name));
   else if (mode === "date_desc" && dateField) sorted.sort((a, b) => compareStageDate(a, b, dateField, -1));
   else if (mode === "date_asc" && dateField) sorted.sort((a, b) => compareStageDate(a, b, dateField, 1));
+  else if (mode === "corr_desc") sorted.sort((a, b) => compareCorrespondence(a, b, -1));
+  else if (mode === "corr_asc") sorted.sort((a, b) => compareCorrespondence(a, b, 1));
   return sorted;
 }
 
@@ -122,6 +145,12 @@ function nextDateSort(current: string) {
   if (current === "date_desc") return "date_asc";
   if (current === "date_asc") return "";
   return "date_desc";
+}
+
+function nextCorrSort(current: string) {
+  if (current === "corr_desc") return "corr_asc";
+  if (current === "corr_asc") return "";
+  return "corr_desc";
 }
 
 interface DragState {
@@ -992,6 +1021,17 @@ export default function SalesBoardClient({
                         }
                       >
                         {stageDate.short + (sortMode === "date_desc" ? "▾" : sortMode === "date_asc" ? "▴" : "")}
+                      </button>
+                    )}
+                    {stage === "Sent" && (
+                      <button
+                        type="button"
+                        className={`${styles["column-sort-btn"]} ${sortMode.indexOf("corr_") === 0 ? styles["is-active"] : ""}`}
+                        aria-label={`Sort ${stage} by last follow-up`}
+                        title="Sort by most recent correspondence (last follow-up)"
+                        onClick={() => setColumnSortState((s) => ({ ...s, [stage]: nextCorrSort(sortMode) }))}
+                      >
+                        {"F/U" + (sortMode === "corr_desc" ? "▾" : sortMode === "corr_asc" ? "▴" : "")}
                       </button>
                     )}
                   </div>
