@@ -362,7 +362,7 @@
 .column-head { display: flex; flex-direction: column; gap: 6px; padding: 12px 12px 10px; border-bottom: 1px solid var(--border); }
 .column-head-top { display: flex; align-items: center; gap: 6px; }
 .column-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--col-color); flex-shrink: 0; }
-.column-title { font-size: 0.78rem; font-weight: 650; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.column-title { font-size: 0.95rem; font-weight: 650; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .column-sort-group { display: flex; gap: 2px; }
 .column-sort-btn {
   background: none;
@@ -370,7 +370,7 @@
   border-radius: 4px;
   padding: 1px 6px;
   font-size: 0.66rem;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--text-faint);
   cursor: pointer;
   line-height: 1.3;
