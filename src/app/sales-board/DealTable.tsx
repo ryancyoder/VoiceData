@@ -96,6 +96,17 @@ export default function DealTable({ deals, onOpen }: { deals: UiDeal[]; onOpen: 
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(1);
   const [query, setQuery] = useState("");
+  // Empty set = every stage shown. Otherwise only the selected stages.
+  const [stageFilter, setStageFilter] = useState<Set<Stage>>(new Set());
+
+  function toggleStage(stage: Stage) {
+    setStageFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  }
 
   function toggleSort(key: string) {
     if (sortKey === key) {
@@ -112,9 +123,11 @@ export default function DealTable({ deals, onOpen }: { deals: UiDeal[]; onOpen: 
   }
 
   const q = query.trim().toLowerCase();
-  const filtered = q
-    ? deals.filter((d) => COLUMNS.some((c) => c.text(d).toLowerCase().includes(q)))
-    : deals;
+  const filtered = deals.filter(
+    (d) =>
+      (stageFilter.size === 0 || stageFilter.has(d.stage)) &&
+      (!q || COLUMNS.some((c) => c.text(d).toLowerCase().includes(q)))
+  );
 
   const activeCol = sortKey ? COLUMNS.find((c) => c.key === sortKey) ?? null : null;
   const rows = activeCol
@@ -157,6 +170,30 @@ export default function DealTable({ deals, onOpen }: { deals: UiDeal[]; onOpen: 
         <button type="button" className={styles["dt-export"]} onClick={exportCsv} disabled={rows.length === 0}>
           Export CSV
         </button>
+      </div>
+      <div className={styles["dt-filterbar"]} role="group" aria-label="Filter by stage">
+        <button
+          type="button"
+          className={`${styles["dt-chip"]} ${stageFilter.size === 0 ? styles["is-active"] : ""}`}
+          onClick={() => setStageFilter(new Set())}
+        >
+          All
+        </button>
+        {STAGES.map((stage) => {
+          const active = stageFilter.has(stage);
+          return (
+            <button
+              key={stage}
+              type="button"
+              aria-pressed={active}
+              className={`${styles["dt-chip"]} ${active ? styles["is-active"] : ""}`}
+              style={{ ["--col-color" as string]: STAGE_COLOR_VAR[stage] }}
+              onClick={() => toggleStage(stage)}
+            >
+              {stage}
+            </button>
+          );
+        })}
       </div>
       <div className={styles["table-scroll"]}>
       <table className={styles["deal-table"]}>

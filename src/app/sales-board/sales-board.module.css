@@ -418,6 +418,29 @@
 }
 .dt-export:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .dt-export:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.dt-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 2px 12px;
+}
+.dt-chip {
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dt-chip:hover { color: var(--text); }
+.dt-chip.is-active {
+  color: #fff;
+  background: var(--col-color, var(--accent));
+  border-color: var(--col-color, var(--accent));
+}
 .deal-table {
   width: 100%;
   border-collapse: collapse;
