@@ -700,7 +700,7 @@ export default function DealModal({
         </div>
 
         <form className={styles["card-edit-form"]} onSubmit={handleSubmit}>
-          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+          <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-name">Deal name</label>
             <input
               id="dm-name"
@@ -710,6 +710,10 @@ export default function DealModal({
               value={form.deal_name}
               onChange={(e) => set("deal_name", e.target.value)}
             />
+          </div>
+          <div className={styles["card-edit-field"]}>
+            <label htmlFor="dm-description">Proposal description</label>
+            <textarea id="dm-description" rows={3} value={form.proposal_description} onChange={(e) => set("proposal_description", e.target.value)} />
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-company">Company</label>
@@ -1148,11 +1152,6 @@ export default function DealModal({
               <AddTaskInline dealId={deal.id} currentNextAction={deal.next_action} onAdded={onTaskAdded} />
             </div>
           </div>
-          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
-            <label htmlFor="dm-description">Proposal description</label>
-            <textarea id="dm-description" rows={3} value={form.proposal_description} onChange={(e) => set("proposal_description", e.target.value)} />
-          </div>
-
           {(deal.site_plan_photos ?? []).length > 0 && (
             <div className={styles["photo-events"]}>
               <div className={styles["photo-event-group"]}>
