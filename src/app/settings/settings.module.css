@@ -116,3 +116,66 @@
   color: var(--text-muted);
   font-size: 0.78rem;
 }
+
+.shortcutsCard {
+  margin-top: 18px;
+}
+.shortcutGroups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px 28px;
+}
+.shortcutGroup {
+  min-width: 0;
+}
+.shortcutGroupTitle {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.shortcutList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.shortcutRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 0.83rem;
+}
+.shortcutDesc {
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+.keys {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.keysPlus,
+.keysOr {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin: 0 1px;
+}
+.kbd {
+  display: inline-block;
+  min-width: 18px;
+  text-align: center;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
