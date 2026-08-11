@@ -47,9 +47,14 @@ interface Equipment {
 }
 
 interface Role {
+  _k?: string; // client-only React key (roles have server-managed ids)
   role_key?: string;
   application_id?: string | null;
   required?: boolean;
+}
+interface AssemblyEquip {
+  _k?: string;
+  equipment_id?: string;
 }
 interface Assembly {
   id: string;
@@ -58,6 +63,7 @@ interface Assembly {
   unit_of_work?: string | null;
   equipment_required?: boolean | null;
   roles: Role[];
+  equipment: AssemblyEquip[];
 }
 
 const MATERIAL_CATEGORIES = [
@@ -70,6 +76,8 @@ const MATERIAL_UNITS = ["cubic_yard", "sq_ft", "ln ft", "ea", "piece", "bag", "p
 const COVERAGE_UNITS = ["sq_ft", "ln_ft", "linear_ft", "face_ft"];
 const COVERAGE_METHODS = ["divide", "multiply"];
 const EQUIPMENT_CATEGORIES = ["small_equipment", "large_equipment"];
+const ASSEMBLY_STAGES = ["bed_installation", "excavation", "lawn_install", "outcropping", "patio", "planting"];
+const UNITS_OF_WORK = ["sq_ft", "ln_ft", "ton"];
 
 function money(n: number): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
@@ -98,6 +106,7 @@ export function MasterCatalogClient() {
   const [deletedMaterialIds, setDeletedMaterialIds] = useState<string[]>([]);
   const [deletedApplicationIds, setDeletedApplicationIds] = useState<string[]>([]);
   const [deletedEquipmentIds, setDeletedEquipmentIds] = useState<string[]>([]);
+  const [deletedAssemblyIds, setDeletedAssemblyIds] = useState<string[]>([]);
   // Ids created this session (never sent as deletes if removed before saving).
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
@@ -115,12 +124,14 @@ export function MasterCatalogClient() {
         setAssemblies(
           (Array.isArray(data.assemblies) ? data.assemblies : []).map((a: Assembly) => ({
             ...a,
-            roles: Array.isArray(a.roles) ? a.roles : [],
+            roles: (Array.isArray(a.roles) ? a.roles : []).map((r) => ({ ...r, _k: slugId("role") })),
+            equipment: (Array.isArray(a.equipment) ? a.equipment : []).map((e) => ({ ...e, _k: slugId("aeq") })),
           }))
         );
         setDeletedMaterialIds([]);
         setDeletedApplicationIds([]);
         setDeletedEquipmentIds([]);
+        setDeletedAssemblyIds([]);
         setNewIds(new Set());
         setDirty(false);
         setError(null);
@@ -228,6 +239,80 @@ export function MasterCatalogClient() {
     markDirty();
   }
 
+  // ── Assembly edits ──────────────────────────────────────────────────────
+  const appOptions = useMemo(
+    () =>
+      materials.flatMap((m) =>
+        m.applications.map((a) => ({ id: a.id, label: `${m.material_name || m.id} — ${a.display_name || a.application || a.id}` }))
+      ),
+    [materials]
+  );
+  const equipmentOptions = useMemo(() => equipment.map((e) => ({ id: e.id, label: e.equipment_name || e.id })), [equipment]);
+
+  function updateAssembly(id: string, field: keyof Assembly, value: unknown) {
+    setAssemblies((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
+    markDirty();
+  }
+  function addAssembly() {
+    const id = slugId("new_assembly");
+    setAssemblies((prev) => [
+      ...prev,
+      { id, name: "New assembly", operation_stage: "bed_installation", unit_of_work: "sq_ft", equipment_required: false, roles: [], equipment: [] },
+    ]);
+    setNewIds((prev) => new Set(prev).add(id));
+    setExpanded((prev) => new Set(prev).add(id));
+    markDirty();
+  }
+  function removeAssembly(a: Assembly) {
+    setAssemblies((prev) => prev.filter((x) => x.id !== a.id));
+    if (!newIds.has(a.id)) setDeletedAssemblyIds((prev) => [...prev, a.id]);
+    markDirty();
+  }
+  function addRole(assemblyId: string) {
+    setAssemblies((prev) =>
+      prev.map((a) =>
+        a.id === assemblyId
+          ? { ...a, roles: [...a.roles, { _k: slugId("role"), role_key: "", application_id: null, required: true }] }
+          : a
+      )
+    );
+    markDirty();
+  }
+  function updateRole(assemblyId: string, k: string, field: keyof Role, value: unknown) {
+    setAssemblies((prev) =>
+      prev.map((a) =>
+        a.id === assemblyId ? { ...a, roles: a.roles.map((r) => (r._k === k ? { ...r, [field]: value } : r)) } : a
+      )
+    );
+    markDirty();
+  }
+  function removeRole(assemblyId: string, k: string) {
+    setAssemblies((prev) => prev.map((a) => (a.id === assemblyId ? { ...a, roles: a.roles.filter((r) => r._k !== k) } : a)));
+    markDirty();
+  }
+  function addAssemblyEquip(assemblyId: string) {
+    setAssemblies((prev) =>
+      prev.map((a) =>
+        a.id === assemblyId
+          ? { ...a, equipment: [...a.equipment, { _k: slugId("aeq"), equipment_id: equipmentOptions[0]?.id ?? "" }] }
+          : a
+      )
+    );
+    markDirty();
+  }
+  function updateAssemblyEquip(assemblyId: string, k: string, value: string) {
+    setAssemblies((prev) =>
+      prev.map((a) =>
+        a.id === assemblyId ? { ...a, equipment: a.equipment.map((e) => (e._k === k ? { ...e, equipment_id: value } : e)) } : a
+      )
+    );
+    markDirty();
+  }
+  function removeAssemblyEquip(assemblyId: string, k: string) {
+    setAssemblies((prev) => prev.map((a) => (a.id === assemblyId ? { ...a, equipment: a.equipment.filter((e) => e._k !== k) } : a)));
+    markDirty();
+  }
+
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -239,11 +324,25 @@ export function MasterCatalogClient() {
 
   async function handleSave() {
     setSaveState("saving");
+    // Strip client-only React keys from assembly children before sending.
+    const assembliesPayload = assemblies.map((a) => ({
+      ...a,
+      roles: a.roles.map((r) => ({ role_key: r.role_key, application_id: r.application_id, required: r.required })),
+      equipment: a.equipment.map((e) => ({ equipment_id: e.equipment_id })),
+    }));
     try {
       const res = await fetch("/api/estimator/master", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ materials, equipment, deletedMaterialIds, deletedApplicationIds, deletedEquipmentIds }),
+        body: JSON.stringify({
+          materials,
+          equipment,
+          assemblies: assembliesPayload,
+          deletedMaterialIds,
+          deletedApplicationIds,
+          deletedEquipmentIds,
+          deletedAssemblyIds,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -726,34 +825,270 @@ export function MasterCatalogClient() {
         </section>
       )}
 
-      {/* ── Assemblies (read-only) ─────────────────────────────────────── */}
-      {!loading && assemblies.length > 0 && (
+      {/* ── Assemblies ─────────────────────────────────────────────────── */}
+      {!loading && (
         <section className="mb-8">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            Assemblies <span className="ml-1 font-normal text-zinc-400">({assemblies.length} · read-only)</span>
-          </h2>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {assemblies.map((a) => (
-              <div key={a.id} className="rounded-xl border border-zinc-200 px-3 py-2.5 dark:border-zinc-800">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-zinc-800 dark:text-zinc-100">{a.name}</span>
-                  {a.operation_stage && (
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Assemblies <span className="ml-1 font-normal text-zinc-400">({assemblies.length})</span>
+            </h2>
+            {!locked && (
+              <button
+                onClick={addAssembly}
+                className="rounded-lg px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 dark:text-green-500 dark:hover:bg-green-950"
+              >
+                + Add assembly
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            {assemblies.map((a) => {
+              const isOpen = expanded.has(a.id);
+              return (
+                <div key={a.id} className="rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  {/* Assembly header */}
+                  <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+                    <button
+                      onClick={() => toggleExpand(a.id)}
+                      className="shrink-0 rounded px-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                      title={isOpen ? "Collapse" : "Expand"}
+                      aria-label={isOpen ? "Collapse" : "Expand"}
+                    >
+                      {isOpen ? "▾" : "▸"}
+                    </button>
+                    {locked ? (
+                      <span className="min-w-40 flex-1 font-medium text-zinc-800 dark:text-zinc-100">{a.name}</span>
+                    ) : (
+                      <input
+                        className={`${textInput} min-w-40 flex-1`}
+                        value={a.name ?? ""}
+                        onChange={(e) => updateAssembly(a.id, "name", e.target.value)}
+                      />
+                    )}
                     <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
                       {a.operation_stage}
                     </span>
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                      per {a.unit_of_work}
+                    </span>
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                      {a.roles.length} role{a.roles.length === 1 ? "" : "s"}
+                    </span>
+                    {!locked && (
+                      <button
+                        onClick={() => removeAssembly(a)}
+                        className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
+                        title="Remove assembly"
+                        aria-label="Remove assembly"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {isOpen && (
+                    <div className="border-t border-zinc-100 px-3 py-3 dark:border-zinc-800">
+                      {/* Assembly properties */}
+                      <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                        <label className="flex flex-col gap-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                          Operation stage
+                          {locked ? (
+                            <span className="text-sm text-zinc-700 dark:text-zinc-200">{a.operation_stage}</span>
+                          ) : (
+                            <select
+                              className={selectInput}
+                              value={a.operation_stage ?? ""}
+                              onChange={(e) => updateAssembly(a.id, "operation_stage", e.target.value)}
+                            >
+                              {ASSEMBLY_STAGES.map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                              {a.operation_stage && !ASSEMBLY_STAGES.includes(a.operation_stage) && (
+                                <option value={a.operation_stage}>{a.operation_stage}</option>
+                              )}
+                            </select>
+                          )}
+                        </label>
+                        <label className="flex flex-col gap-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                          Unit of work
+                          {locked ? (
+                            <span className="text-sm text-zinc-700 dark:text-zinc-200">{a.unit_of_work}</span>
+                          ) : (
+                            <select
+                              className={selectInput}
+                              value={a.unit_of_work ?? ""}
+                              onChange={(e) => updateAssembly(a.id, "unit_of_work", e.target.value)}
+                            >
+                              {UNITS_OF_WORK.map((u) => (
+                                <option key={u} value={u}>{u}</option>
+                              ))}
+                              {a.unit_of_work && !UNITS_OF_WORK.includes(a.unit_of_work) && (
+                                <option value={a.unit_of_work}>{a.unit_of_work}</option>
+                              )}
+                            </select>
+                          )}
+                        </label>
+                        <label className="flex items-end gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={!!a.equipment_required}
+                            disabled={locked}
+                            onChange={(e) => updateAssembly(a.id, "equipment_required", e.target.checked)}
+                          />
+                          Equipment required
+                        </label>
+                      </div>
+
+                      {/* Roles */}
+                      <div className="mb-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <div className="flex items-center justify-between border-b border-zinc-100 px-2.5 py-1.5 dark:border-zinc-800">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                            Roles — the applications this assembly bundles
+                          </span>
+                          {!locked && (
+                            <button
+                              onClick={() => addRole(a.id)}
+                              className="rounded px-2 py-0.5 text-xs font-medium text-green-700 hover:bg-green-50 dark:text-green-500 dark:hover:bg-green-950"
+                            >
+                              + Add role
+                            </button>
+                          )}
+                        </div>
+                        {a.roles.length === 0 ? (
+                          <p className="px-2.5 py-2 text-xs text-zinc-400">No roles yet.</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-[620px] border-collapse text-sm">
+                              <thead>
+                                <tr className="bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-400 dark:bg-zinc-900">
+                                  <th className="px-2 py-1.5 font-medium">Role key</th>
+                                  <th className="px-2 py-1.5 font-medium">Application</th>
+                                  <th className="px-2 py-1.5 text-center font-medium">Required</th>
+                                  {!locked && <th className="px-2 py-1.5" />}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                {a.roles.map((r) => (
+                                  <tr key={r._k} className="text-zinc-800 dark:text-zinc-200">
+                                    <td className="px-2 py-1">
+                                      {locked ? (
+                                        <code className="text-xs text-zinc-500">{r.role_key}</code>
+                                      ) : (
+                                        <input
+                                          className={`${textInput} font-mono text-xs`}
+                                          value={r.role_key ?? ""}
+                                          onChange={(e) => updateRole(a.id, r._k!, "role_key", e.target.value)}
+                                        />
+                                      )}
+                                    </td>
+                                    <td className="px-2 py-1">
+                                      {locked ? (
+                                        (appOptions.find((o) => o.id === r.application_id)?.label ?? r.application_id ?? "—")
+                                      ) : (
+                                        <select
+                                          className={`${selectInput} w-full`}
+                                          value={r.application_id ?? ""}
+                                          onChange={(e) => updateRole(a.id, r._k!, "application_id", e.target.value || null)}
+                                        >
+                                          <option value="">— none —</option>
+                                          {appOptions.map((o) => (
+                                            <option key={o.id} value={o.id}>{o.label}</option>
+                                          ))}
+                                          {r.application_id && !appOptions.some((o) => o.id === r.application_id) && (
+                                            <option value={r.application_id}>{r.application_id} (missing)</option>
+                                          )}
+                                        </select>
+                                      )}
+                                    </td>
+                                    <td className="px-2 py-1 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!r.required}
+                                        disabled={locked}
+                                        onChange={(e) => updateRole(a.id, r._k!, "required", e.target.checked)}
+                                      />
+                                    </td>
+                                    {!locked && (
+                                      <td className="px-2 py-1 text-right">
+                                        <button
+                                          onClick={() => removeRole(a.id, r._k!)}
+                                          className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
+                                          title="Remove role"
+                                          aria-label="Remove role"
+                                        >
+                                          ✕
+                                        </button>
+                                      </td>
+                                    )}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Equipment */}
+                      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <div className="flex items-center justify-between border-b border-zinc-100 px-2.5 py-1.5 dark:border-zinc-800">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Equipment</span>
+                          {!locked && (
+                            <button
+                              onClick={() => addAssemblyEquip(a.id)}
+                              disabled={equipmentOptions.length === 0}
+                              className="rounded px-2 py-0.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-40 dark:text-green-500 dark:hover:bg-green-950"
+                            >
+                              + Add equipment
+                            </button>
+                          )}
+                        </div>
+                        {a.equipment.length === 0 ? (
+                          <p className="px-2.5 py-2 text-xs text-zinc-400">No equipment attached.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2 px-2.5 py-2">
+                            {a.equipment.map((e) => (
+                              <div key={e._k} className="flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 py-0.5 pl-2 pr-1 dark:border-zinc-700 dark:bg-zinc-800">
+                                {locked ? (
+                                  <span className="text-xs text-zinc-700 dark:text-zinc-200">
+                                    {equipmentOptions.find((o) => o.id === e.equipment_id)?.label ?? e.equipment_id}
+                                  </span>
+                                ) : (
+                                  <>
+                                    <select
+                                      className="rounded border-none bg-transparent text-xs text-zinc-700 focus:outline-none dark:text-zinc-200"
+                                      value={e.equipment_id ?? ""}
+                                      onChange={(ev) => updateAssemblyEquip(a.id, e._k!, ev.target.value)}
+                                    >
+                                      {equipmentOptions.map((o) => (
+                                        <option key={o.id} value={o.id}>{o.label}</option>
+                                      ))}
+                                      {e.equipment_id && !equipmentOptions.some((o) => o.id === e.equipment_id) && (
+                                        <option value={e.equipment_id}>{e.equipment_id} (missing)</option>
+                                      )}
+                                    </select>
+                                    <button
+                                      onClick={() => removeAssemblyEquip(a.id, e._k!)}
+                                      className="rounded-full px-1 text-zinc-400 hover:text-red-600"
+                                      title="Remove"
+                                      aria-label="Remove equipment"
+                                    >
+                                      ✕
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-zinc-400">
-                  {a.unit_of_work ? `per ${a.unit_of_work}` : ""}
-                  {a.equipment_required ? " · equipment required" : ""}
-                  {` · ${a.roles.length} role${a.roles.length === 1 ? "" : "s"}`}
-                </p>
-              </div>
-            ))}
+              );
+            })}
+            {assemblies.length === 0 && <p className="text-sm text-zinc-400">No assemblies yet.</p>}
           </div>
-          <p className="mt-2 text-xs text-zinc-400">
-            Assemblies and their roles are shown for reference. Editing them comes in a later step.
-          </p>
         </section>
       )}
     </main>

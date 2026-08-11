@@ -4,8 +4,8 @@ import { supabase } from "@/lib/supabaseClient";
 // The normalized "master catalog" as its own entities — the read/write surface
 // for the richer-model editor (distinct from the flat catalog-v2 adapter used
 // by the legacy UI). GET returns materials (with their applications nested),
-// equipment, and assemblies (read-only for now). PUT saves edits to materials,
-// applications, and equipment.
+// equipment, and assemblies (with their roles + equipment nested). PUT saves
+// edits to materials, applications, equipment, and assemblies.
 
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -20,14 +20,15 @@ const APPLICATION_COLS =
 const EQUIPMENT_COLS = "id, equipment_name, category, unit, cost_per_unit, sort_order";
 
 export async function GET() {
-  const [matsRes, appsRes, eqRes, asmRes, rolesRes] = await Promise.all([
+  const [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes] = await Promise.all([
     supabase.from("materials").select(MATERIAL_COLS).order("sort_order", { ascending: true }),
     supabase.from("applications").select(APPLICATION_COLS),
     supabase.from("equipment").select(EQUIPMENT_COLS).order("sort_order", { ascending: true }),
     supabase.from("assemblies").select("id, name, operation_stage, unit_of_work, equipment_required, sort_order").order("sort_order", { ascending: true }),
     supabase.from("assembly_roles").select("assembly_id, role_key, application_id, required, sort_order").order("sort_order", { ascending: true }),
+    supabase.from("assembly_equipment").select("assembly_id, equipment_id, sort_order").order("sort_order", { ascending: true }),
   ]);
-  for (const r of [matsRes, appsRes, eqRes, asmRes, rolesRes]) {
+  for (const r of [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes]) {
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 500 });
   }
 
@@ -41,7 +42,15 @@ export async function GET() {
   for (const r of rolesRes.data ?? []) {
     (rolesByAssembly.get(r.assembly_id) ?? rolesByAssembly.set(r.assembly_id, []).get(r.assembly_id)!).push(r);
   }
-  const assemblies = (asmRes.data ?? []).map((a) => ({ ...a, roles: rolesByAssembly.get(a.id) ?? [] }));
+  const equipByAssembly = new Map<string, unknown[]>();
+  for (const e of asmEqRes.data ?? []) {
+    (equipByAssembly.get(e.assembly_id) ?? equipByAssembly.set(e.assembly_id, []).get(e.assembly_id)!).push(e);
+  }
+  const assemblies = (asmRes.data ?? []).map((a) => ({
+    ...a,
+    roles: rolesByAssembly.get(a.id) ?? [],
+    equipment: equipByAssembly.get(a.id) ?? [],
+  }));
 
   return NextResponse.json({ materials, equipment: eqRes.data ?? [], assemblies });
 }
@@ -79,24 +88,54 @@ interface EquipmentInput {
   unit?: string;
   cost_per_unit?: number | string | null;
 }
+interface RoleInput {
+  role_key?: string;
+  application_id?: string | null;
+  required?: boolean;
+}
+interface AssemblyEquipInput {
+  equipment_id?: string;
+}
+interface AssemblyInput {
+  id: string;
+  name?: string;
+  operation_stage?: string;
+  unit_of_work?: string;
+  equipment_required?: boolean;
+  roles?: RoleInput[];
+  equipment?: AssemblyEquipInput[];
+}
 
 export async function PUT(req: NextRequest) {
   const body = (await req.json()) as {
     materials?: MaterialInput[];
     equipment?: EquipmentInput[];
+    assemblies?: AssemblyInput[];
     deletedMaterialIds?: string[];
     deletedApplicationIds?: string[];
     deletedEquipmentIds?: string[];
+    deletedAssemblyIds?: string[];
   };
   const materials = body.materials ?? [];
   const equipment = body.equipment ?? [];
+  // Assemblies are only touched when the key is present, so a materials-only
+  // save never wipes them (the whole-collection replace is opt-in).
+  const hasAssemblies = Array.isArray(body.assemblies);
+  const assemblies = body.assemblies ?? [];
   const delMaterialIds = (body.deletedMaterialIds ?? []).filter((s) => typeof s === "string" && s);
   const delAppIds = (body.deletedApplicationIds ?? []).filter((s) => typeof s === "string" && s);
   const delEquipmentIds = (body.deletedEquipmentIds ?? []).filter((s) => typeof s === "string" && s);
+  const delAssemblyIds = (body.deletedAssemblyIds ?? []).filter((s) => typeof s === "string" && s);
   const now = new Date().toISOString();
 
   if (materials.some((m) => !m || typeof m.id !== "string" || !m.id)) {
     return NextResponse.json({ error: "every material needs a string id" }, { status: 400 });
+  }
+  const badAsm = assemblies.find(
+    (a) => !a || typeof a.id !== "string" || !a.id || !String(a.name ?? "").trim() || !String(a.operation_stage ?? "").trim() || !String(a.unit_of_work ?? "").trim()
+  );
+  if (badAsm) {
+    return NextResponse.json({ error: "every assembly needs an id, name, operation stage, and unit of work" }, { status: 400 });
   }
 
   const materialRows = materials.map((m, i) => ({
@@ -141,12 +180,52 @@ export async function PUT(req: NextRequest) {
     updated_at: now,
   }));
 
-  // Deletes first, in FK-safe order: applications RESTRICT their material, and
-  // assembly_roles RESTRICT the applications/equipment they reference — so an
-  // application (or equipment) still used by an assembly can't be removed here,
-  // and that constraint violation surfaces to the editor rather than silently
-  // dropping data. Applications go before materials so a removed material's
-  // rows clear first.
+  const assemblyRows = assemblies.map((a, i) => ({
+    id: a.id,
+    name: String(a.name ?? ""),
+    operation_stage: String(a.operation_stage ?? ""),
+    unit_of_work: String(a.unit_of_work ?? ""),
+    equipment_required: !!a.equipment_required,
+    sort_order: i,
+    updated_at: now,
+  }));
+  // Child rows carry no id — assembly_roles/assembly_equipment use IDENTITY
+  // ALWAYS keys, so they are replaced (delete-then-insert) per save rather than
+  // upserted. role_key is required; an empty one falls back to its application.
+  const roleRows = assemblies.flatMap((a) =>
+    (a.roles ?? [])
+      .map((r, j) => ({
+        assembly_id: a.id,
+        role_key: String(r.role_key ?? "").trim() || String(r.application_id ?? "").trim(),
+        application_id: r.application_id ? String(r.application_id) : null,
+        required: !!r.required,
+        sort_order: j,
+      }))
+      .filter((r) => r.role_key)
+  );
+  const asmEquipRows = assemblies.flatMap((a) =>
+    (a.equipment ?? [])
+      .map((e, j) => ({ assembly_id: a.id, equipment_id: String(e.equipment_id ?? "").trim(), sort_order: j }))
+      .filter((e) => e.equipment_id)
+  );
+
+  // ── Deletes, in FK-safe order ──────────────────────────────────────────
+  // assembly_roles/assembly_equipment reference applications/equipment with
+  // RESTRICT, so those child links must be cleared before their targets can be
+  // removed. Assemblies being replaced have their children rebuilt below, so we
+  // drop the old child rows up front — this both frees RESTRICT targets and
+  // implements the replace. Deleted assemblies cascade their children.
+  if (delAssemblyIds.length) {
+    const { error } = await supabase.from("assemblies").delete().in("id", delAssemblyIds);
+    if (error) return NextResponse.json({ error: `delete assemblies: ${error.message}` }, { status: 409 });
+  }
+  if (hasAssemblies && assemblyRows.length) {
+    const ids = assemblyRows.map((a) => a.id);
+    const delRoles = await supabase.from("assembly_roles").delete().in("assembly_id", ids);
+    if (delRoles.error) return NextResponse.json({ error: `clear roles: ${delRoles.error.message}` }, { status: 500 });
+    const delEq = await supabase.from("assembly_equipment").delete().in("assembly_id", ids);
+    if (delEq.error) return NextResponse.json({ error: `clear assembly equipment: ${delEq.error.message}` }, { status: 500 });
+  }
   if (delAppIds.length) {
     const { error } = await supabase.from("applications").delete().in("id", delAppIds);
     if (error) return NextResponse.json({ error: `delete applications: ${error.message}` }, { status: 409 });
@@ -160,7 +239,7 @@ export async function PUT(req: NextRequest) {
     if (error) return NextResponse.json({ error: `delete equipment: ${error.message}` }, { status: 409 });
   }
 
-  // Upsert materials first (applications FK them), then applications, equipment.
+  // ── Upserts: parents before the rows that FK them ──────────────────────
   if (materialRows.length) {
     const { error } = await supabase.from("materials").upsert(materialRows);
     if (error) return NextResponse.json({ error: `materials: ${error.message}` }, { status: 500 });
@@ -173,6 +252,26 @@ export async function PUT(req: NextRequest) {
     const { error } = await supabase.from("equipment").upsert(equipmentRows);
     if (error) return NextResponse.json({ error: `equipment: ${error.message}` }, { status: 500 });
   }
+  if (assemblyRows.length) {
+    const { error } = await supabase.from("assemblies").upsert(assemblyRows);
+    if (error) return NextResponse.json({ error: `assemblies: ${error.message}` }, { status: 500 });
+  }
+  // Child rows reference the just-upserted assemblies / applications / equipment.
+  if (roleRows.length) {
+    const { error } = await supabase.from("assembly_roles").insert(roleRows);
+    if (error) return NextResponse.json({ error: `assembly roles: ${error.message}` }, { status: 500 });
+  }
+  if (asmEquipRows.length) {
+    const { error } = await supabase.from("assembly_equipment").insert(asmEquipRows);
+    if (error) return NextResponse.json({ error: `assembly equipment: ${error.message}` }, { status: 500 });
+  }
 
-  return NextResponse.json({ ok: true, materials: materialRows.length, applications: appRows.length, equipment: equipmentRows.length });
+  return NextResponse.json({
+    ok: true,
+    materials: materialRows.length,
+    applications: appRows.length,
+    equipment: equipmentRows.length,
+    assemblies: assemblyRows.length,
+    roles: roleRows.length,
+  });
 }
