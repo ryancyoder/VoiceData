@@ -61,6 +61,12 @@ const COLUMNS: Column[] = [
     text: (d) => d.deal_name,
     render: (d) => <span className={styles["dt-name"]}>{d.deal_name}</span>,
   },
+  {
+    key: "description",
+    label: "Description",
+    sortVal: (d) => d.proposal_description?.toLowerCase() ?? null,
+    text: (d) => d.proposal_description ?? "",
+  },
   { key: "company", label: "Company", sortVal: (d) => d.company?.toLowerCase() ?? null, text: (d) => d.company ?? "" },
   {
     key: "stage",
