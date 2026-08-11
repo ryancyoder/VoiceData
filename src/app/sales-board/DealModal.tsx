@@ -743,11 +743,11 @@ export default function DealModal({
               {form.contact_phone.replace(/[^\d+]/g, "") && (
                 <a
                   className={styles["open-link-btn"]}
-                  href={`sms:${form.contact_phone.replace(/[^\d+]/g, "")}${
-                    form.proposal_number.trim()
-                      ? `?&body=${encodeURIComponent(`Proposal #${form.proposal_number.trim()}`)}`
-                      : ""
-                  }`}
+                  href={`sms:${form.contact_phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(
+                    form.contact_first_name.trim()
+                      ? `Hi ${form.contact_first_name.trim()}, this is Ryan with Ricci's Landscape Management…`
+                      : "Hi, this is Ryan with Ricci's Landscape Management…"
+                  )}`}
                 >
                   💬 Text
                 </a>
