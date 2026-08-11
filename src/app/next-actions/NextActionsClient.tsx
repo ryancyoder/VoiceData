@@ -19,22 +19,57 @@ const STAGE_COLORS: Record<Stage, string> = {
   "Paid in Full": "var(--c-paid)",
 };
 
-// Action lists group next actions by their leading verb — every next action
-// starts with a verb, so "Call the Smiths" lands in the Call list, "Order
-// mulch" in Purchasing, etc. Matched case-insensitively on the first word.
-const ACTION_LISTS: { key: string; label: string; verbs: string[] }[] = [
-  { key: "call", label: "Call", verbs: ["call"] },
-  { key: "email", label: "Email", verbs: ["email"] },
-  { key: "text", label: "Text", verbs: ["text"] },
-  { key: "schedule", label: "Schedule", verbs: ["schedule"] },
-  { key: "send", label: "Send", verbs: ["send"] },
-  { key: "follow", label: "Follow up", verbs: ["follow"] },
-  { key: "purchasing", label: "Purchasing", verbs: ["order", "purchase", "buy"] },
+// Synonym groups collapse related leading verbs into one action-list chip
+// (e.g. "order", "purchase", and "buy" all mean Purchasing). Any verb not in a
+// group stands as its own chip.
+const VERB_GROUPS: { label: string; verbs: string[] }[] = [
+  { label: "Purchasing", verbs: ["order", "purchase", "buy"] },
 ];
 
 // The leading word of a next action, lowercased and stripped of punctuation.
+// Every next action starts with a verb, so this is the action's category.
 function leadingVerb(title: string): string {
   return (title.trim().toLowerCase().split(/\s+/)[0] ?? "").replace(/[^a-z]/g, "");
+}
+
+function groupForVerb(verb: string): { label: string; verbs: string[] } | null {
+  return VERB_GROUPS.find((g) => g.verbs.includes(verb)) ?? null;
+}
+
+interface ActionChip {
+  key: string;
+  label: string;
+  verbs: Set<string>;
+  count: number;
+}
+
+// Builds the action-list chips dynamically from the rows in view: one chip per
+// leading verb (synonyms merged) that appears more than once, highest count
+// first.
+function buildActionChips(rows: NextActionRow[], includeLost: boolean): ActionChip[] {
+  const byKey = new Map<string, ActionChip>();
+  for (const r of rows) {
+    if (!includeLost && r.lostAt) continue;
+    const verb = leadingVerb(r.nextActionTitle);
+    if (!verb) continue;
+    const group = groupForVerb(verb);
+    const key = group ? group.label : verb;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.count++;
+      existing.verbs.add(verb);
+    } else {
+      byKey.set(key, {
+        key,
+        label: group ? group.label : verb.charAt(0).toUpperCase() + verb.slice(1),
+        verbs: new Set(group ? group.verbs : [verb]),
+        count: 1,
+      });
+    }
+  }
+  return [...byKey.values()]
+    .filter((c) => c.count > 1)
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
 export interface NextActionRow {
@@ -134,12 +169,15 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     toastTimerRef.current = setTimeout(() => setToast(null), 5000);
   }
 
-  const activeList = actionList ? ACTION_LISTS.find((l) => l.key === actionList) ?? null : null;
+  // Chips are computed over the lost-filtered rows (not the stage/search/chip
+  // filters) so the chip set stays stable as you drill in.
+  const actionChips = buildActionChips(rows, showLost);
+  const activeChip = actionList ? actionChips.find((c) => c.key === actionList) ?? null : null;
   const visibleRows = rows.filter((r) => {
     if (!showLost && r.lostAt) return false;
     if (!stageFilter.has(r.stage)) return false;
     if (missingOnly && r.nextActionTitle.trim()) return false;
-    if (activeList && !activeList.verbs.includes(leadingVerb(r.nextActionTitle))) return false;
+    if (activeChip && !activeChip.verbs.has(leadingVerb(r.nextActionTitle))) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       const haystack = `${r.contactLastName ?? ""} ${r.dealName}`.toLowerCase();
@@ -483,14 +521,14 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           >
             All actions
           </button>
-          {ACTION_LISTS.map((list) => (
+          {actionChips.map((chip) => (
             <button
-              key={list.key}
+              key={chip.key}
               type="button"
-              className={`${styles["action-list-chip"]} ${actionList === list.key ? styles["is-active"] : ""}`}
-              onClick={() => setActionList((cur) => (cur === list.key ? "" : list.key))}
+              className={`${styles["action-list-chip"]} ${actionList === chip.key ? styles["is-active"] : ""}`}
+              onClick={() => setActionList((cur) => (cur === chip.key ? "" : chip.key))}
             >
-              {list.label}
+              {chip.label} <span className={styles["chip-count"]}>{chip.count}</span>
             </button>
           ))}
         </div>

@@ -148,6 +148,7 @@
   border-color: var(--accent);
   color: #fff;
 }
+.chip-count { opacity: 0.6; font-weight: 700; }
 
 .filter-toggle {
   display: flex;
