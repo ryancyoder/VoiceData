@@ -947,16 +947,19 @@ export default function SalesBoardClient({
                 data-stage={stage}
               >
                 <div className={styles["column-head"]}>
-                  <button
-                    type="button"
-                    className={styles["column-collapse-btn"]}
-                    aria-label={`Collapse ${stage}`}
-                    onClick={() => setColumnCollapsedState((s) => ({ ...s, [stage]: true }))}
-                  >
-                    ‹
-                  </button>
-                  <span className={styles["column-dot"]} />
-                  <span className={styles["column-title"]}>{stage}</span>
+                  <div className={styles["column-head-top"]}>
+                    <button
+                      type="button"
+                      className={styles["column-collapse-btn"]}
+                      aria-label={`Collapse ${stage}`}
+                      onClick={() => setColumnCollapsedState((s) => ({ ...s, [stage]: true }))}
+                    >
+                      ‹
+                    </button>
+                    <span className={styles["column-dot"]} />
+                    <span className={styles["column-title"]}>{stage}</span>
+                    <span className={styles["column-count"]}>{stageDeals.length}</span>
+                  </div>
                   <div className={styles["column-sort-group"]}>
                     <button
                       type="button"
@@ -992,7 +995,6 @@ export default function SalesBoardClient({
                       </button>
                     )}
                   </div>
-                  <span className={styles["column-count"]}>{stageDeals.length}</span>
                 </div>
                 <div className={styles["column-total"]}>{stageTotal > 0 ? currency.format(stageTotal) : "—"}</div>
                 <div className={styles["column-body"]}>
