@@ -155,6 +155,13 @@ function nextCorrSort(current: string) {
   return "corr_desc";
 }
 
+// Today's local calendar day as "YYYY-MM-DD".
+function todayLocalKey() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 interface DragState {
   id: number;
   pointerId: number;
@@ -244,12 +251,22 @@ export default function SalesBoardClient({
     if (!deal || deal.stage === stage || deal._pending) return;
     const previousStage = deal.stage;
     const name = deal.deal_name;
-    setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, stage, _pending: true, _error: undefined } : d)));
+
+    // Moving into Sold stamps the won date with today (unless one's already set).
+    const updates: Partial<DealInput> = { stage };
+    const wonDate = stage === "Sold" && !deal.won_date ? todayLocalKey() : null;
+    if (wonDate) updates.won_date = wonDate;
+
+    setDeals((ds) =>
+      ds.map((d) =>
+        d.id === id ? { ...d, stage, ...(wonDate ? { won_date: wonDate } : {}), _pending: true, _error: undefined } : d
+      )
+    );
 
     fetch(`/api/sales-board/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage }),
+      body: JSON.stringify(updates),
     })
       .then(async (res) => {
         const data = await res.json();
