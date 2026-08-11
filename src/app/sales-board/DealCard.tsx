@@ -268,7 +268,12 @@ export default function DealCard({
       onPointerCancel={handlePointerCancel}
     >
       <div className={styles["card-top"]}>
-        <div className={styles["card-name"]}>{deal.deal_name}</div>
+        <div className={styles["card-name"]}>
+          {deal.deal_name}
+          {showDescriptions && deal.proposal_description && (
+            <span className={styles["card-name-desc"]}> — {deal.proposal_description}</span>
+          )}
+        </div>
         {!!deal.value && <div className={styles["card-value"]}>{currency.format(deal.value)}</div>}
         {deal.stage === "Propose" && flattenDealPhotos(deal).length > 0 && (
           <div className={styles["card-photo-badge"]} aria-hidden="true">
@@ -307,10 +312,6 @@ export default function DealCard({
 
       {showNextAction && deal.next_action && (
         <div className={`${styles["card-desc"]} ${styles["card-next-action"]}`}>{"> " + deal.next_action}</div>
-      )}
-
-      {showDescriptions && deal.proposal_description && (
-        <div className={styles["card-desc"]}>{deal.proposal_description}</div>
       )}
 
       {deal._error && <div className={styles["card-error"]}>{deal._error}</div>}
