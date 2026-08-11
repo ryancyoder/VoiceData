@@ -10,6 +10,10 @@ interface Option {
   subtitle: string | null;
 }
 
+interface DealOption extends Option {
+  property_id: number | null;
+}
+
 interface FormState {
   name: string;
   start: string;
@@ -141,7 +145,7 @@ export default function QuickAddEvent() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [deals, setDeals] = useState<Option[]>([]);
+  const [deals, setDeals] = useState<DealOption[]>([]);
   const [properties, setProperties] = useState<Option[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -249,6 +253,9 @@ export default function QuickAddEvent() {
   const field = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100";
   const label = "mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400";
 
+  // Deals are picked from the chosen property's children, not searched.
+  const dealsForProperty = form.propertyId === "" ? [] : deals.filter((d) => d.property_id === form.propertyId);
+
   return (
     <>
       <button
@@ -320,19 +327,40 @@ export default function QuickAddEvent() {
                   placeholder="Search properties…"
                   options={properties}
                   value={form.propertyId}
-                  onChange={(v) => set("propertyId", v)}
+                  // Changing property clears any deal that belonged to the old one.
+                  onChange={(v) => setForm((f) => ({ ...f, propertyId: v, dealId: "" }))}
                 />
               </div>
 
               <div className="mb-3">
-                <label className={label} htmlFor="qae-deal">Deal</label>
-                <SearchSelect
-                  id="qae-deal"
-                  placeholder="Search deals…"
-                  options={deals}
-                  value={form.dealId}
-                  onChange={(v) => set("dealId", v)}
-                />
+                <label className={label}>Deal</label>
+                {form.propertyId === "" ? (
+                  <p className="text-xs text-zinc-400">Choose a property to see its deals.</p>
+                ) : dealsForProperty.length === 0 ? (
+                  <p className="text-xs text-zinc-400">No deals at this property.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {dealsForProperty.map((d) => {
+                      const active = form.dealId === d.id;
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          aria-pressed={active}
+                          // Tap the active deal again to clear the selection.
+                          onClick={() => set("dealId", active ? "" : d.id)}
+                          className={`rounded-full border px-3 py-1 text-xs ${
+                            active
+                              ? "border-emerald-600 bg-emerald-600 text-white"
+                              : "border-zinc-300 bg-white text-zinc-700 hover:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="mb-1">

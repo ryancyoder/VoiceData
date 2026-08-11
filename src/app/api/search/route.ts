@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 // style, is simpler and feels faster than a debounced server search.
 export async function GET() {
   const [dealsRes, propertiesRes] = await Promise.all([
-    supabase.from("Sales Board").select("id, deal_name, company, stage, lost_at").order("deal_name"),
+    supabase.from("Sales Board").select("id, deal_name, company, stage, lost_at, property_id").order("deal_name"),
     supabase.from("properties").select("id, address, contacts(first_name, last_name)").order("address"),
   ]);
 
@@ -23,6 +23,7 @@ export async function GET() {
     id: d.id,
     label: d.deal_name,
     subtitle: [d.company, d.lost_at ? "Lost" : d.stage].filter(Boolean).join(" · ") || null,
+    property_id: d.property_id ?? null,
   }));
 
   const properties = (propertiesRes.data ?? []).map((p) => {
