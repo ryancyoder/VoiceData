@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./sales-board.module.css";
 import { STAGES, type Deal, type DealInput, type PropertyOption, type Stage } from "@/lib/salesBoard";
 import DealCard, { type UiDeal } from "./DealCard";
+import DealTable from "./DealTable";
 import DealModal from "./DealModal";
 import LostModal from "./LostModal";
 import PropertyPicker from "./PropertyPicker";
@@ -164,6 +165,7 @@ export default function SalesBoardClient({
     }
   }
   const [lostModalOpen, setLostModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"board" | "table">("board");
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
   // Each column defaults to sorting by its own stage's date, nearest (earliest)
@@ -616,6 +618,24 @@ export default function SalesBoardClient({
           <Link href="/admin/geocode-backfill" className={styles["refresh-btn"]} title="Bulk geocode properties missing coordinates">
             Geocode backfill
           </Link>
+          <div className={styles["view-toggle"]} role="group" aria-label="View mode">
+            <button
+              type="button"
+              className={`${styles["view-toggle-btn"]} ${viewMode === "board" ? styles["is-active"] : ""}`}
+              onClick={() => setViewMode("board")}
+              title="Kanban board view"
+            >
+              Board
+            </button>
+            <button
+              type="button"
+              className={`${styles["view-toggle-btn"]} ${viewMode === "table" ? styles["is-active"] : ""}`}
+              onClick={() => setViewMode("table")}
+              title="Table view of all deals"
+            >
+              Table
+            </button>
+          </div>
           <button
             type="button"
             className={`${styles["refresh-btn"]} ${styles["desc-toggle"]} ${showDescriptions ? styles["is-active"] : ""}`}
@@ -865,6 +885,9 @@ export default function SalesBoardClient({
         </form>
       </div>
 
+      {viewMode === "table" ? (
+        <DealTable deals={activeDeals} onOpen={(d) => setActiveDealId(d.id)} />
+      ) : (
       <div className={styles["board-wrap"]}>
         <div className={styles.board}>
           {STAGES.map((stage) => {
@@ -978,6 +1001,7 @@ export default function SalesBoardClient({
           })}
         </div>
       </div>
+      )}
 
       <div className={`${styles.toast} ${toast ? styles["is-visible"] : ""}`} role="status" aria-live="polite">
         <span>{toast}</span>
