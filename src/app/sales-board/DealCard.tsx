@@ -179,12 +179,12 @@ export default function DealCard({
         <div className={styles["card-name"]}>{deal.deal_name}</div>
         {!!deal.value && <div className={styles["card-value"]}>{currency.format(deal.value)}</div>}
         {deal.stage === "Propose" && flattenDealPhotos(deal).length > 0 && (
-          <div className={styles["card-photo-badge"]} title="Has photos" aria-hidden="true">
+          <div className={styles["card-photo-badge"]} aria-hidden="true">
             📷
           </div>
         )}
         {deal.stage === "Sent" && deal.proposal_pdf_path && (
-          <div className={styles["card-doc-badge"]} title="Has proposal PDF" aria-hidden="true">
+          <div className={styles["card-doc-badge"]} aria-hidden="true">
             📄
           </div>
         )}
