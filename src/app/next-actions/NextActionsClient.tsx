@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { STAGES, type Stage } from "@/lib/salesBoard";
 import { type TaskPhoto, taskPhotoUrl } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
-import { type TimelineDates } from "./DealTimeline";
+import DealTimeline, { type TimelineDates } from "./DealTimeline";
 import styles from "./next-actions.module.css";
 
 const SAVE_TIMEOUT_MS = 15000;
@@ -571,6 +571,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           <tr>
             <th>Deal</th>
             <th>Next Action</th>
+            <th>Timeline</th>
             <th>Photos</th>
           </tr>
         </thead>
@@ -581,7 +582,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
             <Fragment key={group.stage ?? "__alpha__"}>
               {group.stage != null && (
                 <tr className={styles["stage-header-row"]} style={{ ["--row-color" as string]: STAGE_COLORS[group.stage] }}>
-                  <td colSpan={3}>
+                  <td colSpan={4}>
                     <button type="button" className={styles["stage-collapse-btn"]} onClick={() => toggleCollapse(group.stage!)}>
                       <span className={styles["collapse-caret"]}>{collapsed ? "▸" : "▾"}</span>
                       {group.stage} <span className={styles["stage-count"]}>{group.rows.length}</span>
@@ -608,6 +609,9 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                         onKeyDown={(e) => handleKeyDown(e, row.id, index)}
                         onBlur={() => commit(row.id)}
                       />
+                    </td>
+                    <td className={styles["timeline-cell"]}>
+                      <DealTimeline dates={row.milestoneDates} />
                     </td>
                     <td className={styles["photos-cell"]}>
                       <div className={styles["photo-strip"]}>
@@ -687,7 +691,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           })}
           {visibleRows.length === 0 && (
             <tr>
-              <td colSpan={3} className={styles["empty-row"]}>
+              <td colSpan={4} className={styles["empty-row"]}>
                 No deals match these filters.
               </td>
             </tr>
