@@ -6,7 +6,6 @@ export const STAGES = [
   "Sent",
   "Sold",
   "Project Management",
-  "Job Costing",
   "Invoiced",
   "Paid in Full",
 ] as const;

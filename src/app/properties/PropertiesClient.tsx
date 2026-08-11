@@ -14,7 +14,6 @@ const STAGE_COLORS: Record<Stage, string> = {
   Sent: "var(--c-send)",
   Sold: "var(--c-sold)",
   "Project Management": "var(--c-pm)",
-  "Job Costing": "var(--c-jobcosting)",
   Invoiced: "var(--c-invoiced)",
   "Paid in Full": "var(--c-paid)",
 };
