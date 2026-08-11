@@ -154,28 +154,6 @@ export default function DealCard({
       onPointerCancel={handlePointerCancel}
     >
       <div className={styles["card-top"]}>
-        <span
-          className={styles["card-handle"]}
-          aria-hidden="true"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => {
-            if (deal._pending) return;
-            e.stopPropagation();
-            e.preventDefault();
-            clearHold();
-            const card = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-card]");
-            if (card) onDragActivate(card, e.pointerId, e.clientX, e.clientY, deal);
-          }}
-        >
-          <svg viewBox="0 0 10 16" width="10" height="16" fill="currentColor">
-            <circle cx="3" cy="2" r="1.3" />
-            <circle cx="7" cy="2" r="1.3" />
-            <circle cx="3" cy="8" r="1.3" />
-            <circle cx="7" cy="8" r="1.3" />
-            <circle cx="3" cy="14" r="1.3" />
-            <circle cx="7" cy="14" r="1.3" />
-          </svg>
-        </span>
         <div className={styles["card-name"]}>{deal.deal_name}</div>
         {!!deal.value && <div className={styles["card-value"]}>{currency.format(deal.value)}</div>}
         {deal.stage === "Propose" && flattenDealPhotos(deal).length > 0 && (
