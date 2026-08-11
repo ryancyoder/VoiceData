@@ -6,7 +6,6 @@ import { formatPropertyLabel, type PropertyOption } from "@/lib/salesBoard";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 
 const CREATE_TIMEOUT_MS = 15000;
-const NEW_PROPERTY_VALUE = "__new__";
 
 interface PropertyPickerProps {
   id?: string;
@@ -20,23 +19,26 @@ interface PropertyPickerProps {
 // saving used to silently create a near-duplicate property whenever the
 // text didn't exactly match what was on file (worse still when geocoding
 // failed, since that also skipped the proximity-based dedupe check). This
-// replaces that with an explicit choice: pick an existing property from the
-// list, or deliberately add a new one.
+// gives an explicit choice: search and match an existing property, or
+// deliberately add a new one.
 export default function PropertyPicker({ id, propertyOptions, value, onChange, onCreated }: PropertyPickerProps) {
   const [creating, setCreating] = useState(false);
   const [newAddress, setNewAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Search-and-match state.
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
 
-  function handleSelectChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const raw = e.target.value;
-    if (raw === NEW_PROPERTY_VALUE) {
-      setCreating(true);
-      setNewAddress("");
-      setError("");
-      return;
-    }
-    onChange(raw === "" ? null : Number(raw));
+  const selected = value != null ? propertyOptions.find((p) => p.id === value) ?? null : null;
+  const q = query.trim().toLowerCase();
+  const filtered = (q ? propertyOptions.filter((p) => formatPropertyLabel(p).toLowerCase().includes(q)) : propertyOptions).slice(0, 50);
+
+  function startCreate(prefill: string) {
+    setCreating(true);
+    setNewAddress(prefill);
+    setError("");
+    setOpen(false);
   }
 
   function cancelCreate() {
@@ -103,14 +105,80 @@ export default function PropertyPicker({ id, propertyOptions, value, onChange, o
   }
 
   return (
-    <select id={id} value={value ?? ""} onChange={handleSelectChange}>
-      <option value="">No property</option>
-      <option value={NEW_PROPERTY_VALUE}>+ Add new property…</option>
-      {propertyOptions.map((p) => (
-        <option key={p.id} value={p.id}>
-          {formatPropertyLabel(p)}
-        </option>
-      ))}
-    </select>
+    <div className={styles["property-picker"]}>
+      <input
+        id={id}
+        autoComplete="off"
+        placeholder="Search a jobsite address to match…"
+        value={open ? query : selected ? formatPropertyLabel(selected) : ""}
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onBlur={() => setOpen(false)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            if (filtered.length > 0) {
+              onChange(filtered[0].id);
+              setOpen(false);
+            } else if (query.trim()) {
+              startCreate(query.trim());
+            }
+          } else if (e.key === "Escape" && open) {
+            e.stopPropagation();
+            setOpen(false);
+          }
+        }}
+      />
+      {selected && !open && (
+        <button
+          type="button"
+          className={styles["property-picker-clear"]}
+          aria-label="Clear property"
+          onClick={() => onChange(null)}
+        >
+          ✕
+        </button>
+      )}
+      {open && (
+        <ul className={styles["property-picker-menu"]}>
+          {filtered.map((p) => (
+            <li key={p.id}>
+              <button
+                type="button"
+                className={styles["property-picker-item"]}
+                // onMouseDown (not onClick) so the pick lands before the input's blur closes the menu.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(p.id);
+                  setOpen(false);
+                }}
+              >
+                {formatPropertyLabel(p)}
+              </button>
+            </li>
+          ))}
+          {filtered.length === 0 && <li className={styles["property-picker-empty"]}>No matching property</li>}
+          <li>
+            <button
+              type="button"
+              className={`${styles["property-picker-item"]} ${styles["property-picker-add"]}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                startCreate(query.trim());
+              }}
+            >
+              + Add new property{query.trim() ? ` “${query.trim()}”` : "…"}
+            </button>
+          </li>
+        </ul>
+      )}
+    </div>
   );
 }
