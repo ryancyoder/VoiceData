@@ -8,20 +8,19 @@ export type UiDeal = Deal & { _pending?: boolean; _error?: string };
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-// proposal_date is a plain date (no time component) — parsing it with
-// `new Date(isoDate)` reads it as UTC midnight, which prints as the
-// previous day in a negative-UTC-offset timezone. Parsing the y/m/d parts
-// directly keeps it the literal date that was stored.
+// A stored plain date ("YYYY-MM-DD") as a minimalist "MM/DD". Built from the
+// y/m/d parts directly (no Date parsing) so it never shifts a day in a
+// negative-UTC timezone.
 function formatProposalDate(isoDate: string) {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const [, m, d] = isoDate.split("-").map(Number);
+  return `${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`;
 }
 
-// The deal's all-day work window as a compact "Mar 3 – Mar 7" range. A single
+// The deal's all-day work window as a compact "03/03–03/07" range. A single
 // day (or only a start set) collapses to just that one date.
 function formatDateWindow(start: string | null, end: string | null) {
   if (!start && !end) return null;
-  if (start && end && start !== end) return `${formatProposalDate(start)} – ${formatProposalDate(end)}`;
+  if (start && end && start !== end) return `${formatProposalDate(start)}–${formatProposalDate(end)}`;
   return formatProposalDate((start || end) as string);
 }
 
@@ -258,7 +257,7 @@ export default function DealCard({
       </div>
 
       {deal.stage === "Propose" && deal.appointment_date && (
-        <div className={styles["card-proposal-date"]}>📅 Appt {formatProposalDate(deal.appointment_date)}</div>
+        <div className={styles["card-proposal-date"]}>Appt {formatProposalDate(deal.appointment_date)}</div>
       )}
 
       {deal.stage === "Sent" && deal.proposal_date && (
@@ -266,7 +265,7 @@ export default function DealCard({
       )}
 
       {formatDateWindow(deal.start_date, deal.end_date) && (
-        <div className={styles["card-schedule-date"]}>🗓 Production {formatDateWindow(deal.start_date, deal.end_date)}</div>
+        <div className={styles["card-schedule-date"]}>Prod {formatDateWindow(deal.start_date, deal.end_date)}</div>
       )}
 
       {showNextAction && deal.next_action && (
