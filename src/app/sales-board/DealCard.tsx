@@ -24,6 +24,32 @@ function formatDateWindow(start: string | null, end: string | null) {
   return formatProposalDate((start || end) as string);
 }
 
+const CHANNEL_ICON: Record<string, string> = { text: "💬", call: "📞", email: "✉️" };
+const CHANNEL_ORDER = ["text", "call", "email"];
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Most-recent logged touchpoint per channel (call/email/text) on a deal, with
+// the two-digit day-of-month it was logged and whether that's over 30 days old.
+function correspondenceChannelLogs(deal: UiDeal) {
+  const latest = new Map<string, number>();
+  for (const c of deal.correspondence ?? []) {
+    if (!c.channel) continue;
+    const t = new Date(c.created_at).getTime();
+    const prev = latest.get(c.channel);
+    if (prev == null || t > prev) latest.set(c.channel, t);
+  }
+  const now = Date.now();
+  return CHANNEL_ORDER.filter((ch) => latest.has(ch)).map((ch) => {
+    const t = latest.get(ch) as number;
+    return {
+      channel: ch,
+      icon: CHANNEL_ICON[ch],
+      day: String(new Date(t).getDate()).padStart(2, "0"),
+      stale: now - t > THIRTY_DAYS_MS,
+    };
+  });
+}
+
 // Finger: hold this long (without moving) to grab a card — leaves quick swipes
 // free to scroll the column. Pen/mouse: no wait — grab as soon as the pointer
 // moves past DRAG_THRESHOLD, so an Apple Pencil just grabs and drags. A quick
@@ -262,6 +288,17 @@ export default function DealCard({
 
       {deal.stage === "Sent" && deal.proposal_date && (
         <div className={styles["card-proposal-date"]}>Sent {formatProposalDate(deal.proposal_date)}</div>
+      )}
+
+      {deal.stage === "Sent" && correspondenceChannelLogs(deal).length > 0 && (
+        <div className={styles["card-corr-icons"]}>
+          {correspondenceChannelLogs(deal).map((log) => (
+            <span key={log.channel} className={styles["card-corr-icon"]} title={`Last ${log.channel} logged`}>
+              <span className={`${styles["card-corr-day"]} ${log.stale ? styles["is-stale"] : ""}`}>{log.day}</span>
+              <span aria-hidden="true">{log.icon}</span>
+            </span>
+          ))}
+        </div>
       )}
 
       {formatDateWindow(deal.start_date, deal.end_date) && (
