@@ -40,6 +40,8 @@ export default function TextTemplateMenu({
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
+  // null while adding a new template; the template's id while editing one.
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
   const [newBody, setNewBody] = useState("");
   const [saving, setSaving] = useState(false);
@@ -70,7 +72,24 @@ export default function TextTemplateMenu({
   function close() {
     setOpen(false);
     setAdding(false);
+    setEditingId(null);
     setError("");
+  }
+
+  function startAdd() {
+    setEditingId(null);
+    setNewName("");
+    setNewBody("");
+    setError("");
+    setAdding(true);
+  }
+
+  function startEdit(t: Template) {
+    setEditingId(t.id);
+    setNewName(t.name);
+    setNewBody(t.body);
+    setError("");
+    setAdding(true);
   }
 
   async function saveTemplate() {
@@ -80,17 +99,22 @@ export default function TextTemplateMenu({
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/sms-templates", {
-        method: "POST",
+      const res = await fetch(editingId ? `/api/sms-templates/${editingId}` : "/api/sms-templates", {
+        method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, body }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save template");
-      setTemplates((ts) => [...(ts ?? []), data.template]);
+      setTemplates((ts) =>
+        editingId
+          ? (ts ?? []).map((t) => (t.id === editingId ? data.template : t))
+          : [...(ts ?? []), data.template]
+      );
       setNewName("");
       setNewBody("");
       setAdding(false);
+      setEditingId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save template");
     } finally {
@@ -135,6 +159,14 @@ export default function TextTemplateMenu({
                   </a>
                   <button
                     type="button"
+                    className={styles["text-menu-edit"]}
+                    aria-label={`Edit ${t.name} template`}
+                    onClick={() => startEdit(t)}
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
                     className={styles["text-menu-del"]}
                     aria-label={`Delete ${t.name} template`}
                     onClick={() => deleteTemplate(t.id)}
@@ -160,7 +192,15 @@ export default function TextTemplateMenu({
                 />
                 {error && <div className={styles["card-edit-error"]}>{error}</div>}
                 <div className={styles["text-menu-form-actions"]}>
-                  <button type="button" className={styles["open-link-btn"]} onClick={() => setAdding(false)} disabled={saving}>
+                  <button
+                    type="button"
+                    className={styles["open-link-btn"]}
+                    onClick={() => {
+                      setAdding(false);
+                      setEditingId(null);
+                    }}
+                    disabled={saving}
+                  >
                     Cancel
                   </button>
                   <button
@@ -169,12 +209,12 @@ export default function TextTemplateMenu({
                     onClick={saveTemplate}
                     disabled={saving || !newName.trim() || !newBody.trim()}
                   >
-                    {saving ? "Saving…" : "Save template"}
+                    {saving ? "Saving…" : editingId ? "Save changes" : "Save template"}
                   </button>
                 </div>
               </div>
             ) : (
-              <button type="button" className={styles["text-menu-add"]} onClick={() => setAdding(true)}>
+              <button type="button" className={styles["text-menu-add"]} onClick={startAdd}>
                 + Add template
               </button>
             )}

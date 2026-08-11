@@ -628,6 +628,19 @@
   white-space: nowrap;
 }
 .text-menu-item:hover { background: var(--surface-2); }
+.text-menu-edit {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 0.85rem;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.text-menu-edit:hover { color: var(--accent); background: var(--surface-2); }
 .text-menu-del {
   flex-shrink: 0;
   width: 24px;
