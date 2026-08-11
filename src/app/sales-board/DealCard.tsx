@@ -149,6 +149,10 @@ export default function DealCard({
         )}
       </div>
 
+      {deal.stage === "Propose" && deal.appointment_date && (
+        <div className={styles["card-proposal-date"]}>📅 Appt {formatProposalDate(deal.appointment_date)}</div>
+      )}
+
       {deal.stage === "Sent" && deal.proposal_date && (
         <div className={styles["card-proposal-date"]}>Sent {formatProposalDate(deal.proposal_date)}</div>
       )}
