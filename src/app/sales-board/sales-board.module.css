@@ -715,8 +715,9 @@
 }
 
 .modal-panel {
-  width: min(600px, 100%);
+  width: min(880px, 100%);
   max-height: 84vh;
+  overflow-x: hidden;
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
