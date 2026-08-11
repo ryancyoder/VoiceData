@@ -5,8 +5,29 @@ import { safeExtension } from "@/lib/storagePaths";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
+const CHANNELS = ["call", "email", "text"] as const;
+
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
+
+  // A JSON body logs a call/email/text touchpoint (no file). A multipart body
+  // uploads a correspondence screenshot (the original behavior below).
+  if ((req.headers.get("content-type") || "").includes("application/json")) {
+    const body = (await req.json()) as { channel?: unknown };
+    if (typeof body.channel !== "string" || !(CHANNELS as readonly string[]).includes(body.channel)) {
+      return NextResponse.json({ error: "channel must be call, email, or text" }, { status: 400 });
+    }
+    const { data, error } = await supabase
+      .from("deal_correspondence")
+      .insert({ deal_id: Number(id), channel: body.channel })
+      .select()
+      .single();
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ correspondence: data }, { status: 201 });
+  }
+
   const formData = await req.formData();
   const file = formData.get("file");
 

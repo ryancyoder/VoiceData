@@ -22,7 +22,10 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: deleteRowError.message }, { status: 500 });
   }
 
-  await supabase.storage.from(DEAL_CORRESPONDENCE_BUCKET).remove([correspondence.storage_path]);
+  // Channel touchpoints (call/email/text) have no file to remove.
+  if (correspondence.storage_path) {
+    await supabase.storage.from(DEAL_CORRESPONDENCE_BUCKET).remove([correspondence.storage_path]);
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -491,6 +491,23 @@ export default function SalesBoardClient({
     }
   }
 
+  async function handleLogCorrespondence(dealId: number, channel: "call" | "email" | "text") {
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/correspondence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to log");
+      setDeals((ds) =>
+        ds.map((d) => (d.id === dealId ? { ...d, correspondence: [data.correspondence, ...d.correspondence] } : d))
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to log correspondence");
+    }
+  }
+
   async function handleDeleteCorrespondence(dealId: number, correspondenceId: number) {
     const previous = deals;
     setDeals((ds) =>
@@ -1027,6 +1044,7 @@ export default function SalesBoardClient({
           onUploadAttachment={handleUploadAttachment}
           onDeleteAttachment={handleDeleteAttachment}
           onUploadCorrespondence={handleUploadCorrespondence}
+          onLogCorrespondence={handleLogCorrespondence}
           onDeleteCorrespondence={handleDeleteCorrespondence}
         />
       )}

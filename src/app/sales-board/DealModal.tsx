@@ -20,6 +20,13 @@ import { fetchWithTimeout } from "@/lib/withTimeout";
 const PARSE_ASPIRE_TIMEOUT_MS = 25000;
 const ADD_TASK_TIMEOUT_MS = 15000;
 
+// Display for a logged call/email/text touchpoint in the Correspondence list.
+const CHANNEL_META: Record<"call" | "email" | "text", { icon: string; label: string }> = {
+  call: { icon: "📞", label: "Called" },
+  email: { icon: "✉️", label: "Emailed" },
+  text: { icon: "💬", label: "Texted" },
+};
+
 const EMPTY_INLINE_TASK_FORM = { title: "", context: "" as TaskContext | "", start_date: "", duration_hours: "", is_next_action: false };
 
 interface DealModalProps {
@@ -40,6 +47,7 @@ interface DealModalProps {
   onUploadAttachment: (dealId: number, file: File) => Promise<void>;
   onDeleteAttachment: (dealId: number, attachmentId: number) => Promise<void>;
   onUploadCorrespondence: (dealId: number, file: File) => Promise<void>;
+  onLogCorrespondence: (dealId: number, channel: "call" | "email" | "text") => Promise<void>;
   onDeleteCorrespondence: (dealId: number, correspondenceId: number) => Promise<void>;
 }
 
@@ -255,6 +263,7 @@ export default function DealModal({
   onUploadAttachment,
   onDeleteAttachment,
   onUploadCorrespondence,
+  onLogCorrespondence,
   onDeleteCorrespondence,
 }: DealModalProps) {
   const router = useRouter();
@@ -740,6 +749,7 @@ export default function DealModal({
                       ? `?subject=${encodeURIComponent(`Proposal #${form.proposal_number.trim()}`)}`
                       : ""
                   }`}
+                  onClick={() => onLogCorrespondence(deal.id, "email")}
                 >
                   ✉ Email
                 </a>
@@ -751,7 +761,11 @@ export default function DealModal({
             <div className={styles["aspire-link-row"]}>
               <input id="dm-phone" type="tel" autoComplete="off" value={form.contact_phone} onChange={(e) => set("contact_phone", e.target.value)} />
               {form.contact_phone.replace(/[^\d+]/g, "") && (
-                <a className={styles["open-link-btn"]} href={`tel:${form.contact_phone.replace(/[^\d+]/g, "")}`}>
+                <a
+                  className={styles["open-link-btn"]}
+                  href={`tel:${form.contact_phone.replace(/[^\d+]/g, "")}`}
+                  onClick={() => onLogCorrespondence(deal.id, "call")}
+                >
                   📞 Call
                 </a>
               )}
@@ -763,6 +777,7 @@ export default function DealModal({
                       ? `Hi ${form.contact_first_name.trim()}, this is Ryan with Ricci's Landscape Management…`
                       : "Hi, this is Ryan with Ricci's Landscape Management…"
                   )}`}
+                  onClick={() => onLogCorrespondence(deal.id, "text")}
                 >
                   💬 Text
                 </a>
@@ -1008,21 +1023,29 @@ export default function DealModal({
             />
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
-            <label>Correspondence with client (screenshots)</label>
+            <label>Correspondence with client</label>
             {deal.correspondence.length > 0 && (
               <div className={styles["attachments-list"]}>
                 {deal.correspondence.map((item) => (
                   <div key={item.id} className={styles["attachment-row"]}>
-                    <a
-                      href={dealCorrespondenceUrl(item.storage_path)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={styles["attachment-link"]}
-                    >
-                      <span className={styles["attachment-icon"]}>🖼️</span>
-                      <span className={styles["attachment-name"]}>{item.file_name}</span>
-                      <span className={styles["attachment-date"]}>{formatDateTime(item.created_at)}</span>
-                    </a>
+                    {item.channel ? (
+                      <div className={styles["attachment-link"]} style={{ cursor: "default" }}>
+                        <span className={styles["attachment-icon"]}>{CHANNEL_META[item.channel].icon}</span>
+                        <span className={styles["attachment-name"]}>{CHANNEL_META[item.channel].label}</span>
+                        <span className={styles["attachment-date"]}>{formatDateTime(item.created_at)}</span>
+                      </div>
+                    ) : (
+                      <a
+                        href={dealCorrespondenceUrl(item.storage_path ?? "")}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={styles["attachment-link"]}
+                      >
+                        <span className={styles["attachment-icon"]}>🖼️</span>
+                        <span className={styles["attachment-name"]}>{item.file_name}</span>
+                        <span className={styles["attachment-date"]}>{formatDateTime(item.created_at)}</span>
+                      </a>
+                    )}
                     <button
                       type="button"
                       className={styles["attachment-remove"]}

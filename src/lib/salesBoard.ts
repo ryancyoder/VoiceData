@@ -51,14 +51,17 @@ export interface DealAttachment {
   created_at: string;
 }
 
-// A screenshot of correspondence with the client (email/text threads) —
-// attached directly to the deal like DealAttachment, but a distinct table
-// so it renders as its own section rather than mixing with POs/receipts.
+// A client-correspondence record on a deal — either a screenshot (email/text
+// threads, POs) with storage_path/file_name set, or a logged touchpoint
+// (call/email/text) with `channel` set and no file. A distinct table so it
+// renders as its own section rather than mixing with POs/receipts.
+export type CorrespondenceChannel = "call" | "email" | "text";
 export interface DealCorrespondence {
   id: number;
   deal_id: number;
-  storage_path: string;
-  file_name: string;
+  storage_path: string | null;
+  file_name: string | null;
+  channel: CorrespondenceChannel | null;
   created_at: string;
 }
 
