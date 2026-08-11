@@ -455,6 +455,18 @@
   flex: 0 0 162px;
 }
 
+/* Date-driven milestone timeline: evenly-spaced fixed slots, one per
+   milestone (no event capacity — milestones come from the deal's per-stage
+   dates, not calendar events). */
+.timeline-msSlot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex: 0 0 128px;
+  min-width: 0;
+}
+
 /* Fixed capacity for the non-milestone events in one gap: one dedicated
    column for Appointments — so they land in the same spot in every deal's
    timeline, lining up vertically down the whole table — plus two more

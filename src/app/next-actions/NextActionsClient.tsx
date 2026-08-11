@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { STAGES, type Stage } from "@/lib/salesBoard";
 import { type TaskPhoto, taskPhotoUrl } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
-import DealTimeline, { type TimelineEvent } from "./DealTimeline";
+import DealTimeline, { type TimelineDates } from "./DealTimeline";
 import styles from "./next-actions.module.css";
 
 const SAVE_TIMEOUT_MS = 15000;
@@ -28,7 +28,7 @@ export interface NextActionRow {
   nextActionTaskId: number | null;
   nextActionTitle: string;
   nextActionPhotos: TaskPhoto[];
-  timelineEvents: TimelineEvent[];
+  milestoneDates: TimelineDates;
 }
 
 export default function NextActionsClient({ initialRows }: { initialRows: NextActionRow[] }) {
@@ -472,7 +472,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                       />
                     </td>
                     <td className={styles["timeline-cell"]}>
-                      <DealTimeline events={row.timelineEvents} />
+                      <DealTimeline dates={row.milestoneDates} />
                     </td>
                     <td className={styles["photos-cell"]}>
                       <div className={styles["photo-strip"]}>

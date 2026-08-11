@@ -37,6 +37,8 @@ const EMPTY_ADD_FORM = {
   proposal_date: "",
   rfp_date: "",
   won_date: "",
+  invoiced_date: "",
+  paid_date: "",
   appointment_date: "",
   start_date: "",
   end_date: "",
@@ -50,7 +52,14 @@ const EMPTY_ADD_FORM = {
 // date belongs to that column's stage; stages without a dedicated date can't
 // be date-sorted at all. "production" resolves to the start day (falling back
 // to the stop day when only a stop is set).
-type StageDateField = "rfp_date" | "appointment_date" | "proposal_date" | "won_date" | "production";
+type StageDateField =
+  | "rfp_date"
+  | "appointment_date"
+  | "proposal_date"
+  | "won_date"
+  | "production"
+  | "invoiced_date"
+  | "paid_date";
 
 const STAGE_DATE: Partial<Record<Stage, { field: StageDateField; short: string }>> = {
   Lead: { field: "rfp_date", short: "RFP" },
@@ -58,6 +67,8 @@ const STAGE_DATE: Partial<Record<Stage, { field: StageDateField; short: string }
   Sent: { field: "proposal_date", short: "Prop" },
   Sold: { field: "won_date", short: "Won" },
   "Project Management": { field: "production", short: "Prod" },
+  Invoiced: { field: "invoiced_date", short: "Inv" },
+  "Paid in Full": { field: "paid_date", short: "Paid" },
 };
 
 function stageDateValue(d: UiDeal, field: StageDateField): string | null {
@@ -65,6 +76,8 @@ function stageDateValue(d: UiDeal, field: StageDateField): string | null {
   if (field === "rfp_date") return d.rfp_date || null;
   if (field === "appointment_date") return d.appointment_date || null;
   if (field === "won_date") return d.won_date || null;
+  if (field === "invoiced_date") return d.invoiced_date || null;
+  if (field === "paid_date") return d.paid_date || null;
   return d.proposal_date || null;
 }
 
@@ -543,6 +556,8 @@ export default function SalesBoardClient({
           proposal_date: addForm.proposal_date || null,
           rfp_date: addForm.rfp_date || null,
           won_date: addForm.won_date || null,
+          invoiced_date: addForm.invoiced_date || null,
+          paid_date: addForm.paid_date || null,
           appointment_date: addForm.appointment_date || null,
           start_date: addForm.start_date || null,
           end_date: addForm.end_date || null,
@@ -793,6 +808,24 @@ export default function SalesBoardClient({
               value={addForm.end_date}
               min={addForm.start_date || undefined}
               onChange={(e) => setAddForm((f) => ({ ...f, end_date: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-invoiced-date">Invoiced date</label>
+            <input
+              id="f-invoiced-date"
+              type="date"
+              value={addForm.invoiced_date}
+              onChange={(e) => setAddForm((f) => ({ ...f, invoiced_date: e.target.value }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="f-paid-date">Paid in full date</label>
+            <input
+              id="f-paid-date"
+              type="date"
+              value={addForm.paid_date}
+              onChange={(e) => setAddForm((f) => ({ ...f, paid_date: e.target.value }))}
             />
           </div>
           <div className={`${styles.field} ${styles["is-full"]}`}>

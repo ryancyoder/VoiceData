@@ -12,31 +12,9 @@ export const EVENT_TYPES = [
   "Job",
   "EOM",
   "Other",
-  // Certain Sales Board stage transitions auto-create a matching calendar
-  // event (see PATCH /api/sales-board/[id]) — these types double as the
-  // deal timeline's fixed milestones, entirely decoupled from the real
-  // pipeline stages.
-  "Proposal Sent",
-  "Sold",
-  "Project Management",
-  "Invoiced",
-  "Paid in Full",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
-
-// The subset of EVENT_TYPES that are auto-created by a Sales Board stage
-// change rather than entered by hand — single source of truth shared by
-// the deal timeline (DealTimeline.tsx), the stage-change route (PATCH
-// /api/sales-board/[id]), and the Calendar (CalendarClient.tsx, which
-// renders these with a distinct look since they're system-generated).
-export const MILESTONE_EVENT_TYPES = ["Proposal Sent", "Sold", "Project Management", "Invoiced", "Paid in Full"] as const;
-
-export type MilestoneEventType = (typeof MILESTONE_EVENT_TYPES)[number];
-
-export function isMilestoneEventType(type: EventType | null | undefined): type is MilestoneEventType {
-  return !!type && (MILESTONE_EVENT_TYPES as readonly string[]).includes(type);
-}
 
 export interface Event {
   id: number;

@@ -297,6 +297,8 @@ export default function DealModal({
     proposal_date: deal.proposal_date || "",
     rfp_date: deal.rfp_date || "",
     won_date: deal.won_date || "",
+    invoiced_date: deal.invoiced_date || "",
+    paid_date: deal.paid_date || "",
     appointment_date: deal.appointment_date || "",
     start_date: deal.start_date || "",
     end_date: deal.end_date || "",
@@ -621,6 +623,8 @@ export default function DealModal({
         proposal_date: form.proposal_date || null,
         rfp_date: form.rfp_date || null,
         won_date: form.won_date || null,
+        invoiced_date: form.invoiced_date || null,
+        paid_date: form.paid_date || null,
         appointment_date: form.appointment_date || null,
         start_date: form.start_date || null,
         end_date: form.end_date || null,
@@ -758,6 +762,16 @@ export default function DealModal({
                 <span className={styles["date-stage-tag"]}>Project Management</span>
                 <label htmlFor="dm-end-date">Production stop day</label>
                 <input id="dm-end-date" type="date" value={form.end_date} min={form.start_date || undefined} onChange={(e) => set("end_date", e.target.value)} />
+              </div>
+              <div className={styles["date-stage-cell"]}>
+                <span className={styles["date-stage-tag"]}>Invoiced</span>
+                <label htmlFor="dm-invoiced-date">Invoiced date</label>
+                <input id="dm-invoiced-date" type="date" value={form.invoiced_date} onChange={(e) => set("invoiced_date", e.target.value)} />
+              </div>
+              <div className={styles["date-stage-cell"]}>
+                <span className={styles["date-stage-tag"]}>Paid in Full</span>
+                <label htmlFor="dm-paid-date">Paid in full date</label>
+                <input id="dm-paid-date" type="date" value={form.paid_date} onChange={(e) => set("paid_date", e.target.value)} />
               </div>
             </div>
           </div>

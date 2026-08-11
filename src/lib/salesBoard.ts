@@ -123,6 +123,9 @@ export interface Deal {
   rfp_date: string | null;
   // Won date — the Sold stage's key date, when the deal was won. All-day.
   won_date: string | null;
+  // Invoiced / Paid-in-Full dates — the last two stages' key dates. All-day.
+  invoiced_date: string | null;
+  paid_date: string | null;
   // The deal's scheduled work window — all-day (date only, no time). start_date
   // is the first day on the job, end_date the last. Either may be null.
   start_date: string | null;
@@ -225,6 +228,8 @@ export interface DealInput {
   appointment_date?: string | null;
   rfp_date?: string | null;
   won_date?: string | null;
+  invoiced_date?: string | null;
+  paid_date?: string | null;
   start_date?: string | null;
   end_date?: string | null;
   property_id?: number | null;
