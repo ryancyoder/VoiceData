@@ -565,21 +565,46 @@ export default function DealModal({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function resetKeyDates() {
-    if (!window.confirm("Are you sure you want to reset all key dates? This clears every date in this section (saves when you save the deal).")) {
-      return;
-    }
-    setForm((f) => ({
-      ...f,
-      rfp_date: "",
-      appointment_date: "",
-      proposal_date: "",
-      won_date: "",
-      start_date: "",
-      end_date: "",
-      invoiced_date: "",
-      paid_date: "",
-    }));
+  // A single Key-dates cell: stage tag, label, the date input, and a ✕ that
+  // clears just that date (after a confirm) when it holds a value.
+  function renderKeyDate(
+    tag: string,
+    label: string,
+    id: string,
+    field:
+      | "rfp_date"
+      | "appointment_date"
+      | "proposal_date"
+      | "won_date"
+      | "start_date"
+      | "end_date"
+      | "invoiced_date"
+      | "paid_date",
+    min?: string
+  ) {
+    const value = form[field];
+    return (
+      <div className={styles["date-stage-cell"]}>
+        <span className={styles["date-stage-tag"]}>{tag}</span>
+        <label htmlFor={id}>{label}</label>
+        <div className={styles["date-input-row"]}>
+          <input id={id} type="date" value={value} min={min} onChange={(e) => set(field, e.target.value)} />
+          {value && (
+            <button
+              type="button"
+              className={styles["date-clear-btn"]}
+              title={`Clear ${label}`}
+              aria-label={`Clear ${label}`}
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to reset the ${label.toLowerCase()}?`)) set(field, "");
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   async function handleParseAspire() {
@@ -812,53 +837,16 @@ export default function DealModal({
           {/* Key dates, grouped and ordered by the pipeline stage each one
               belongs to: Lead → Propose → Sent → Sold → Project Management. */}
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
-            <div className={styles["card-edit-subhead-row"]}>
-              <span className={styles["card-edit-subhead"]}>Key dates</span>
-              <button type="button" className={styles["date-reset-btn"]} onClick={resetKeyDates}>
-                Reset dates
-              </button>
-            </div>
+            <span className={styles["card-edit-subhead"]}>Key dates</span>
             <div className={styles["date-stage-grid"]}>
-              <div className={styles["date-stage-cell"]}>
-                <span className={styles["date-stage-tag"]}>Lead</span>
-                <label htmlFor="dm-rfp-date">RFP date</label>
-                <input id="dm-rfp-date" type="date" value={form.rfp_date} onChange={(e) => set("rfp_date", e.target.value)} />
-              </div>
-              <div className={styles["date-stage-cell"]}>
-                <span className={styles["date-stage-tag"]}>Propose</span>
-                <label htmlFor="dm-appointment-date">Appointment date</label>
-                <input id="dm-appointment-date" type="date" value={form.appointment_date} onChange={(e) => set("appointment_date", e.target.value)} />
-              </div>
-              <div className={styles["date-stage-cell"]}>
-                <span className={styles["date-stage-tag"]}>Sent</span>
-                <label htmlFor="dm-proposal-date">Proposal date</label>
-                <input id="dm-proposal-date" type="date" value={form.proposal_date} onChange={(e) => set("proposal_date", e.target.value)} />
-              </div>
-              <div className={styles["date-stage-cell"]}>
-                <span className={styles["date-stage-tag"]}>Sold</span>
-                <label htmlFor="dm-won-date">Won date</label>
-                <input id="dm-won-date" type="date" value={form.won_date} onChange={(e) => set("won_date", e.target.value)} />
-              </div>
-              <div className={styles["date-stage-cell"]}>
-                <span className={styles["date-stage-tag"]}>Project Management</span>
-                <label htmlFor="dm-start-date">Production start day</label>
-                <input id="dm-start-date" type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
-              </div>
-              <div className={styles["date-stage-cell"]}>
-                <span className={styles["date-stage-tag"]}>Project Management</span>
-                <label htmlFor="dm-end-date">Production stop day</label>
-                <input id="dm-end-date" type="date" value={form.end_date} min={form.start_date || undefined} onChange={(e) => set("end_date", e.target.value)} />
-              </div>
-              <div className={styles["date-stage-cell"]}>
-                <span className={styles["date-stage-tag"]}>Invoiced</span>
-                <label htmlFor="dm-invoiced-date">Invoiced date</label>
-                <input id="dm-invoiced-date" type="date" value={form.invoiced_date} onChange={(e) => set("invoiced_date", e.target.value)} />
-              </div>
-              <div className={styles["date-stage-cell"]}>
-                <span className={styles["date-stage-tag"]}>Paid in Full</span>
-                <label htmlFor="dm-paid-date">Paid in full date</label>
-                <input id="dm-paid-date" type="date" value={form.paid_date} onChange={(e) => set("paid_date", e.target.value)} />
-              </div>
+              {renderKeyDate("Lead", "RFP date", "dm-rfp-date", "rfp_date")}
+              {renderKeyDate("Propose", "Appointment date", "dm-appointment-date", "appointment_date")}
+              {renderKeyDate("Sent", "Proposal date", "dm-proposal-date", "proposal_date")}
+              {renderKeyDate("Sold", "Won date", "dm-won-date", "won_date")}
+              {renderKeyDate("Project Management", "Production start day", "dm-start-date", "start_date")}
+              {renderKeyDate("Project Management", "Production stop day", "dm-end-date", "end_date", form.start_date || undefined)}
+              {renderKeyDate("Invoiced", "Invoiced date", "dm-invoiced-date", "invoiced_date")}
+              {renderKeyDate("Paid in Full", "Paid in full date", "dm-paid-date", "paid_date")}
             </div>
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
