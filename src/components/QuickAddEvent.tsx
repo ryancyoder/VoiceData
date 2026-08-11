@@ -79,6 +79,21 @@ function SearchSelect({
           setText(e.target.value);
           if (!open) setOpen(true);
         }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && open && filtered.length > 0) {
+            // Pick the top filtered match, and don't let Enter bubble to
+            // trigger the modal's Add-event action.
+            e.preventDefault();
+            e.stopPropagation();
+            onChange(filtered[0].id);
+            setOpen(false);
+          } else if (e.key === "Escape" && open) {
+            // Close just the list; keep the modal open (stop the global
+            // Escape handler from closing the whole thing).
+            e.stopPropagation();
+            setOpen(false);
+          }
+        }}
       />
       {selected && !open && (
         <button
