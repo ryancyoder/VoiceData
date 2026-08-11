@@ -741,6 +741,11 @@ export default function DealModal({
             <div className={styles["aspire-link-row"]}>
               <input id="dm-phone" type="tel" autoComplete="off" value={form.contact_phone} onChange={(e) => set("contact_phone", e.target.value)} />
               {form.contact_phone.replace(/[^\d+]/g, "") && (
+                <a className={styles["open-link-btn"]} href={`tel:${form.contact_phone.replace(/[^\d+]/g, "")}`}>
+                  📞 Call
+                </a>
+              )}
+              {form.contact_phone.replace(/[^\d+]/g, "") && (
                 <a
                   className={styles["open-link-btn"]}
                   href={`sms:${form.contact_phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(
@@ -1064,13 +1069,31 @@ export default function DealModal({
           </div>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-jobsite">Jobsite address</label>
-            <PropertyPicker
-              id="dm-jobsite"
-              propertyOptions={propertyOptions}
-              value={form.property_id}
-              onChange={(propertyId) => setForm((f) => ({ ...f, property_id: propertyId }))}
-              onCreated={onPropertyCreated}
-            />
+            <div className={styles["aspire-link-row"]}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <PropertyPicker
+                  id="dm-jobsite"
+                  propertyOptions={propertyOptions}
+                  value={form.property_id}
+                  onChange={(propertyId) => setForm((f) => ({ ...f, property_id: propertyId }))}
+                  onCreated={onPropertyCreated}
+                />
+              </div>
+              {deal.property && (deal.property.latitude != null || deal.property.address) && (
+                <a
+                  className={styles["open-link-btn"]}
+                  href={`https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(
+                    deal.property.latitude != null && deal.property.longitude != null
+                      ? `${deal.property.latitude},${deal.property.longitude}`
+                      : deal.property.address
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  🧭 Directions
+                </a>
+              )}
+            </div>
             <GeocodeStatus deal={deal} />
           </div>
           <RelatedDeals deals={relatedDeals} onSelectDeal={onSelectDeal} />
