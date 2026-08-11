@@ -738,7 +738,21 @@ export default function DealModal({
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-phone">Contact phone</label>
-            <input id="dm-phone" type="tel" autoComplete="off" value={form.contact_phone} onChange={(e) => set("contact_phone", e.target.value)} />
+            <div className={styles["aspire-link-row"]}>
+              <input id="dm-phone" type="tel" autoComplete="off" value={form.contact_phone} onChange={(e) => set("contact_phone", e.target.value)} />
+              {form.contact_phone.replace(/[^\d+]/g, "") && (
+                <a
+                  className={styles["open-link-btn"]}
+                  href={`sms:${form.contact_phone.replace(/[^\d+]/g, "")}${
+                    form.proposal_number.trim()
+                      ? `?&body=${encodeURIComponent(`Proposal #${form.proposal_number.trim()}`)}`
+                      : ""
+                  }`}
+                >
+                  💬 Text
+                </a>
+              )}
+            </div>
           </div>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-proposal-number">Proposal #</label>
