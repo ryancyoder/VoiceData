@@ -549,17 +549,9 @@
 .tool-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .tool-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* Discrete link glyph — a deal carries an Aspire opportunity link. */
-.card-link-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  color: var(--text-faint);
-  flex-shrink: 0;
-  margin-left: auto;
-}
+/* A deal carrying an Aspire opportunity link is outlined in its stage color
+   (the default gray border is replaced); no outline means no link. */
+.card.is-linked { border-color: var(--col-color); }
 .card-error { font-size: 0.7rem; color: var(--danger); margin-top: 6px; }
 .card-desc {
   font-size: 0.74rem;
