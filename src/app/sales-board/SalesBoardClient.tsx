@@ -108,12 +108,14 @@ function lastCorrespondenceTime(d: UiDeal): number {
 }
 
 // Ascending (oldest-first) surfaces never-contacted deals at the top; descending
-// (newest-first) sends them to the bottom.
+// (newest-first) sends them to the bottom. Ties — notably the never-contacted
+// group, which all share the same "oldest possible" time — break by oldest
+// proposal sent date first.
 function compareCorrespondence(a: UiDeal, b: UiDeal, direction: 1 | -1) {
   const ta = lastCorrespondenceTime(a);
   const tb = lastCorrespondenceTime(b);
-  if (ta === tb) return 0;
-  return direction * (ta < tb ? -1 : 1);
+  if (ta !== tb) return direction * (ta < tb ? -1 : 1);
+  return compareStageDate(a, b, "proposal_date", 1);
 }
 
 function sortDeals(list: UiDeal[], mode: string, dateField: StageDateField | null) {
