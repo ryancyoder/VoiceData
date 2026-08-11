@@ -70,7 +70,21 @@ export default function DealCard({
   function startDrag(p: { id: number; x: number; y: number; el: HTMLElement }) {
     clearHold();
     draggingRef.current = true;
+    // Suppress native scrolling for the rest of a finger drag too (pen/mouse
+    // were already suppressed on hover/down).
+    p.el.style.touchAction = "none";
     onDragActivate(p.el, p.id, p.x, p.y, deal);
+  }
+
+  // Apple Pencil (and a mouse) hover over a card before pressing. Pre-arming
+  // touch-action:none on hover means a grab gesture — even a vertical one —
+  // starts without the column trying to scroll and stealing the drag. A finger
+  // never hovers, so it keeps native scrolling.
+  function handlePointerEnter(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType !== "touch") (e.currentTarget as HTMLElement).style.touchAction = "none";
+  }
+  function handlePointerLeave(e: React.PointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current && !pointerRef.current) (e.currentTarget as HTMLElement).style.touchAction = "";
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -78,6 +92,9 @@ export default function DealCard({
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const el = e.currentTarget as HTMLElement;
     const touch = e.pointerType === "touch";
+    // Pen/mouse never scrolls the column — kill native panning up front so a
+    // vertical grab drags instead of scrolling.
+    if (!touch) el.style.touchAction = "none";
     draggingRef.current = false;
     pointerRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, el, touch };
     setPressing(true);
@@ -110,12 +127,15 @@ export default function DealCard({
 
   function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
     clearHold();
+    const p = pointerRef.current;
+    // A finger interaction restores native scrolling on release (pen/mouse keep
+    // it suppressed while hovering; pointerleave clears it when they leave).
+    if (p?.touch) p.el.style.touchAction = "";
     if (draggingRef.current) {
       draggingRef.current = false;
       pointerRef.current = null;
       return;
     }
-    const p = pointerRef.current;
     pointerRef.current = null;
     if (!p || e.pointerId !== p.id) return;
     // A tap. Distinguish single (open deal) from double (albums).
@@ -139,6 +159,8 @@ export default function DealCard({
 
   function handlePointerCancel() {
     clearHold();
+    const p = pointerRef.current;
+    if (p?.touch) p.el.style.touchAction = "";
     draggingRef.current = false;
     pointerRef.current = null;
   }
@@ -165,6 +187,8 @@ export default function DealCard({
           onOpen(deal);
         }
       }}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

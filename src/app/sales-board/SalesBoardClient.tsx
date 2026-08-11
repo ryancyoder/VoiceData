@@ -243,10 +243,8 @@ export default function SalesBoardClient({
     ghost.style.top = rect.top + "px";
     document.body.appendChild(ghost);
     card.classList.add(styles["is-dragging"]);
-    // Suppress the column's touch-scroll for the rest of this gesture so the
-    // grabbed card drags instead of scrolling the list.
-    const prevTouchAction = card.style.touchAction;
-    card.style.touchAction = "none";
+    // (The card's touch-action is managed in DealCard — suppressed on pen/mouse
+    // hover and at finger-drag start — so the column doesn't steal the gesture.)
 
     const state: DragState = {
       id: deal.id,
@@ -289,7 +287,6 @@ export default function SalesBoardClient({
       const dealId = s.id;
 
       s.card.classList.remove(styles["is-dragging"]);
-      card.style.touchAction = prevTouchAction;
       if (s.currentColumn) s.currentColumn.classList.remove(styles["is-dragover"]);
       s.ghost.remove();
       card.removeEventListener("pointermove", onMove);
