@@ -294,8 +294,8 @@ export default function DealCard({
         <div className={styles["card-corr-icons"]}>
           {correspondenceChannelLogs(deal).map((log) => (
             <span key={log.channel} className={styles["card-corr-icon"]} title={`Last ${log.channel} logged`}>
-              <span className={`${styles["card-corr-day"]} ${log.stale ? styles["is-stale"] : ""}`}>{log.day}</span>
               <span aria-hidden="true">{log.icon}</span>
+              <span className={`${styles["card-corr-day"]} ${log.stale ? styles["is-stale"] : ""}`}>{log.day}</span>
             </span>
           ))}
         </div>
