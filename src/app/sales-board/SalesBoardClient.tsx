@@ -189,7 +189,14 @@ function openWonEmail(deal: UiDeal) {
     `mailto:${WON_EMAIL_TO}?cc=${WON_EMAIL_CC}` +
     `&subject=${encodeURIComponent(subject)}` +
     (body ? `&body=${encodeURIComponent(body)}` : "");
-  window.location.href = url;
+  // Clicking a real anchor (rather than setting window.location) is what iOS
+  // Safari requires to launch the mail handler.
+  const a = document.createElement("a");
+  a.href = url;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 interface DragState {
