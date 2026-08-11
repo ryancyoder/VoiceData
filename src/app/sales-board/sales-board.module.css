@@ -600,6 +600,21 @@
 
 /* Text-template dropdown on the deal modal's Text button */
 .text-menu { position: relative; display: inline-flex; }
+/* Compact icon trigger (Next Actions contact column) */
+.na-contact-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.na-contact-btn:hover { border-color: var(--accent); }
 .text-menu-backdrop { position: fixed; inset: 0; z-index: 60; }
 .text-menu-panel {
   position: absolute;

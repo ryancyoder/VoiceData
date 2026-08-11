@@ -30,11 +30,14 @@ export default function TextTemplateMenu({
   phone,
   tokens,
   onSend,
+  compact = false,
 }: {
   phone: string;
   tokens: Tokens;
   // Called when a template is chosen (so the deal can log a text touchpoint).
   onSend: () => void;
+  // Icon-only trigger (for the Next Actions table); default shows "💬 Text ▾".
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<Template[] | null>(null);
@@ -133,8 +136,14 @@ export default function TextTemplateMenu({
 
   return (
     <div className={styles["text-menu"]}>
-      <button type="button" className={styles["open-link-btn"]} onClick={() => (open ? close() : openMenu())}>
-        💬 Text ▾
+      <button
+        type="button"
+        className={compact ? styles["na-contact-btn"] : styles["open-link-btn"]}
+        title="Text"
+        aria-label="Text"
+        onClick={() => (open ? close() : openMenu())}
+      >
+        {compact ? "💬" : "💬 Text ▾"}
       </button>
       {open && (
         <>

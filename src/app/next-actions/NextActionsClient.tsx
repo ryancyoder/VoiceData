@@ -5,7 +5,18 @@ import { STAGES, type Stage } from "@/lib/salesBoard";
 import { type TaskPhoto, taskPhotoUrl } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import DealTimeline, { type TimelineDates } from "./DealTimeline";
+import TextTemplateMenu from "../sales-board/TextTemplateMenu";
 import styles from "./next-actions.module.css";
+
+// Fire-and-forget: log a call/email/text touchpoint on the deal's
+// correspondence when a contact button is used.
+function logTouchpoint(dealId: number, channel: "call" | "email" | "text") {
+  fetch(`/api/sales-board/${dealId}/correspondence`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ channel }),
+  }).catch(() => {});
+}
 
 const SAVE_TIMEOUT_MS = 15000;
 
@@ -77,7 +88,12 @@ export interface NextActionRow {
   dealName: string;
   stage: Stage;
   lostAt: string | null;
+  contactFirstName: string | null;
   contactLastName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  proposalNumber: string | null;
+  proposalDescription: string | null;
   nextActionTaskId: number | null;
   nextActionTitle: string;
   nextActionPhotos: TaskPhoto[];
@@ -597,6 +613,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
             <th>Next Action</th>
             <th>Timeline</th>
             <th>Photos</th>
+            <th>Contact</th>
           </tr>
         </thead>
         <tbody>
@@ -606,7 +623,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
             <Fragment key={group.stage ?? "__alpha__"}>
               {group.stage != null && (
                 <tr className={styles["stage-header-row"]} style={{ ["--row-color" as string]: STAGE_COLORS[group.stage] }}>
-                  <td colSpan={4}>
+                  <td colSpan={5}>
                     <button type="button" className={styles["stage-collapse-btn"]} onClick={() => toggleCollapse(group.stage!)}>
                       <span className={styles["collapse-caret"]}>{collapsed ? "▸" : "▾"}</span>
                       {group.stage} <span className={styles["stage-count"]}>{group.rows.length}</span>
@@ -707,6 +724,49 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                         />
                       </div>
                     </td>
+                    <td className={styles["contact-cell"]}>
+                      <div className={styles["contact-actions"]}>
+                        {row.contactPhone?.replace(/[^\d+]/g, "") && (
+                          <TextTemplateMenu
+                            compact
+                            phone={row.contactPhone}
+                            tokens={{
+                              first_name: row.contactFirstName?.trim() ?? "",
+                              last_name: row.contactLastName?.trim() ?? "",
+                              proposal_number: row.proposalNumber?.trim() ?? "",
+                              proposal_description: row.proposalDescription?.trim() ?? "",
+                            }}
+                            onSend={() => logTouchpoint(row.id, "text")}
+                          />
+                        )}
+                        {row.contactPhone?.replace(/[^\d+]/g, "") && (
+                          <a
+                            className={styles["contact-btn"]}
+                            title="Call"
+                            aria-label="Call"
+                            href={`tel:${row.contactPhone.replace(/[^\d+]/g, "")}`}
+                            onClick={() => logTouchpoint(row.id, "call")}
+                          >
+                            📞
+                          </a>
+                        )}
+                        {row.contactEmail?.trim() && (
+                          <a
+                            className={styles["contact-btn"]}
+                            title="Email"
+                            aria-label="Email"
+                            href={`mailto:${encodeURIComponent(row.contactEmail.trim())}${
+                              row.proposalNumber?.trim()
+                                ? `?subject=${encodeURIComponent(`Proposal #${row.proposalNumber.trim()}`)}`
+                                : ""
+                            }`}
+                            onClick={() => logTouchpoint(row.id, "email")}
+                          >
+                            ✉️
+                          </a>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -715,7 +775,7 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           })}
           {visibleRows.length === 0 && (
             <tr>
-              <td colSpan={4} className={styles["empty-row"]}>
+              <td colSpan={5} className={styles["empty-row"]}>
                 No deals match these filters.
               </td>
             </tr>

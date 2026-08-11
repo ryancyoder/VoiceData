@@ -10,13 +10,17 @@ type RawDeal = {
   deal_name: string;
   stage: Stage;
   lost_at: string | null;
+  proposal_number: string | null;
+  proposal_description: string | null;
   appointment_date: string | null;
   proposal_date: string | null;
   won_date: string | null;
   start_date: string | null;
   invoiced_date: string | null;
   paid_date: string | null;
-  properties: { contacts: { last_name: string | null } | null } | null;
+  properties: {
+    contacts: { first_name: string | null; last_name: string | null; email: string | null; phone: string | null } | null;
+  } | null;
 };
 
 type RawTask = { id: number; deal_id: number | null; title: string; task_photos: TaskPhoto[] | null };
@@ -26,7 +30,7 @@ export default async function NextActionsPage() {
     supabase
       .from("Sales Board")
       .select(
-        "id, deal_name, stage, lost_at, appointment_date, proposal_date, won_date, start_date, invoiced_date, paid_date, properties(contacts(last_name))"
+        "id, deal_name, stage, lost_at, proposal_number, proposal_description, appointment_date, proposal_date, won_date, start_date, invoiced_date, paid_date, properties(contacts(first_name, last_name, email, phone))"
       )
       .order("created_at", { ascending: true }),
     supabase
@@ -55,7 +59,12 @@ export default async function NextActionsPage() {
         dealName: d.deal_name,
         stage: d.stage,
         lostAt: d.lost_at,
+        contactFirstName: d.properties?.contacts?.first_name ?? null,
         contactLastName: d.properties?.contacts?.last_name ?? null,
+        contactPhone: d.properties?.contacts?.phone ?? null,
+        contactEmail: d.properties?.contacts?.email ?? null,
+        proposalNumber: d.proposal_number,
+        proposalDescription: d.proposal_description,
         nextActionTaskId: task?.id ?? null,
         nextActionTitle: task?.title ?? "",
         nextActionPhotos: task?.task_photos ?? [],

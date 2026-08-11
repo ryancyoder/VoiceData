@@ -190,6 +190,25 @@
 }
 .chip-count { opacity: 0.6; font-weight: 700; }
 
+/* Contact quick-action column (text / call / email) */
+.contact-cell { padding: 8px 16px; white-space: nowrap; }
+.contact-actions { display: flex; align-items: center; gap: 6px; }
+.contact-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 0.95rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+.contact-btn:hover { border-color: var(--accent); }
+
 .filter-toggle {
   display: flex;
   align-items: center;
