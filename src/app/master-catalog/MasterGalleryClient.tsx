@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 // ── Master Catalog gallery ────────────────────────────────────────────────
-// A photo-forward, browsable view of the normalized master model — the
-// gallery counterpart to the table editor, mirroring the Plant Reference
-// gallery. Browse Materials / Assemblies / Equipment as cards, open one, and
-// cross-navigate the relationships: a material links to its applications and
-// the assemblies that use it; an assembly links to its role materials and its
-// equipment; equipment links back to the assemblies that need it. Photos are
-// stored per entity via /api/estimator/master/photos.
+// A photo-forward, browsable view of the normalized master model. Instead of
+// opening a modal, clicking a tile *drills*: the clicked entity becomes an
+// inline header (info + photos) and the grid below filters to its related
+// entities — a material shows the assemblies that use it; an assembly shows
+// its role materials and equipment; equipment shows the assemblies that need
+// it. A breadcrumb walks the trail back. Photos are stored per entity via
+// /api/estimator/master/photos.
 
 interface Photo { id: string; url: string; is_cover: boolean }
 interface Application {
@@ -33,11 +33,12 @@ interface Assembly {
 type EntityType = "material" | "assembly" | "equipment";
 type Ref = { type: EntityType; id: string };
 
-const TABS: { key: EntityType; label: string; icon: string; plural: string }[] = [
-  { key: "material", label: "Materials", icon: "📦", plural: "materials" },
-  { key: "assembly", label: "Assemblies", icon: "🧱", plural: "assemblies" },
-  { key: "equipment", label: "Equipment", icon: "🚜", plural: "equipment" },
+const TABS: { key: EntityType; label: string; icon: string }[] = [
+  { key: "material", label: "Materials", icon: "📦" },
+  { key: "assembly", label: "Assemblies", icon: "🧱" },
+  { key: "equipment", label: "Equipment", icon: "🚜" },
 ];
+const FALLBACK_ICON: Record<EntityType, string> = { material: "📦", assembly: "🧱", equipment: "🚜" };
 
 function money(v: unknown): string {
   const n = typeof v === "number" ? v : Number(v ?? 0);
@@ -79,29 +80,37 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
   const materialById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
   const equipmentById = useMemo(() => new Map(equipment.map((e) => [e.id, e])), [equipment]);
   const assemblyById = useMemo(() => new Map(assemblies.map((a) => [a.id, a])), [assemblies]);
-  // application id -> { app, material }
   const appIndex = useMemo(() => {
     const m = new Map<string, { app: Application; material: Material }>();
     for (const mat of materials) for (const a of mat.applications) m.set(a.id, { app: a, material: mat });
     return m;
   }, [materials]);
-  // application id -> assemblies that use it (via roles)
   const assembliesByApp = useMemo(() => {
     const m = new Map<string, Assembly[]>();
     for (const a of assemblies) for (const r of a.roles) if (r.application_id) (m.get(r.application_id) ?? m.set(r.application_id, []).get(r.application_id)!).push(a);
     return m;
   }, [assemblies]);
-  // equipment id -> assemblies that use it
   const assembliesByEquip = useMemo(() => {
     const m = new Map<string, Assembly[]>();
     for (const a of assemblies) for (const e of a.equipment) if (e.equipment_id) (m.get(e.equipment_id) ?? m.set(e.equipment_id, []).get(e.equipment_id)!).push(a);
     return m;
   }, [assemblies]);
-  function assembliesForMaterial(mat: Material): Assembly[] {
+
+  const assembliesForMaterial = useCallback((mat: Material): Assembly[] => {
     const seen = new Set<string>(); const out: Assembly[] = [];
     for (const app of mat.applications) for (const a of assembliesByApp.get(app.id) ?? []) if (!seen.has(a.id)) { seen.add(a.id); out.push(a); }
     return out;
-  }
+  }, [assembliesByApp]);
+  const materialsForAssembly = useCallback((a: Assembly): Material[] => {
+    const seen = new Set<string>(); const out: Material[] = [];
+    for (const r of a.roles) { if (!r.application_id) continue; const hit = appIndex.get(r.application_id); if (hit && !seen.has(hit.material.id)) { seen.add(hit.material.id); out.push(hit.material); } }
+    return out;
+  }, [appIndex]);
+  const equipmentForAssembly = useCallback((a: Assembly): Equipment[] => {
+    const seen = new Set<string>(); const out: Equipment[] = [];
+    for (const e of a.equipment) { if (!e.equipment_id) continue; const eq = equipmentById.get(e.equipment_id); if (eq && !seen.has(eq.id)) { seen.add(eq.id); out.push(eq); } }
+    return out;
+  }, [equipmentById]);
 
   const coverOf = useCallback((type: string, id: string): Photo | null => {
     const list = photos[key(type, id)] ?? [];
@@ -113,9 +122,7 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
     setUploading(true);
     try {
       const fd = new FormData();
-      fd.append("file", file);
-      fd.append("entity_type", type);
-      fd.append("entity_id", id);
+      fd.append("file", file); fd.append("entity_type", type); fd.append("entity_id", id);
       const res = await fetch("/api/estimator/master/photos", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "upload failed");
       const { photo } = await res.json();
@@ -137,58 +144,116 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
     try {
       const res = await fetch(`/api/estimator/master/photos/${photoId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("delete failed");
-    } catch {
-      setError("Could not delete photo.");
-      load();
-    }
+    } catch { setError("Could not delete photo."); load(); }
   }
 
   async function setCover(type: EntityType, id: string, photoId: string) {
     const k = key(type, id);
     setPhotos((prev) => ({ ...prev, [k]: (prev[k] ?? []).map((p) => ({ ...p, is_cover: p.id === photoId })) }));
     try {
-      const res = await fetch(`/api/estimator/master/photos/${photoId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_cover: true }),
-      });
+      const res = await fetch(`/api/estimator/master/photos/${photoId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_cover: true }) });
       if (!res.ok) throw new Error("set cover failed");
-    } catch {
-      setError("Could not set cover photo.");
-      load();
-    }
+    } catch { setError("Could not set cover photo."); load(); }
   }
 
   // ── Navigation ──────────────────────────────────────────────────────────
-  const current = stack[stack.length - 1] ?? null;
-  const open = (type: EntityType, id: string) => setStack((s) => [...s, { type, id }]);
-  const back = () => setStack((s) => s.slice(0, -1));
-  const close = () => setStack([]);
+  const focus = stack[stack.length - 1] ?? null;
+  const drillTo = (type: EntityType, id: string) => setStack((s) => [...s, { type, id }]);
+  const gotoDepth = (depth: number) => setStack((s) => s.slice(0, depth)); // depth 0 = top-level
+  const switchTab = (t: EntityType) => { setStack([]); setTab(t); };
 
-  // ── Filtered cards for the active tab ───────────────────────────────────
-  const q = query.trim().toLowerCase();
-  const visible = useMemo(() => {
-    if (tab === "material") return materials.filter((m) => !q || (m.material_name ?? "").toLowerCase().includes(q) || (m.category ?? "").toLowerCase().includes(q));
-    if (tab === "equipment") return equipment.filter((e) => !q || (e.equipment_name ?? "").toLowerCase().includes(q) || (e.category ?? "").toLowerCase().includes(q));
-    return assemblies.filter((a) => !q || (a.name ?? "").toLowerCase().includes(q) || (a.operation_stage ?? "").toLowerCase().includes(q));
-  }, [tab, q, materials, equipment, assemblies]);
+  // ── Tile metadata ───────────────────────────────────────────────────────
+  function tileFor(type: EntityType, id: string): { name: string; sub: string; fallback: string; badge?: string } | null {
+    if (type === "material") {
+      const m = materialById.get(id); if (!m) return null;
+      return { name: m.material_name ?? id, sub: `${titleCase(m.category)} · ${money(m.cost_per_unit)}/${m.unit}`, fallback: m.plan_symbol || m.item_symbol || "📦", badge: m.applications.length ? `${m.applications.length} app${m.applications.length === 1 ? "" : "s"}` : undefined };
+    }
+    if (type === "assembly") {
+      const a = assemblyById.get(id); if (!a) return null;
+      return { name: a.name ?? id, sub: `${titleCase(a.operation_stage)} · ${a.roles.length} role${a.roles.length === 1 ? "" : "s"}`, fallback: "🧱" };
+    }
+    const e = equipmentById.get(id); if (!e) return null;
+    return { name: e.equipment_name ?? id, sub: `${titleCase(e.category)} · ${money(e.cost_per_unit)}/${e.unit}`, fallback: "🚜" };
+  }
 
-  const tileClass = "group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900";
+  const tileClass = "group relative aspect-square w-full cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900";
 
-  function Cover({ type, id, fallback }: { type: EntityType; id: string; fallback: string }) {
+  function Tile({ type, id }: { type: EntityType; id: string }) {
+    const meta = tileFor(type, id);
+    if (!meta) return null;
     const cover = coverOf(type, id);
     const count = (photos[key(type, id)] ?? []).length;
     return (
-      <>
+      <button onClick={() => drillTo(type, id)} className={tileClass}>
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={cover.url} alt="" loading="lazy" className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-4xl opacity-40">{fallback}</div>
+          <div className="flex h-full w-full items-center justify-center text-4xl opacity-40">{meta.fallback}</div>
         )}
-        {count > 1 && (
-          <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[10px] font-medium text-white">{count}</span>
-        )}
-      </>
+        {count > 1 && <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[10px] font-medium text-white">{count}</span>}
+        {meta.badge && <span className="absolute left-1 top-1 rounded-full bg-emerald-600/90 px-1.5 text-[10px] font-medium text-white">{meta.badge}</span>}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-left">
+          <p className="truncate text-xs font-semibold text-white">{meta.name}</p>
+          <p className="truncate text-[10px] text-white/70">{meta.sub}</p>
+        </div>
+      </button>
     );
+  }
+
+  function Grid({ children }: { children: React.ReactNode }) {
+    return <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">{children}</ul>;
+  }
+  const li = (type: EntityType, id: string) => <li key={`${type}:${id}`}><Tile type={type} id={id} /></li>;
+
+  // Top-level search over the active tab
+  const q = query.trim().toLowerCase();
+  const topLevel = useMemo(() => {
+    if (tab === "material") return materials.filter((m) => !q || (m.material_name ?? "").toLowerCase().includes(q) || (m.category ?? "").toLowerCase().includes(q)).map((m) => m.id);
+    if (tab === "equipment") return equipment.filter((e) => !q || (e.equipment_name ?? "").toLowerCase().includes(q) || (e.category ?? "").toLowerCase().includes(q)).map((e) => e.id);
+    return assemblies.filter((a) => !q || (a.name ?? "").toLowerCase().includes(q) || (a.operation_stage ?? "").toLowerCase().includes(q)).map((a) => a.id);
+  }, [tab, q, materials, equipment, assemblies]);
+
+  // Focused entity → its related sections
+  const focusMeta = focus ? tileFor(focus.type, focus.id) : null;
+  let relatedSections: { label: string; type: EntityType; ids: string[]; empty: string }[] = [];
+  let focusFields: { label: string; value: string }[] = [];
+  if (focus?.type === "material") {
+    const m = materialById.get(focus.id);
+    if (m) {
+      focusFields = [
+        { label: "Category", value: titleCase(m.category) || "—" },
+        { label: "Unit", value: m.unit ?? "—" },
+        { label: "Cost/unit", value: money(m.cost_per_unit) },
+        ...(m.catalog_category ? [{ label: "Estimator cat.", value: m.catalog_category }] : []),
+        ...(m.plan_symbol ? [{ label: "Plan symbol", value: m.plan_symbol }] : []),
+        ...(m.applications.length ? [{ label: "Applications", value: m.applications.map((a) => a.display_name || a.application).filter(Boolean).join(", ") }] : []),
+      ];
+      relatedSections = [{ label: "Assemblies using this material", type: "assembly", ids: assembliesForMaterial(m).map((a) => a.id), empty: "Not used by any assembly." }];
+    }
+  } else if (focus?.type === "equipment") {
+    const e = equipmentById.get(focus.id);
+    if (e) {
+      focusFields = [
+        { label: "Class", value: titleCase(e.category) || "—" },
+        { label: "Unit", value: e.unit ?? "—" },
+        { label: "Cost/unit", value: money(e.cost_per_unit) },
+      ];
+      relatedSections = [{ label: "Assemblies using this equipment", type: "assembly", ids: (assembliesByEquip.get(e.id) ?? []).map((a) => a.id), empty: "Not used by any assembly." }];
+    }
+  } else if (focus?.type === "assembly") {
+    const a = assemblyById.get(focus.id);
+    if (a) {
+      focusFields = [
+        { label: "Operation stage", value: titleCase(a.operation_stage) || "—" },
+        { label: "Unit of work", value: a.unit_of_work ?? "—" },
+        { label: "Equipment", value: a.equipment_required ? "required" : "—" },
+      ];
+      relatedSections = [
+        { label: "Materials in this assembly", type: "material", ids: materialsForAssembly(a).map((m) => m.id), empty: "No materials." },
+        { label: "Equipment in this assembly", type: "equipment", ids: equipmentForAssembly(a).map((e) => e.id), empty: "No equipment." },
+      ];
+    }
   }
 
   return (
@@ -205,10 +270,8 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
           <button
             onClick={() => setLocked((v) => !v)}
             className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-              locked
-                ? "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-                : "border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-400"
-            }`}
+              locked ? "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                     : "border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-400"}`}
             title={locked ? "Unlock to manage photos" : "Lock"}
           >
             {locked ? "🔒 Locked" : "🔓 Photos"}
@@ -216,270 +279,104 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
         </div>
       </div>
 
-      {/* Tabs + search */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                tab === t.key ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50" : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
-              }`}
-            >
-              <span>{t.icon}</span> {t.label}
-            </button>
-          ))}
-        </div>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search…"
-          className="w-48 rounded-full border border-zinc-300 bg-white px-3.5 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-        />
-      </div>
+      {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">{error}</div>}
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">{error}</div>
-      )}
-
-      {/* Card grid */}
-      {!loading && (
-        <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {tab === "material" && (visible as Material[]).map((m) => (
-            <li key={m.id}>
-              <button onClick={() => open("material", m.id)} className={`${tileClass} w-full`}>
-                <Cover type="material" id={m.id} fallback={m.plan_symbol || m.item_symbol || "📦"} />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-left">
-                  <p className="truncate text-xs font-semibold text-white">{m.material_name}</p>
-                  <p className="truncate text-[10px] text-white/70">{titleCase(m.category)} · {money(m.cost_per_unit)}/{m.unit}</p>
-                </div>
-                {m.applications.length > 0 && (
-                  <span className="absolute left-1 top-1 rounded-full bg-emerald-600/90 px-1.5 text-[10px] font-medium text-white">{m.applications.length} app{m.applications.length === 1 ? "" : "s"}</span>
+      {/* Breadcrumb (only while drilled in) */}
+      {focus && (
+        <nav className="mb-4 flex flex-wrap items-center gap-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <button onClick={() => gotoDepth(0)} className="rounded px-1.5 py-0.5 hover:text-zinc-800 dark:hover:text-zinc-100">All {tab === "material" ? "materials" : tab === "assembly" ? "assemblies" : "equipment"}</button>
+          {stack.map((r, i) => {
+            const meta = tileFor(r.type, r.id);
+            return (
+              <span key={`${r.type}:${r.id}:${i}`} className="flex items-center gap-1">
+                <span className="text-zinc-300 dark:text-zinc-600">/</span>
+                {i === stack.length - 1 ? (
+                  <span className="font-medium text-zinc-800 dark:text-zinc-100">{meta?.name}</span>
+                ) : (
+                  <button onClick={() => gotoDepth(i + 1)} className="rounded px-1.5 py-0.5 hover:text-zinc-800 dark:hover:text-zinc-100">{meta?.name}</button>
                 )}
-              </button>
-            </li>
-          ))}
-          {tab === "assembly" && (visible as Assembly[]).map((a) => (
-            <li key={a.id}>
-              <button onClick={() => open("assembly", a.id)} className={`${tileClass} w-full`}>
-                <Cover type="assembly" id={a.id} fallback="🧱" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-left">
-                  <p className="truncate text-xs font-semibold text-white">{a.name}</p>
-                  <p className="truncate text-[10px] text-white/70">{titleCase(a.operation_stage)} · {a.roles.length} role{a.roles.length === 1 ? "" : "s"}</p>
-                </div>
-              </button>
-            </li>
-          ))}
-          {tab === "equipment" && (visible as Equipment[]).map((e) => (
-            <li key={e.id}>
-              <button onClick={() => open("equipment", e.id)} className={`${tileClass} w-full`}>
-                <Cover type="equipment" id={e.id} fallback="🚜" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-left">
-                  <p className="truncate text-xs font-semibold text-white">{e.equipment_name}</p>
-                  <p className="truncate text-[10px] text-white/70">{titleCase(e.category)} · {money(e.cost_per_unit)}/{e.unit}</p>
-                </div>
-              </button>
-            </li>
-          ))}
-          {visible.length === 0 && <li className="col-span-full py-10 text-center text-sm text-zinc-400">Nothing matches.</li>}
-        </ul>
+              </span>
+            );
+          })}
+        </nav>
       )}
 
-      {/* Detail modal */}
-      {current && (
-        <DetailModal
-          refItem={current}
-          canGoBack={stack.length > 1}
-          onBack={back}
-          onClose={close}
-          onOpen={open}
-          locked={locked}
-          uploading={uploading}
-          photos={photos[key(current.type, current.id)] ?? []}
-          onUpload={(file) => uploadPhoto(current.type, current.id, file)}
-          onDeletePhoto={(pid) => deletePhoto(current.type, current.id, pid)}
-          onSetCover={(pid) => setCover(current.type, current.id, pid)}
-          materialById={materialById}
-          equipmentById={equipmentById}
-          assemblyById={assemblyById}
-          appIndex={appIndex}
-          assembliesByApp={assembliesByApp}
-          assembliesByEquip={assembliesByEquip}
-          assembliesForMaterial={assembliesForMaterial}
-          coverOf={coverOf}
-        />
-      )}
-    </main>
-  );
-}
-
-// ── Detail modal ────────────────────────────────────────────────────────────
-function DetailModal(props: {
-  refItem: Ref; canGoBack: boolean; onBack: () => void; onClose: () => void; onOpen: (t: EntityType, id: string) => void;
-  locked: boolean; uploading: boolean; photos: Photo[];
-  onUpload: (file: File) => void; onDeletePhoto: (id: string) => void; onSetCover: (id: string) => void;
-  materialById: Map<string, Material>; equipmentById: Map<string, Equipment>; assemblyById: Map<string, Assembly>;
-  appIndex: Map<string, { app: Application; material: Material }>;
-  assembliesByApp: Map<string, Assembly[]>; assembliesByEquip: Map<string, Assembly[]>;
-  assembliesForMaterial: (m: Material) => Assembly[]; coverOf: (t: string, id: string) => Photo | null;
-}) {
-  const { refItem, materialById, equipmentById, assemblyById, appIndex, assembliesByEquip, assembliesForMaterial, onOpen } = props;
-
-  let title = "";
-  let subtitle = "";
-  let body: React.ReactNode = null;
-
-  const linkChip = (t: EntityType, id: string, label: string, sub?: string) => (
-    <button
-      key={`${t}:${id}`}
-      onClick={() => onOpen(t, id)}
-      className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-left hover:border-emerald-400 hover:bg-emerald-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-emerald-600 dark:hover:bg-emerald-950"
-    >
-      {props.coverOf(t, id) ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={props.coverOf(t, id)!.url} alt="" className="h-7 w-7 shrink-0 rounded object-cover" />
-      ) : (
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-zinc-100 text-sm dark:bg-zinc-700">{t === "equipment" ? "🚜" : t === "assembly" ? "🧱" : "📦"}</span>
-      )}
-      <span className="min-w-0">
-        <span className="block truncate text-xs font-medium text-zinc-800 dark:text-zinc-100">{label}</span>
-        {sub && <span className="block truncate text-[11px] text-zinc-400">{sub}</span>}
-      </span>
-    </button>
-  );
-
-  if (refItem.type === "material") {
-    const m = materialById.get(refItem.id);
-    if (m) {
-      title = m.material_name ?? m.id;
-      subtitle = `${titleCase(m.category)} · ${money(m.cost_per_unit)}/${m.unit}`;
-      const usedIn = assembliesForMaterial(m);
-      body = (
+      {/* Top-level: tabs + search + all tiles */}
+      {!focus && (
         <>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
-            <Field label="Unit" value={m.unit} />
-            <Field label="Cost/unit" value={money(m.cost_per_unit)} />
-            <Field label="Estimator cat." value={m.catalog_category ?? "—"} />
-            {m.plan_symbol && <Field label="Plan symbol" value={m.plan_symbol} />}
-            {m.item_symbol && <Field label="Item symbol" value={m.item_symbol} />}
-          </dl>
-          {m.applications.length > 0 && (
-            <Section title={`Applications (${m.applications.length})`}>
-              <div className="space-y-1">
-                {m.applications.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-1.5 text-sm dark:bg-zinc-800">
-                    <span className="text-zinc-800 dark:text-zinc-100">{a.display_name || a.application}</span>
-                    <span className="text-xs text-zinc-400">
-                      {a.coverage_rate != null ? `${a.coverage_rate} ${a.coverage_unit ?? ""} · ${a.coverage_method ?? "divide"}` : "—"}
-                    </span>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
+              {TABS.map((t) => (
+                <button key={t.key} onClick={() => switchTab(t.key)}
+                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                    tab === t.key ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50" : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"}`}>
+                  <span>{t.icon}</span> {t.label}
+                </button>
+              ))}
+            </div>
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…"
+              className="w-48 rounded-full border border-zinc-300 bg-white px-3.5 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900" />
+          </div>
+          {!loading && (
+            <Grid>
+              {topLevel.map((id) => li(tab, id))}
+              {topLevel.length === 0 && <li className="col-span-full py-10 text-center text-sm text-zinc-400">Nothing matches.</li>}
+            </Grid>
+          )}
+        </>
+      )}
+
+      {/* Focused: inline header (info + photos) + related tiles */}
+      {focus && focusMeta && (
+        <>
+          <section className="mb-6 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <div className="flex items-center gap-2">
+              <button onClick={() => gotoDepth(stack.length - 1)} className="rounded-lg px-2 py-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Back">←</button>
+              <span className="text-2xl">{FALLBACK_ICON[focus.type]}</span>
+              <div>
+                <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{focusMeta.name}</h2>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">{focusMeta.sub}</p>
+              </div>
+            </div>
+
+            {focusFields.length > 0 && (
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
+                {focusFields.map((f) => (
+                  <div key={f.label}>
+                    <dt className="text-[11px] uppercase tracking-wide text-zinc-400">{f.label}</dt>
+                    <dd className="text-zinc-800 dark:text-zinc-100">{f.value}</dd>
                   </div>
                 ))}
-              </div>
-            </Section>
-          )}
-          <Section title={`Used in assemblies (${usedIn.length})`}>
-            {usedIn.length === 0 ? <Empty>Not used by any assembly.</Empty> : (
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {usedIn.map((a) => linkChip("assembly", a.id, a.name ?? a.id, titleCase(a.operation_stage)))}
-              </div>
+              </dl>
             )}
-          </Section>
-        </>
-      );
-    }
-  } else if (refItem.type === "equipment") {
-    const e = equipmentById.get(refItem.id);
-    if (e) {
-      title = e.equipment_name ?? e.id;
-      subtitle = `${titleCase(e.category)} · ${money(e.cost_per_unit)}/${e.unit}`;
-      const usedIn = assembliesByEquip.get(e.id) ?? [];
-      body = (
-        <>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
-            <Field label="Class" value={titleCase(e.category)} />
-            <Field label="Unit" value={e.unit} />
-            <Field label="Cost/unit" value={money(e.cost_per_unit)} />
-          </dl>
-          <Section title={`Used in assemblies (${usedIn.length})`}>
-            {usedIn.length === 0 ? <Empty>Not used by any assembly.</Empty> : (
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {usedIn.map((a) => linkChip("assembly", a.id, a.name ?? a.id, titleCase(a.operation_stage)))}
-              </div>
-            )}
-          </Section>
-        </>
-      );
-    }
-  } else {
-    const a = assemblyById.get(refItem.id);
-    if (a) {
-      title = a.name ?? a.id;
-      subtitle = `${titleCase(a.operation_stage)} · per ${a.unit_of_work}`;
-      body = (
-        <>
-          <Section title={`Role materials (${a.roles.length})`}>
-            {a.roles.length === 0 ? <Empty>No roles.</Empty> : (
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {a.roles.map((r, i) => {
-                  const hit = r.application_id ? appIndex.get(r.application_id) : null;
-                  if (!hit) return (
-                    <div key={i} className="rounded-lg border border-dashed border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-400 dark:border-zinc-700">
-                      {r.role_key || "role"} — unlinked
-                    </div>
-                  );
-                  return linkChip("material", hit.material.id, hit.material.material_name ?? hit.material.id, hit.app.display_name || hit.app.application || undefined);
-                })}
-              </div>
-            )}
-          </Section>
-          <Section title={`Equipment (${a.equipment.length})`}>
-            {a.equipment.length === 0 ? <Empty>No equipment attached.</Empty> : (
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {a.equipment.map((e, i) => {
-                  const eq = e.equipment_id ? equipmentById.get(e.equipment_id) : null;
-                  return eq ? linkChip("equipment", eq.id, eq.equipment_name ?? eq.id, titleCase(eq.category)) : (
-                    <div key={i} className="rounded-lg border border-dashed border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-400 dark:border-zinc-700">unlinked</div>
-                  );
-                })}
-              </div>
-            )}
-          </Section>
-        </>
-      );
-    }
-  }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
-      <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-zinc-900">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            {props.canGoBack && (
-              <button onClick={props.onBack} className="rounded-lg px-2 py-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Back">←</button>
-            )}
-            <div>
-              <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h3>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">{subtitle}</p>
+            <div className="mt-4">
+              <PhotoStrip
+                photos={photos[key(focus.type, focus.id)] ?? []}
+                locked={locked}
+                uploading={uploading}
+                onUpload={(file) => uploadPhoto(focus.type, focus.id, file)}
+                onDelete={(pid) => deletePhoto(focus.type, focus.id, pid)}
+                onSetCover={(pid) => setCover(focus.type, focus.id, pid)}
+              />
             </div>
-          </div>
-          <button onClick={props.onClose} className="rounded-lg px-2 py-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800" aria-label="Close">✕</button>
-        </div>
+          </section>
 
-        {/* Photos */}
-        <PhotoStrip
-          photos={props.photos}
-          locked={props.locked}
-          uploading={props.uploading}
-          onUpload={props.onUpload}
-          onDelete={props.onDeletePhoto}
-          onSetCover={props.onSetCover}
-        />
-
-        <div className="mt-4 space-y-4">{body}</div>
-      </div>
-    </div>
+          {relatedSections.map((sec) => (
+            <div key={sec.label} className="mb-6">
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                {sec.label} <span className="ml-1 font-normal text-zinc-400">({sec.ids.length})</span>
+              </h3>
+              {sec.ids.length === 0 ? (
+                <p className="text-sm text-zinc-400">{sec.empty}</p>
+              ) : (
+                <Grid>{sec.ids.map((id) => li(sec.type, id))}</Grid>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+    </main>
   );
 }
 
@@ -490,7 +387,7 @@ function PhotoStrip({ photos, locked, uploading, onUpload, onDelete, onSetCover 
   return (
     <div>
       {photos.length > 0 ? (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {photos.map((p) => (
             <div key={p.id} className="group relative overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -506,7 +403,9 @@ function PhotoStrip({ photos, locked, uploading, onUpload, onDelete, onSetCover 
           ))}
         </div>
       ) : (
-        <p className="rounded-lg bg-zinc-50 py-6 text-center text-sm text-zinc-400 dark:bg-zinc-800">No photos yet.</p>
+        <p className="rounded-lg bg-zinc-50 py-6 text-center text-sm text-zinc-400 dark:bg-zinc-800">
+          {locked ? "No photos yet." : "No photos yet — add one below."}
+        </p>
       )}
       {!locked && (
         <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500">
@@ -517,24 +416,4 @@ function PhotoStrip({ photos, locked, uploading, onUpload, onDelete, onSetCover 
       )}
     </div>
   );
-}
-
-function Field({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div>
-      <dt className="text-[11px] uppercase tracking-wide text-zinc-400">{label}</dt>
-      <dd className="text-zinc-800 dark:text-zinc-100">{value ?? "—"}</dd>
-    </div>
-  );
-}
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">{title}</h4>
-      {children}
-    </div>
-  );
-}
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-zinc-400">{children}</p>;
 }
