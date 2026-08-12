@@ -178,6 +178,14 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   }, [propertyGroups, selectedStages]);
 
   const [activePropertyKey, setActivePropertyKey] = useState<string | null>(() => {
+    // ?property=<id> opens that property's album directly (used by the global
+    // command palette's "Photo albums" results).
+    const propertyParam = searchParams.get("property");
+    const propertyId = propertyParam ? Number(propertyParam) : NaN;
+    if (Number.isFinite(propertyId)) {
+      const match = initialEvents.find((e) => e.propertyId === propertyId && e.photos.length > 0);
+      if (match) return propertyKey(propertyId);
+    }
     const dealParam = searchParams.get("deal");
     const dealId = dealParam ? Number(dealParam) : NaN;
     if (!Number.isFinite(dealId)) return null;

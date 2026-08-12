@@ -15,9 +15,11 @@ interface SearchProperty {
   subtitle: string | null;
 }
 
+type ResultType = "deal" | "property" | "album";
+
 interface ResultItem {
   key: string;
-  type: "deal" | "property";
+  type: ResultType;
   label: string;
   subtitle: string | null;
   href: string;
@@ -25,12 +27,19 @@ interface ResultItem {
 
 const MAX_PER_TYPE = 8;
 
+const GROUP_LABELS: Record<ResultType, string> = {
+  deal: "Deals",
+  property: "Properties",
+  album: "Photo albums",
+};
+
 export default function CommandPalette() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [deals, setDeals] = useState<SearchDeal[]>([]);
   const [properties, setProperties] = useState<SearchProperty[]>([]);
+  const [albums, setAlbums] = useState<SearchProperty[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -80,6 +89,7 @@ export default function CommandPalette() {
         if (data.error) throw new Error(data.error);
         setDeals(data.deals ?? []);
         setProperties(data.properties ?? []);
+        setAlbums(data.albums ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load search index");
       } finally {
@@ -111,8 +121,19 @@ export default function CommandPalette() {
         href: `/properties?property=${p.id}`,
       }));
 
-    return [...dealResults, ...propertyResults];
-  }, [deals, properties, query]);
+    const albumResults: ResultItem[] = albums
+      .filter((p) => matches(p.label, p.subtitle))
+      .slice(0, MAX_PER_TYPE)
+      .map((p) => ({
+        key: `album-${p.id}`,
+        type: "album",
+        label: p.label,
+        subtitle: p.subtitle,
+        href: `/photos?property=${p.id}`,
+      }));
+
+    return [...dealResults, ...propertyResults, ...albumResults];
+  }, [deals, properties, albums, query]);
 
   const [lastQueryProcessed, setLastQueryProcessed] = useState("");
   if (query !== lastQueryProcessed) {
@@ -142,8 +163,6 @@ export default function CommandPalette() {
       if (item) select(item);
     }
   }
-
-  const dealCount = results.filter((r) => r.type === "deal").length;
 
   return (
     <>
@@ -178,7 +197,7 @@ export default function CommandPalette() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onKeyDown}
-                placeholder="Search deals and properties…"
+                placeholder="Search deals, properties, and photo albums…"
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400 dark:text-zinc-100"
               />
               <kbd className="hidden shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[0.65rem] text-zinc-400 sm:inline dark:border-zinc-700">
@@ -196,11 +215,10 @@ export default function CommandPalette() {
                 <>
                   {results.map((item, i) => (
                     <div key={item.key}>
-                      {i === 0 && dealCount > 0 && (
-                        <div className="px-4 pt-2 pb-1 text-[0.68rem] font-semibold uppercase tracking-wide text-zinc-400">Deals</div>
-                      )}
-                      {i === dealCount && dealCount < results.length && (
-                        <div className="px-4 pt-2 pb-1 text-[0.68rem] font-semibold uppercase tracking-wide text-zinc-400">Properties</div>
+                      {(i === 0 || item.type !== results[i - 1].type) && (
+                        <div className="px-4 pt-2 pb-1 text-[0.68rem] font-semibold uppercase tracking-wide text-zinc-400">
+                          {GROUP_LABELS[item.type]}
+                        </div>
                       )}
                       <button
                         type="button"
