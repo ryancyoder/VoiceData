@@ -364,7 +364,7 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
   const appCount = materials.reduce((n, m) => n + m.applications.length, 0);
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
+    <main className="w-full px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Master Catalog</h1>
