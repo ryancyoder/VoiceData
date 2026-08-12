@@ -172,6 +172,7 @@ export default function VideoSnapshot() {
   const snapsRef = useRef<Snap[]>([]);
   const snapIdRef = useRef(0);
   const videoBlobRef = useRef<{ blob: Blob; mime: string } | null>(null);
+  const keepAliveRef = useRef(0);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const captionIntentRef = useRef(false);
@@ -208,12 +209,22 @@ export default function VideoSnapshot() {
         if (ctx) {
           const w = canvas.width;
           const h = canvas.height;
+          // Always draw the live video first — an occluded video that we stop
+          // reading gets paused by iOS, which froze the feed after the first
+          // snapshot. When frozen we cover it with the still + markup, so it
+          // keeps decoding underneath and comes right back on release.
+          if (video.readyState >= 2) ctx.drawImage(video, 0, 0, w, h);
+          if (video.paused) video.play().catch(() => {});
           if (frozenRef.current && frozenBitmapRef.current) {
             ctx.drawImage(frozenBitmapRef.current, 0, 0, w, h);
             drawStrokes(ctx, strokesRef.current);
-          } else if (video.readyState >= 2) {
-            ctx.drawImage(video, 0, 0, w, h);
           }
+          // 1px per-frame change so canvas.captureStream never sees a fully
+          // static canvas (which can make it stop emitting frames) during a
+          // freeze — keeps the recording flowing.
+          keepAliveRef.current ^= 1;
+          ctx.fillStyle = keepAliveRef.current ? "rgba(255,255,255,0.004)" : "rgba(0,0,0,0.004)";
+          ctx.fillRect(w - 1, h - 1, 1, 1);
         }
       }
       rafRef.current = requestAnimationFrame(draw);
