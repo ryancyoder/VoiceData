@@ -56,7 +56,14 @@ interface PropertyLite {
   contactLastName: string | null;
 }
 
-// null = no property chosen yet / file later; a number = a specific property.
+interface BatchItem {
+  id: number;
+  file: File;
+  previewUrl: string;
+  caption: string;
+}
+
+// null = no property chosen / file later; a number = a specific property.
 type Selection = number | null;
 
 function distanceLabel(meters: number): string {
@@ -69,30 +76,35 @@ export default function CameraCapture() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [cameraOn, setCameraOn] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [caption, setCaption] = useState("");
+  const [batch, setBatch] = useState<BatchItem[]>([]);
+  const [review, setReview] = useState(false); // review/confirm sheet after Done
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [allProperties, setAllProperties] = useState<PropertyLite[]>([]);
   const [propFilter, setPropFilter] = useState("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<Selection>(null);
   const [listening, setListening] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  // Device location is used only to suggest the nearest property — it is
-  // deliberately NOT sent with the upload. The chosen property drives which
-  // event/album the photo files under; sending raw device GPS would let the
-  // server match the photo to whatever event is physically nearest (e.g. from
-  // the office), overriding the user's explicit property choice.
 
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const finalTranscriptRef = useRef("");
-  const captionBaseRef = useRef(""); // caption text present when dictation (re)starts
   const maxListenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Kept in sync with `batch` so capture/dictation handlers can read the
+  // current list synchronously (no stale closures across rapid shutter taps).
+  const batchRef = useRef<BatchItem[]>([]);
+  const nextIdRef = useRef(0);
+
+  function commitBatch(next: BatchItem[]) {
+    batchRef.current = next;
+    setBatch(next);
+  }
+
+  function setCaptionAt(index: number, caption: string) {
+    commitBatch(batchRef.current.map((it, i) => (i === index ? { ...it, caption } : it)));
+  }
 
   function showMessage(text: string, ms = 4000) {
     setMessage(text);
@@ -100,25 +112,30 @@ export default function CameraCapture() {
     messageTimerRef.current = setTimeout(() => setMessage(null), ms);
   }
 
-  // ─── Dictation ──────────────────────────────────────────────────────
-  function startListening() {
+  // ─── Dictation (per photo) ──────────────────────────────────────────
+  // Starts a fresh recognizer whose results write into batch item `index`.
+  function startDictationFor(index: number) {
     const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) {
-      showMessage("Voice dictation isn't supported in this browser — you can still type the note.");
-      return;
+    if (!Ctor) return; // silent — user can still type notes in the review sheet
+
+    // Tear down any running recognizer first (rapid shutter taps).
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
     }
-    if (recognitionRef.current) return; // already running
 
     const recognition = new Ctor();
     recognition.lang = "en-US";
     recognition.continuous = false;
     recognition.interimResults = true;
     finalTranscriptRef.current = "";
-    // Append dictation onto whatever is already in the caption field.
-    captionBaseRef.current = caption ? caption.trimEnd() : "";
 
     recognition.onstart = () => setListening(true);
-
     recognition.onresult = (e) => {
       let finalChunk = "";
       let interimChunk = "";
@@ -128,72 +145,52 @@ export default function CameraCapture() {
         else interimChunk += result[0].transcript;
       }
       if (finalChunk) finalTranscriptRef.current += finalChunk;
-      const spoken = (finalTranscriptRef.current + " " + interimChunk).trim();
-      setCaption([captionBaseRef.current, spoken].filter(Boolean).join(" "));
+      setCaptionAt(index, (finalTranscriptRef.current + " " + interimChunk).trim());
     };
-
     recognition.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
       const messages: Record<string, string> = {
-        "not-allowed": "Microphone access was denied — tap the mic to try again, or type the note.",
+        "not-allowed": "Microphone access was denied — you can still type the notes.",
         network: "Dictation needs an internet connection.",
       };
-      showMessage(messages[e.error] || "Voice dictation failed — tap the mic to retry.");
+      showMessage(messages[e.error] || "Voice dictation failed — you can type the note instead.");
     };
-
     recognition.onend = () => {
-      recognitionRef.current = null;
-      if (maxListenTimerRef.current) clearTimeout(maxListenTimerRef.current);
-      maxListenTimerRef.current = null;
-      setListening(false);
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
+        setListening(false);
+      }
     };
 
     recognitionRef.current = recognition;
     try {
       recognition.start();
     } catch {
-      // start() throws if called twice in quick succession — ignore.
       recognitionRef.current = null;
       return;
     }
+    if (maxListenTimerRef.current) clearTimeout(maxListenTimerRef.current);
     maxListenTimerRef.current = setTimeout(() => recognitionRef.current?.stop(), MAX_LISTEN_MS);
   }
 
-  function stopListening() {
-    recognitionRef.current?.stop();
+  function stopDictation() {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
+    }
+    if (maxListenTimerRef.current) clearTimeout(maxListenTimerRef.current);
+    maxListenTimerRef.current = null;
+    setListening(false);
   }
 
-  function toggleListening() {
-    if (listening) stopListening();
-    else startListening();
-  }
-
-  // ─── Capture ────────────────────────────────────────────────────────
-  // Clear any prior draft state; called synchronously at the capture gesture.
-  function prepareForCapture() {
-    setCaption("");
-    setCandidates([]);
-    setSelectedPropertyId(null);
-    setPropFilter("");
-  }
-
-  // Move from a captured File into the review/annotate sheet. Dictation is
-  // started separately, at the gesture site, so iOS keeps the user activation.
-  function beginReview(captured: File) {
-    setFile(captured);
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return URL.createObjectURL(captured);
-    });
-    setOpen(true);
-    if (allProperties.length === 0) loadProperties();
-    requestLocation();
-  }
-
-  // Live in-app camera (getUserMedia) so a single shutter tap captures the
-  // frame — no native iOS "Use Photo / Retake" confirmation. Falls back to the
-  // native file picker when a live camera isn't available or is denied.
+  // ─── Live camera ────────────────────────────────────────────────────
   async function openCamera() {
+    resetSession();
     const md = navigator.mediaDevices;
     if (!md?.getUserMedia) {
       fileInputRef.current?.click();
@@ -207,7 +204,6 @@ export default function CameraCapture() {
       streamRef.current = stream;
       setCameraOn(true);
     } catch {
-      // No camera, or permission denied — fall back to the native picker.
       fileInputRef.current?.click();
     }
   }
@@ -218,61 +214,67 @@ export default function CameraCapture() {
     setCameraOn(false);
   }
 
-  // Grab the current video frame straight into the review sheet.
+  // Shutter: grab the frame, add it to the batch, and start dictating its note.
   function capturePhoto() {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
 
-    // Speech recognition must begin from this tap's user activation (iOS).
-    prepareForCapture();
-    startListening();
+    const index = batchRef.current.length;
+    // Dictation must begin from this tap's user activation (iOS).
+    startDictationFor(index);
 
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) {
-      stopCamera();
       showMessage("Couldn't capture the photo — try again.");
       return;
     }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    stopCamera();
     canvas.toBlob(
       (blob) => {
         if (!blob) {
           showMessage("Couldn't capture the photo — try again.");
           return;
         }
-        beginReview(new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
+        const id = ++nextIdRef.current;
+        const file = new File([blob], `photo-${id}.jpg`, { type: "image/jpeg" });
+        commitBatch([...batchRef.current, { id, file, previewUrl: URL.createObjectURL(file), caption: "" }]);
       },
       "image/jpeg",
       0.92
     );
   }
 
-  // Fallback path: a photo chosen via the native file input.
-  function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
-    const chosen = e.target.files?.[0];
-    // Reset the input so picking the same file again re-fires change.
-    e.target.value = "";
-    if (!chosen) return;
-    prepareForCapture();
-    // Start dictation synchronously within this change gesture (iOS).
-    startListening();
-    beginReview(chosen);
+  // Done: leave the camera and open the confirm sheet for the whole batch.
+  function finishBatch() {
+    stopDictation();
+    stopCamera();
+    if (batchRef.current.length === 0) return; // nothing captured
+    setReview(true);
+    if (allProperties.length === 0) loadProperties();
+    requestLocation();
   }
 
-  // Attach the live stream once the <video> is mounted.
-  useEffect(() => {
-    if (cameraOn && videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-      videoRef.current.play().catch(() => {
-        /* autoplay rejection is harmless — the stream still renders */
-      });
-    }
-  }, [cameraOn]);
+  // Fallback path (no live camera): pick one or more images from the library.
+  function onFilesChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    const items = files.map((file) => ({
+      id: ++nextIdRef.current,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      caption: "",
+    }));
+    commitBatch([...batchRef.current, ...items]);
+    setReview(true);
+    if (allProperties.length === 0) loadProperties();
+    requestLocation();
+  }
 
+  // ─── Property resolution ────────────────────────────────────────────
   async function loadProperties() {
     try {
       const res = await fetch("/api/search");
@@ -305,8 +307,6 @@ export default function CameraCapture() {
           const data = await res.json();
           if (res.ok && Array.isArray(data.candidates) && data.candidates.length > 0) {
             setCandidates(data.candidates as Candidate[]);
-            // Preselect the nearest so the common case is one tap to save,
-            // but only if the user hasn't already chosen something.
             setSelectedPropertyId((cur) => (cur == null ? (data.candidates[0] as Candidate).id : cur));
           }
         } catch {
@@ -314,42 +314,10 @@ export default function CameraCapture() {
         }
       },
       () => {
-        /* denied or unavailable — property picker falls back to manual */
+        /* denied or unavailable — manual pick */
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
-  }
-
-  // ─── Save ───────────────────────────────────────────────────────────
-  async function save() {
-    if (!file || saving) return;
-    stopListening();
-    setSaving(true);
-    try {
-      const uploadFile = await compressImage(file);
-      const formData = new FormData();
-      formData.append("file", uploadFile);
-      const trimmed = caption.trim();
-      if (trimmed) formData.append("caption", trimmed);
-      // No latitude/longitude: the chosen property (below) determines the
-      // album, not the device's current location.
-      if (selectedPropertyId != null) formData.append("propertyId", String(selectedPropertyId));
-
-      const res = await fetch("/api/photos", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-
-      const dest =
-        selectedPropertyId != null
-          ? selectedPropertyLabel() ?? "the selected property"
-          : "unfiled photos";
-      close();
-      showMessage(`Photo saved to ${dest}.`);
-      router.refresh();
-    } catch (err) {
-      showMessage(err instanceof Error ? err.message : "Failed to save the photo.");
-      setSaving(false);
-    }
   }
 
   function selectedPropertyLabel(): string | null {
@@ -360,23 +328,74 @@ export default function CameraCapture() {
     return prop ? formatPropertyLabel(prop) : null;
   }
 
-  function close() {
-    stopListening();
-    recognitionRef.current?.abort();
-    recognitionRef.current = null;
-    setOpen(false);
-    setSaving(false);
-    setListening(false);
-    setFile(null);
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-    setCaption("");
+  // ─── Save the whole batch ───────────────────────────────────────────
+  async function saveBatch() {
+    const items = batchRef.current;
+    if (items.length === 0 || saveProgress) return;
+    stopDictation();
+    setSaveProgress({ done: 0, total: items.length });
+    try {
+      // Sequential so all photos in a batch land in one event for the property
+      // (the first creates the event; the rest find and join it).
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const uploadFile = await compressImage(it.file);
+        const formData = new FormData();
+        formData.append("file", uploadFile);
+        const cap = it.caption.trim();
+        if (cap) formData.append("caption", cap);
+        if (selectedPropertyId != null) formData.append("propertyId", String(selectedPropertyId));
+        const res = await fetch("/api/photos", { method: "POST", body: formData });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || `Failed to save photo ${i + 1} of ${items.length}`);
+        }
+        setSaveProgress({ done: i + 1, total: items.length });
+      }
+      const n = items.length;
+      const dest = selectedPropertyId != null ? selectedPropertyLabel() ?? "the selected property" : "unfiled photos";
+      close();
+      showMessage(`${n} photo${n === 1 ? "" : "s"} saved to ${dest}.`);
+      router.refresh();
+    } catch (err) {
+      setSaveProgress(null);
+      showMessage(err instanceof Error ? err.message : "Failed to save the photos.");
+    }
+  }
+
+  function removeBatchItem(id: number) {
+    const target = batchRef.current.find((it) => it.id === id);
+    if (target) URL.revokeObjectURL(target.previewUrl);
+    commitBatch(batchRef.current.filter((it) => it.id !== id));
+  }
+
+  // Reset all per-session state (called on open and close).
+  function resetSession() {
+    stopDictation();
+    batchRef.current.forEach((it) => URL.revokeObjectURL(it.previewUrl));
+    commitBatch([]);
     setCandidates([]);
     setSelectedPropertyId(null);
     setPropFilter("");
+    setSaveProgress(null);
   }
+
+  function close() {
+    stopDictation();
+    stopCamera();
+    resetSession();
+    setReview(false);
+  }
+
+  // Attach the live stream once the <video> is mounted.
+  useEffect(() => {
+    if (cameraOn && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {
+        /* autoplay rejection is harmless — the stream still renders */
+      });
+    }
+  }, [cameraOn]);
 
   useEffect(() => {
     return () => {
@@ -384,10 +403,10 @@ export default function CameraCapture() {
       if (maxListenTimerRef.current) clearTimeout(maxListenTimerRef.current);
       recognitionRef.current?.abort();
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      batchRef.current.forEach((it) => URL.revokeObjectURL(it.previewUrl));
     };
   }, []);
 
-  // Candidate ids float to the top of the manual list; filter the rest.
   const candidateIds = new Set(candidates.map((c) => c.id));
   const filteredProperties = allProperties
     .filter((p) => !candidateIds.has(p.id))
@@ -397,14 +416,17 @@ export default function CameraCapture() {
     })
     .slice(0, 8);
 
+  const latestCaption = batch.length > 0 ? batch[batch.length - 1].caption : "";
+  const saving = saveProgress != null;
+
   return (
     <>
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
-        onChange={onFileChosen}
+        multiple
+        onChange={onFilesChosen}
         className="hidden"
       />
 
@@ -412,7 +434,7 @@ export default function CameraCapture() {
         type="button"
         onClick={openCamera}
         title="Photo + voice note"
-        aria-label="Capture photo with voice note"
+        aria-label="Capture photos with voice notes"
         className="fixed bottom-[12rem] right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-600 shadow-lg hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -425,33 +447,65 @@ export default function CameraCapture() {
         <div className="fixed inset-0 z-50 bg-black">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video ref={videoRef} playsInline muted autoPlay className="h-full w-full object-contain" />
+
+          {/* Cancel the whole batch. */}
           <button
             type="button"
-            onClick={stopCamera}
-            aria-label="Close camera"
-            className="absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
+            onClick={close}
+            aria-label="Cancel"
+            className="absolute left-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
             style={{ top: "max(1rem, env(safe-area-inset-top))" }}
           >
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
           </button>
-          {/* Shutter on the middle-right edge (thumb-reach in landscape). */}
-          <button
-            type="button"
-            onClick={capturePhoto}
-            aria-label="Take photo"
-            className="absolute top-1/2 h-16 w-16 -translate-y-1/2 rounded-full border-4 border-white bg-white/30 ring-2 ring-black/20 active:bg-white/60"
+
+          {/* Status: count + live dictation of the latest photo. */}
+          <div
+            className="absolute left-1/2 flex max-w-[80vw] -translate-x-1/2 items-center gap-2 rounded-full bg-black/55 px-4 py-2 text-sm text-white"
+            style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+          >
+            <span className="font-semibold">{batch.length} photo{batch.length === 1 ? "" : "s"}</span>
+            {listening && <span className="text-red-400">● rec</span>}
+            {latestCaption && <span className="truncate text-zinc-200">“{latestCaption}”</span>}
+          </div>
+
+          {/* Shutter + Done on the middle-right edge. */}
+          <div
+            className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center gap-5"
             style={{ right: "max(1.25rem, env(safe-area-inset-right))" }}
-          />
+          >
+            <button
+              type="button"
+              onClick={capturePhoto}
+              aria-label="Take photo"
+              className="h-16 w-16 rounded-full border-4 border-white bg-white/30 ring-2 ring-black/20 active:bg-white/60"
+            />
+            <button
+              type="button"
+              onClick={finishBatch}
+              disabled={batch.length === 0}
+              aria-label="Done taking photos"
+              className="flex h-14 w-14 flex-col items-center justify-center rounded-full bg-emerald-600 text-xs font-semibold text-white shadow-lg disabled:opacity-40"
+            >
+              <span>Done</span>
+              {batch.length > 0 && <span className="text-[0.65rem] font-normal">{batch.length}</span>}
+            </button>
+          </div>
         </div>
       )}
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={(e) => e.target === e.currentTarget && !saving && close()}>
+      {review && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
+          onClick={(e) => e.target === e.currentTarget && !saving && close()}
+        >
           <div className="flex h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-auto sm:max-h-[92vh] sm:rounded-2xl dark:bg-zinc-900">
             <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-              <span className="text-base font-semibold text-zinc-900 dark:text-zinc-100">New photo note</span>
+              <span className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                {batch.length} photo{batch.length === 1 ? "" : "s"} — confirm property
+              </span>
               <button type="button" onClick={close} disabled={saving} className="text-zinc-400 hover:text-zinc-700 disabled:opacity-50 dark:hover:text-zinc-200" aria-label="Cancel">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6 6 18M6 6l12 12" />
@@ -460,39 +514,7 @@ export default function CameraCapture() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4">
-              {previewUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewUrl} alt="Captured" className="mb-4 max-h-[45vh] w-full rounded-xl object-contain" />
-              )}
-
-              <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Annotation</label>
-              <div className="mb-5 flex items-start gap-2">
-                <textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder={listening ? "Listening…" : "Speak or type a note for this photo…"}
-                  rows={4}
-                  className="flex-1 resize-none rounded-lg border border-zinc-300 bg-transparent px-3 py-2.5 text-base outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-100"
-                />
-                <button
-                  type="button"
-                  onClick={toggleListening}
-                  title={listening ? "Stop dictation" : "Start dictation"}
-                  aria-label={listening ? "Stop dictation" : "Start dictation"}
-                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border transition-colors ${
-                    listening
-                      ? "animate-pulse border-red-600 bg-red-600 text-white"
-                      : "border-zinc-300 bg-white text-zinc-600 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
-                  }`}
-                >
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                    <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" />
-                    <path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.93V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.07A7 7 0 0 0 19 11Z" />
-                  </svg>
-                </button>
-              </div>
-
-              <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Property</label>
+              <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Property (applies to all photos)</label>
               <div className="space-y-1.5">
                 {candidates.map((c) => (
                   <button
@@ -514,7 +536,6 @@ export default function CameraCapture() {
                   placeholder="Search other properties…"
                   className="mt-1 w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2.5 text-base outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-100"
                 />
-
                 {propFilter.trim() &&
                   filteredProperties.map((p) => (
                     <button
@@ -528,7 +549,6 @@ export default function CameraCapture() {
                       {formatPropertyLabel(p)}
                     </button>
                   ))}
-
                 <button
                   type="button"
                   onClick={() => setSelectedPropertyId(null)}
@@ -539,14 +559,42 @@ export default function CameraCapture() {
                   No property — file it later
                 </button>
               </div>
+
+              <label className="mb-1.5 mt-5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Photos &amp; notes</label>
+              <div className="space-y-3">
+                {batch.map((item, i) => (
+                  <div key={item.id} className="flex gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={item.previewUrl} alt={`Photo ${i + 1}`} className="h-24 w-24 shrink-0 rounded-lg object-cover" />
+                    <textarea
+                      value={item.caption}
+                      onChange={(e) => setCaptionAt(i, e.target.value)}
+                      placeholder="Note for this photo…"
+                      rows={3}
+                      className="flex-1 resize-none rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-base outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeBatchItem(item.id)}
+                      disabled={saving}
+                      aria-label="Remove photo"
+                      className="h-8 w-8 shrink-0 self-start rounded-full text-zinc-400 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="flex gap-3 border-t border-zinc-200 px-5 py-4 dark:border-zinc-800">
               <button type="button" onClick={close} disabled={saving} className="flex-1 rounded-lg border border-zinc-300 py-2.5 text-base font-medium text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200">
                 Cancel
               </button>
-              <button type="button" onClick={save} disabled={saving} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-base font-semibold text-white hover:bg-emerald-500 disabled:opacity-60">
-                {saving ? "Saving…" : "Save photo"}
+              <button type="button" onClick={saveBatch} disabled={saving || batch.length === 0} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-base font-semibold text-white hover:bg-emerald-500 disabled:opacity-60">
+                {saving ? `Saving ${saveProgress?.done}/${saveProgress?.total}…` : `Save ${batch.length} photo${batch.length === 1 ? "" : "s"}`}
               </button>
             </div>
           </div>
