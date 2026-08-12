@@ -67,6 +67,7 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
   const [stack, setStack] = useState<Ref[]>([]);
   const [locked, setLocked] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [bigTiles, setBigTiles] = useState(false);
 
   const load = useCallback(() => {
     return fetch("/api/estimator/master")
@@ -223,7 +224,12 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
   }
 
   function Grid({ children }: { children: React.ReactNode }) {
-    return <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">{children}</ul>;
+    // "Larger" drops the column count ~1/3 at each breakpoint, so tiles render
+    // roughly 50% bigger.
+    const cols = bigTiles
+      ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8";
+    return <ul className={`grid gap-4 ${cols}`}>{children}</ul>;
   }
   const li = (type: EntityType, id: string) => <li key={`${type}:${id}`}><Tile type={type} id={id} /></li>;
 
@@ -330,6 +336,14 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
         </div>
         <div className="flex items-center gap-2">
           {viewToggle}
+          <button
+            onClick={() => setBigTiles((v) => !v)}
+            aria-pressed={bigTiles}
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            title={bigTiles ? "Smaller tiles" : "Larger tiles"}
+          >
+            {bigTiles ? "⊟ Smaller" : "⊞ Larger"}
+          </button>
           <button
             onClick={() => setLocked((v) => !v)}
             className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
