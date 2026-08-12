@@ -120,7 +120,10 @@ export default async function PhotosPage() {
   // synthetic "General reference" group per property into the same album tree.
   const { data: refData, error: refError } = await supabase
     .from("deal_photos")
-    .select("*, properties(id, address, cover_photo_id, contacts(last_name))")
+    // Disambiguate the embed: deal_photos links to properties by BOTH
+    // property_id (this FK) and the reverse properties.cover_photo_id, so the
+    // relationship must be named explicitly or PostgREST errors as ambiguous.
+    .select("*, properties!deal_photos_property_id_fkey(id, address, cover_photo_id, contacts(last_name))")
     .eq("photo_type", PROPERTY_REFERENCE_TYPE)
     .order("created_at", { ascending: false });
 
