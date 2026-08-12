@@ -10,6 +10,7 @@ import { fetchWithTimeout } from "@/lib/withTimeout";
 import { readClientExif } from "@/lib/clientExif";
 import { compressImage } from "@/lib/compressImage";
 import PhotoAnnotator from "@/components/PhotoAnnotator";
+import { refEventId } from "./refEventId";
 
 const UPLOAD_TIMEOUT_MS = 60000;
 
@@ -45,12 +46,6 @@ export interface GalleryEvent {
   // A synthetic group holding a property's event-less general-reference photos.
   // Rendered under a "General reference" section with its own uploader.
   isPropertyReference?: boolean;
-}
-
-// Deterministic synthetic event id for a property's reference-photo group,
-// offset far from real ids and the site-plan groups (-dealId).
-export function refEventId(propertyId: number): number {
-  return -2_000_000 - propertyId;
 }
 
 interface DealGroup {

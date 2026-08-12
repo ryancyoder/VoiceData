@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabaseClient";
 import { SITE_PLAN_IMAGE_TYPE, PROPERTY_REFERENCE_TYPE, type DealPhoto } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
-import PhotoGalleryClient, { type GalleryEvent, refEventId } from "./PhotoGalleryClient";
+import PhotoGalleryClient, { type GalleryEvent } from "./PhotoGalleryClient";
+import { refEventId } from "./refEventId";
 
 export const dynamic = "force-dynamic";
 
