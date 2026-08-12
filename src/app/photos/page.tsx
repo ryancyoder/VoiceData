@@ -116,14 +116,14 @@ export default async function PhotosPage() {
   });
 
   // General-reference photos are event-less (and deal-less) property photos, so
-  // they don't come through either query above. Fetch them and slot one
-  // synthetic "General reference" group per property into the same album tree.
+  // they don't come through either query above. Fetched as two plain queries
+  // (photos, then their properties) and joined in code — deliberately NOT via a
+  // PostgREST embed, because deal_photos now links to properties two ways
+  // (property_id and the reverse properties.cover_photo_id), which makes an
+  // embed ambiguous/fragile. Two simple queries sidestep that entirely.
   const { data: refData, error: refError } = await supabase
     .from("deal_photos")
-    // Disambiguate the embed: deal_photos links to properties by BOTH
-    // property_id (this FK) and the reverse properties.cover_photo_id, so the
-    // relationship must be named explicitly or PostgREST errors as ambiguous.
-    .select("*, properties!deal_photos_property_id_fkey(id, address, cover_photo_id, contacts(last_name))")
+    .select("*")
     .eq("photo_type", PROPERTY_REFERENCE_TYPE)
     .order("created_at", { ascending: false });
 
@@ -131,19 +131,33 @@ export default async function PhotosPage() {
     throw new Error(`Failed to load reference photos: ${refError.message}`);
   }
 
-  type RawRef = DealPhoto & {
-    properties: { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null } | null;
-  };
-  const refByProperty = new Map<number, RawRef[]>();
-  for (const row of (refData ?? []) as unknown as RawRef[]) {
-    if (!row.properties) continue;
-    const list = refByProperty.get(row.properties.id) ?? [];
-    list.push(row);
-    refByProperty.set(row.properties.id, list);
+  const refPhotos = (refData ?? []) as DealPhoto[];
+  const refPropertyIds = [...new Set(refPhotos.map((p) => p.property_id).filter((id): id is number => id != null))];
+
+  const refProps = new Map<number, { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null }>();
+  if (refPropertyIds.length > 0) {
+    const { data: propData, error: propError } = await supabase
+      .from("properties")
+      .select("id, address, cover_photo_id, contacts(last_name)")
+      .in("id", refPropertyIds);
+    if (propError) {
+      throw new Error(`Failed to load reference photo properties: ${propError.message}`);
+    }
+    for (const p of (propData ?? []) as unknown as { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null }[]) {
+      refProps.set(p.id, p);
+    }
+  }
+
+  const refByProperty = new Map<number, DealPhoto[]>();
+  for (const photo of refPhotos) {
+    if (photo.property_id == null || !refProps.has(photo.property_id)) continue;
+    const list = refByProperty.get(photo.property_id) ?? [];
+    list.push(photo);
+    refByProperty.set(photo.property_id, list);
   }
 
   const referenceEvents: GalleryEvent[] = Array.from(refByProperty.entries()).map(([propertyId, rows]) => {
-    const prop = rows[0].properties!;
+    const prop = refProps.get(propertyId)!;
     return {
       id: refEventId(propertyId),
       name: "General reference",
@@ -151,7 +165,7 @@ export default async function PhotosPage() {
       end_time: rows[0].created_at,
       event_type: null,
       isPropertyReference: true,
-      photos: rows.map(({ properties: _p, ...photo }) => photo as DealPhoto),
+      photos: rows,
       dealId: null,
       dealName: null,
       dealCompany: null,
