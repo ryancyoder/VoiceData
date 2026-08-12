@@ -285,6 +285,26 @@ export default function TakeOffGroupRow({ group, onUpdate, onToggleCollapse, onR
         </div>
       )}
 
+      {/* Equipment checklist — reference only, not costed */}
+      {Array.isArray(group.equipment) && group.equipment.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-t border-indigo-100 bg-indigo-50/40">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-indigo-400 mr-0.5">Equipment</span>
+          {group.equipment.map(name => (
+            <span key={name} className="inline-flex items-center gap-1 text-xs bg-white border border-indigo-200 text-indigo-700 rounded-full pl-2 pr-1 py-0.5">
+              <span>🚜 {name}</span>
+              <button
+                onClick={() => onUpdate(group.id, 'equipment', group.equipment.filter(n => n !== name))}
+                className="rounded-full px-1 text-indigo-300 hover:text-red-500 print:hidden"
+                title="Remove from checklist"
+                aria-label={`Remove ${name}`}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Grouped items */}
       {!group.collapsed && (
         <div className="border-t border-indigo-100 bg-white">

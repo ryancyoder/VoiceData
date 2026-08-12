@@ -170,25 +170,40 @@ export async function getMasterCatalog(): Promise<{ items: CatalogItem[]; delive
 // Assemblies as Kits: each assembly's application-linked roles become kit line
 // items. Assemblies with no priced roles (planting, outcropping) are omitted.
 export async function getMasterKits(): Promise<Kit[]> {
-  const [asmRes, rolesRes, appsRes, matsRes] = await Promise.all([
+  const [asmRes, rolesRes, appsRes, matsRes, asmEqRes, eqRes] = await Promise.all([
     supabase.from("assemblies").select("id, name, unit_of_work, operation_stage, sort_order").order("sort_order", { ascending: true }),
     supabase.from("assembly_roles").select("assembly_id, application_id, sort_order").order("sort_order", { ascending: true }),
     supabase.from("applications").select(APPLICATION_COLS),
     supabase.from("materials").select(MATERIAL_COLS),
+    supabase.from("assembly_equipment").select("assembly_id, equipment_id, sort_order").order("sort_order", { ascending: true }),
+    supabase.from("equipment").select("id, equipment_name"),
   ]);
   if (asmRes.error) throw new Error(asmRes.error.message);
   if (rolesRes.error) throw new Error(rolesRes.error.message);
   if (appsRes.error) throw new Error(appsRes.error.message);
   if (matsRes.error) throw new Error(matsRes.error.message);
+  if (asmEqRes.error) throw new Error(asmEqRes.error.message);
+  if (eqRes.error) throw new Error(eqRes.error.message);
 
   const assemblies = (asmRes.data ?? []) as AssemblyRow[];
   const roles = (rolesRes.data ?? []) as RoleRow[];
   const appById = new Map(((appsRes.data ?? []) as ApplicationRow[]).map((a) => [a.id, a]));
   const matById = new Map(((matsRes.data ?? []) as MaterialRow[]).map((m) => [m.id, m]));
+  const eqNameById = new Map(
+    ((eqRes.data ?? []) as { id: string; equipment_name: string }[]).map((e) => [e.id, e.equipment_name])
+  );
 
   const rolesByAssembly = new Map<string, RoleRow[]>();
   for (const r of roles) {
     (rolesByAssembly.get(r.assembly_id) ?? rolesByAssembly.set(r.assembly_id, []).get(r.assembly_id)!).push(r);
+  }
+  // Each assembly's required equipment, as display names in sort order — a
+  // reference checklist for the estimate (not a costed line).
+  const equipByAssembly = new Map<string, string[]>();
+  for (const ae of (asmEqRes.data ?? []) as { assembly_id: string; equipment_id: string }[]) {
+    const name = eqNameById.get(ae.equipment_id);
+    if (!name) continue;
+    (equipByAssembly.get(ae.assembly_id) ?? equipByAssembly.set(ae.assembly_id, []).get(ae.assembly_id)!).push(name);
   }
 
   const kits: Kit[] = [];
@@ -228,6 +243,7 @@ export async function getMasterKits(): Promise<Kit[]> {
       color: null,
       takeoffUnit: asm.unit_of_work === "sq_ft" ? "area" : asm.unit_of_work === "ln_ft" ? "linear" : null,
       operationStage: asm.operation_stage ?? null,
+      equipment: equipByAssembly.get(asm.id) ?? [],
       items,
     });
   }

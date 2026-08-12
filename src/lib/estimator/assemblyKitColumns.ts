@@ -33,6 +33,7 @@ export interface Kit {
   color?: string | null;
   takeoffUnit?: string | null;
   operationStage?: string | null;
+  equipment?: string[];
   items: KitItem[];
   [key: string]: unknown;
 }

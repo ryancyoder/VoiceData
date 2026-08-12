@@ -349,6 +349,7 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
         id,
         label,
         stage: null,
+        equipment: [],
         sqFt: 0,
         linearFt: 0,
         height: 0,
@@ -655,12 +656,13 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
       });
 
       if (groupId) {
-        // Add items to existing group
+        // Add items to existing group; merge in the kit's reference equipment.
         return {
           ...prev,
           rows: prev.rows.map(row => {
             if (row.type !== 'group' || row.id !== groupId) return row;
-            return { ...row, items: [...row.items, ...newItems] };
+            const mergedEquip = [...new Set([...(row.equipment ?? []), ...(kit.equipment ?? [])])];
+            return { ...row, items: [...row.items, ...newItems], equipment: mergedEquip };
           }),
         };
       }
@@ -671,6 +673,7 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
         id: newGroupId,
         label: kit.name,
         stage: kit.operationStage ?? null,
+        equipment: kit.equipment ?? [],
         sqFt: 0,
         linearFt: 0,
         height: 0,
