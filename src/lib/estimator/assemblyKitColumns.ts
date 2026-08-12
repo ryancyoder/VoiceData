@@ -32,6 +32,7 @@ export interface Kit {
   createdAt?: string;
   color?: string | null;
   takeoffUnit?: string | null;
+  operationStage?: string | null;
   items: KitItem[];
   [key: string]: unknown;
 }

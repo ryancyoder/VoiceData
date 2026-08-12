@@ -69,6 +69,7 @@ interface AssemblyRow {
   id: string;
   name: string;
   unit_of_work: string;
+  operation_stage: string | null;
   sort_order: number;
 }
 interface RoleRow {
@@ -170,7 +171,7 @@ export async function getMasterCatalog(): Promise<{ items: CatalogItem[]; delive
 // items. Assemblies with no priced roles (planting, outcropping) are omitted.
 export async function getMasterKits(): Promise<Kit[]> {
   const [asmRes, rolesRes, appsRes, matsRes] = await Promise.all([
-    supabase.from("assemblies").select("id, name, unit_of_work, sort_order").order("sort_order", { ascending: true }),
+    supabase.from("assemblies").select("id, name, unit_of_work, operation_stage, sort_order").order("sort_order", { ascending: true }),
     supabase.from("assembly_roles").select("assembly_id, application_id, sort_order").order("sort_order", { ascending: true }),
     supabase.from("applications").select(APPLICATION_COLS),
     supabase.from("materials").select(MATERIAL_COLS),
@@ -226,6 +227,7 @@ export async function getMasterKits(): Promise<Kit[]> {
       description: "",
       color: null,
       takeoffUnit: asm.unit_of_work === "sq_ft" ? "area" : asm.unit_of_work === "ln_ft" ? "linear" : null,
+      operationStage: asm.operation_stage ?? null,
       items,
     });
   }

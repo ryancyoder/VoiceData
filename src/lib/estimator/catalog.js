@@ -2,6 +2,20 @@ export const CATEGORIES = ['plants', 'lawn', 'bulk_materials', 'standard_materia
 
 export const METACATEGORIES = ['MATERIAL', 'LABOR', 'EQUIPMENT', 'LOGISTICS'];
 
+// Operation stages — the production phases an estimate's takeoff groups map to.
+// Same vocabulary as the master `assemblies.operation_stage` and the
+// Forecast/Planner scheduling stages, so an estimate can hand off to scheduling.
+// STAGE_ORDER is roughly the order a crew works a site.
+export const STAGE_ORDER = ['excavation', 'bed_installation', 'patio', 'outcropping', 'planting', 'lawn_install'];
+export const STAGE_LABELS = {
+  excavation:       'Excavation',
+  bed_installation: 'Bed Install',
+  patio:            'Patio / Hardscape',
+  outcropping:      'Outcropping',
+  planting:         'Planting',
+  lawn_install:     'Lawn',
+};
+
 export const CATEGORY_METACATEGORY = {
   plants:             'MATERIAL',
   lawn:               'MATERIAL',

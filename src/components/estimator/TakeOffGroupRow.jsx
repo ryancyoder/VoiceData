@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { STAGE_ORDER, STAGE_LABELS } from '@/lib/estimator/catalog';
 
 function itemLineTotal(item) {
   if (item.isWallAssembly) {
@@ -157,6 +158,35 @@ export default function TakeOffGroupRow({ group, onUpdate, onToggleCollapse, onR
           className="flex-1 text-sm font-semibold text-indigo-800 bg-transparent border-b border-indigo-200
                      focus:outline-none focus:border-indigo-500 placeholder:text-indigo-300 min-w-0"
         />
+
+        {/* Operation stage / phase */}
+        {!group.isPlantsGroup && !group.isItemsGroup && (
+          <>
+            <select
+              value={group.stage ?? ''}
+              onChange={e => onUpdate(group.id, 'stage', e.target.value || null)}
+              title="Operation stage — used for the by-phase breakdown"
+              className={`shrink-0 print:hidden text-xs rounded-full border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
+                group.stage
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 font-medium'
+                  : 'border-gray-200 bg-white text-gray-400'
+              }`}
+            >
+              <option value="">Phase…</option>
+              {STAGE_ORDER.map(s => (
+                <option key={s} value={s}>{STAGE_LABELS[s]}</option>
+              ))}
+              {group.stage && !STAGE_ORDER.includes(group.stage) && (
+                <option value={group.stage}>{group.stage}</option>
+              )}
+            </select>
+            {group.stage && (
+              <span className="hidden print:inline text-xs text-indigo-600 font-medium shrink-0">
+                {STAGE_LABELS[group.stage] ?? group.stage}
+              </span>
+            )}
+          </>
+        )}
 
         {/* Print-only dimension summary */}
         {!group.isPlantsGroup && !group.isItemsGroup && (

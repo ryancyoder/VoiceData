@@ -348,6 +348,7 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
         type: 'group',
         id,
         label,
+        stage: null,
         sqFt: 0,
         linearFt: 0,
         height: 0,
@@ -669,6 +670,7 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
         type: 'group',
         id: newGroupId,
         label: kit.name,
+        stage: kit.operationStage ?? null,
         sqFt: 0,
         linearFt: 0,
         height: 0,
@@ -725,6 +727,20 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
   }, {});
   // Delivery charges count as logistics
   metacategoryTotals['LOGISTICS'] = (metacategoryTotals['LOGISTICS'] ?? 0) + totalDelivery;
+
+  // By operation stage: a group's stage tags every line in it. Groups without a
+  // stage (and ungrouped top-level items) fall into 'unstaged'. Empty when no
+  // group carries a stage, so the summary can hide the breakdown entirely.
+  const stageTotals = estimate ? estimate.rows.reduce((acc, row) => {
+    if (row.type === 'group') {
+      const key = row.stage || 'unstaged';
+      acc[key] = (acc[key] ?? 0) + row.items.reduce((s, i) => s + itemLineTotal(i), 0);
+    } else if (row.type === 'item') {
+      acc['unstaged'] = (acc['unstaged'] ?? 0) + itemLineTotal(row);
+    }
+    return acc;
+  }, {}) : {};
+
   const taxAmount = subtotal * ((estimate?.taxRate ?? 0) / 100);
   const total = subtotal + taxAmount;
 
@@ -777,6 +793,7 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
     removeItemPlacement,
     subtotal,
     metacategoryTotals,
+    stageTotals,
     totalLoads,
     totalDelivery,
     taxAmount,

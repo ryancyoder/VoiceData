@@ -1,4 +1,4 @@
-import { METACATEGORIES } from '@/lib/estimator/catalog';
+import { METACATEGORIES, STAGE_ORDER, STAGE_LABELS } from '@/lib/estimator/catalog';
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -11,8 +11,16 @@ const META_LABELS = {
   LOGISTICS: 'Logistics',
 };
 
-export default function EstimateSummary({ subtotal, metacategoryTotals, totalLoads, taxAmount, total, taxRate, onTaxRateChange }) {
+export default function EstimateSummary({ subtotal, metacategoryTotals, stageTotals, totalLoads, taxAmount, total, taxRate, onTaxRateChange }) {
   const activeMetas = METACATEGORIES.filter(m => (metacategoryTotals?.[m] ?? 0) > 0);
+  // Known stages first (in crew order), then any custom stage, then unstaged.
+  const stageKeys = [
+    ...STAGE_ORDER.filter(s => (stageTotals?.[s] ?? 0) !== 0),
+    ...Object.keys(stageTotals ?? {}).filter(s => s !== 'unstaged' && !STAGE_ORDER.includes(s) && (stageTotals[s] ?? 0) !== 0),
+    ...(((stageTotals?.unstaged ?? 0) !== 0) ? ['unstaged'] : []),
+  ];
+  // Only worth showing the phase breakdown once work is actually split by stage.
+  const showStages = stageKeys.filter(s => s !== 'unstaged').length > 0;
 
   return (
     <div className="mt-4 flex justify-end">
@@ -32,6 +40,19 @@ export default function EstimateSummary({ subtotal, metacategoryTotals, totalLoa
                   )}
                 </span>
                 <span>${fmt(metacategoryTotals[meta])}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* By operation stage / phase */}
+        {showStages && (
+          <div className="px-4 pt-3 pb-2 space-y-1.5 border-b border-gray-100">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">By phase</div>
+            {stageKeys.map(stage => (
+              <div key={stage} className="flex justify-between text-xs text-gray-500">
+                <span>{stage === 'unstaged' ? 'Unstaged' : (STAGE_LABELS[stage] ?? stage)}</span>
+                <span>${fmt(stageTotals[stage])}</span>
               </div>
             ))}
           </div>

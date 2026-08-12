@@ -68,6 +68,7 @@ export default function App({ estimateId }) {
     removeItemPlacement,
     subtotal,
     metacategoryTotals,
+    stageTotals,
     totalLoads,
     totalDelivery,
     taxAmount,
@@ -456,6 +457,7 @@ export default function App({ estimateId }) {
               onSetActiveGroup={setActiveGroupId}
               subtotal={subtotal}
               metacategoryTotals={metacategoryTotals}
+              stageTotals={stageTotals}
               totalLoads={totalLoads}
               taxAmount={taxAmount}
               total={total}
