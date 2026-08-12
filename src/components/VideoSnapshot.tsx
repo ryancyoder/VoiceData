@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET, formatPropertyLabel } from "@/lib/salesBoard";
 import { capturePosterFrame } from "@/lib/videoPoster";
+import { compressImage } from "@/lib/compressImage";
 
 // ─── Web Speech typings ───────────────────────────────────────────────
 interface SpeechRecognitionResultLike {
@@ -53,6 +54,14 @@ interface PropertyLite {
 }
 type Selection = number | null;
 
+// A still captured during recording — saved to the album as its own photo.
+interface Snap {
+  id: number;
+  blob: Blob;
+  previewUrl: string;
+  caption: string;
+}
+
 function distanceLabel(meters: number): string {
   if (meters < 1000) return `${meters}m away`;
   return `${(meters / 1000).toFixed(1)}km away`;
@@ -98,6 +107,7 @@ export default function VideoSnapshot() {
   const [propFilter, setPropFilter] = useState("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<Selection>(null);
   const [saving, setSaving] = useState(false);
+  const [snaps, setSnaps] = useState<Snap[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
@@ -119,6 +129,21 @@ export default function VideoSnapshot() {
   const messageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const videoBlobRef = useRef<{ blob: Blob; mime: string } | null>(null);
+  const snapsRef = useRef<Snap[]>([]);
+  const snapIdRef = useRef(0);
+
+  function commitSnaps(next: Snap[]) {
+    snapsRef.current = next;
+    setSnaps(next);
+  }
+  function setSnapCaption(id: number, caption: string) {
+    commitSnaps(snapsRef.current.map((s) => (s.id === id ? { ...s, caption } : s)));
+  }
+  function removeSnap(id: number) {
+    const target = snapsRef.current.find((s) => s.id === id);
+    if (target) URL.revokeObjectURL(target.previewUrl);
+    commitSnaps(snapsRef.current.filter((s) => s.id !== id));
+  }
 
   function showMessage(text: string, ms = 4500) {
     setMessage(text);
@@ -267,6 +292,20 @@ export default function VideoSnapshot() {
       startDictation(); // within this tap's gesture (iOS)
     } else {
       stopDictation();
+      // Keep this still as a real photo for the album, with its dictated caption.
+      const off = frozenBitmapRef.current;
+      const cap = frozenCaptionRef.current;
+      if (off) {
+        off.toBlob(
+          (blob) => {
+            if (!blob) return;
+            const id = ++snapIdRef.current;
+            commitSnaps([...snapsRef.current, { id, blob, previewUrl: URL.createObjectURL(blob), caption: cap }]);
+          },
+          "image/jpeg",
+          0.92
+        );
+      }
       frozenRef.current = false;
       frozenBitmapRef.current = null;
       setFrozen(false);
@@ -501,9 +540,28 @@ export default function VideoSnapshot() {
       const finalizeData = await finalizeRes.json();
       if (!finalizeRes.ok) throw new Error(finalizeData.error || "Failed to save the video");
 
+      // Upload each captured still as its own photo in the same album.
+      const snapList = snapsRef.current;
+      let snapOk = 0;
+      for (const s of snapList) {
+        try {
+          const uploadFile = await compressImage(new File([s.blob], `snap-${s.id}.jpg`, { type: "image/jpeg" }));
+          const fd = new FormData();
+          fd.append("file", uploadFile);
+          const cap = s.caption.trim();
+          if (cap) fd.append("caption", cap);
+          if (selectedPropertyId != null) fd.append("propertyId", String(selectedPropertyId));
+          const res = await fetch("/api/photos", { method: "POST", body: fd });
+          if (res.ok) snapOk += 1;
+        } catch {
+          /* one failed still shouldn't sink the whole save */
+        }
+      }
+
       const dest = selectedPropertyId != null ? selectedPropertyLabel() ?? "the selected property" : "unfiled media";
+      const photoNote = snapList.length > 0 ? ` + ${snapOk} photo${snapOk === 1 ? "" : "s"}` : "";
       close();
-      showMessage(`Video saved to ${dest}.`);
+      showMessage(`Video${photoNote} saved to ${dest}.`);
       router.refresh();
     } catch (err) {
       setSaving(false);
@@ -519,6 +577,8 @@ export default function VideoSnapshot() {
     setCaption("");
     frozenCaptionRef.current = "";
     videoBlobRef.current = null;
+    snapsRef.current.forEach((s) => URL.revokeObjectURL(s.previewUrl));
+    commitSnaps([]);
   }
 
   function close() {
@@ -548,6 +608,7 @@ export default function VideoSnapshot() {
       if (messageTimerRef.current) clearTimeout(messageTimerRef.current);
       teardownCapture();
       recognitionRef.current?.abort();
+      snapsRef.current.forEach((s) => URL.revokeObjectURL(s.previewUrl));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -579,15 +640,15 @@ export default function VideoSnapshot() {
         </svg>
       </button>
 
-      {/* Hidden source video for the camera stream. */}
-      {mode === "recording" && (
-        // eslint-disable-next-line jsx-a11y/media-has-caption
-        <video ref={videoElRef} playsInline muted className="hidden" />
-      )}
-
       {mode === "recording" && (
         <div className="fixed inset-0 z-50 bg-black">
-          <canvas ref={canvasRef} className="h-full w-full object-contain" />
+          {/* The source video stays on-screen (behind the opaque canvas) rather
+              than display:none — iOS Safari stops decoding a hidden video, which
+              would freeze drawImage(). The canvas on top is what's recorded and
+              what the user sees. */}
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video ref={videoElRef} playsInline muted autoPlay className="absolute inset-0 h-full w-full object-contain" />
+          <canvas ref={canvasRef} className="absolute inset-0 h-full w-full object-contain" />
 
           <button
             type="button"
@@ -669,6 +730,40 @@ export default function VideoSnapshot() {
               {videoUrl && (
                 // eslint-disable-next-line jsx-a11y/media-has-caption
                 <video src={videoUrl} controls playsInline className="mb-4 max-h-[45vh] w-full rounded-xl bg-black object-contain" />
+              )}
+
+              {snaps.length > 0 && (
+                <>
+                  <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">
+                    Snapshots ({snaps.length}) — also saved as photos
+                  </label>
+                  <div className="mb-5 space-y-3">
+                    {snaps.map((s, i) => (
+                      <div key={s.id} className="flex gap-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={s.previewUrl} alt={`Snapshot ${i + 1}`} className="h-20 w-20 shrink-0 rounded-lg object-cover" />
+                        <textarea
+                          value={s.caption}
+                          onChange={(e) => setSnapCaption(s.id, e.target.value)}
+                          placeholder="Note for this photo…"
+                          rows={2}
+                          className="flex-1 resize-none rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-base outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeSnap(s.id)}
+                          disabled={saving}
+                          aria-label="Remove snapshot"
+                          className="h-8 w-8 shrink-0 self-start rounded-full text-zinc-400 hover:text-red-600 disabled:opacity-50"
+                        >
+                          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <path d="M18 6 6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
 
               <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Caption (optional)</label>
