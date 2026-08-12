@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { MasterCatalogClient } from "./MasterCatalogClient";
+import { MasterCatalogPageClient } from "./MasterCatalogPageClient";
 
 export const metadata: Metadata = {
   title: "Master Catalog · VoiceData",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function MasterCatalogPage() {
-  return <MasterCatalogClient />;
+  return <MasterCatalogPageClient />;
 }

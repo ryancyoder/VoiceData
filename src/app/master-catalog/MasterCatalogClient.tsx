@@ -91,7 +91,7 @@ function slugId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
 }
 
-export function MasterCatalogClient() {
+export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNode }) {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
@@ -375,6 +375,7 @@ export function MasterCatalogClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {viewToggle}
           {!locked && dirty && <span className="text-xs font-medium text-amber-600 dark:text-amber-500">Unsaved changes</span>}
           {saveState === "saved" && <span className="text-xs font-medium text-green-600 dark:text-green-500">Saved</span>}
           {saveState === "error" && <span className="text-xs font-medium text-red-600 dark:text-red-500">Save failed</span>}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
+import { masterPhotoUrl, photoKey } from "@/lib/estimator/masterPhotos";
 
 // The normalized "master catalog" as its own entities — the read/write surface
 // for the richer-model editor (distinct from the flat catalog-v2 adapter used
@@ -20,16 +21,24 @@ const APPLICATION_COLS =
 const EQUIPMENT_COLS = "id, equipment_name, category, unit, cost_per_unit, sort_order";
 
 export async function GET() {
-  const [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes] = await Promise.all([
+  const [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes, photosRes] = await Promise.all([
     supabase.from("materials").select(MATERIAL_COLS).order("sort_order", { ascending: true }),
     supabase.from("applications").select(APPLICATION_COLS),
     supabase.from("equipment").select(EQUIPMENT_COLS).order("sort_order", { ascending: true }),
     supabase.from("assemblies").select("id, name, operation_stage, unit_of_work, equipment_required, sort_order").order("sort_order", { ascending: true }),
     supabase.from("assembly_roles").select("assembly_id, role_key, application_id, required, sort_order").order("sort_order", { ascending: true }),
     supabase.from("assembly_equipment").select("assembly_id, equipment_id, sort_order").order("sort_order", { ascending: true }),
+    supabase.from("master_photos").select("id, entity_type, entity_id, storage_path, is_cover").order("is_cover", { ascending: false }).order("created_at", { ascending: true }),
   ]);
-  for (const r of [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes]) {
+  for (const r of [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes, photosRes]) {
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 500 });
+  }
+
+  // Photos grouped by "entityType:entityId", cover first (from the order above).
+  const photos: Record<string, { id: string; url: string; is_cover: boolean }[]> = {};
+  for (const p of photosRes.data ?? []) {
+    const key = photoKey(p.entity_type, p.entity_id);
+    (photos[key] ??= []).push({ id: p.id, url: masterPhotoUrl(p.storage_path), is_cover: p.is_cover });
   }
 
   const appsByMaterial = new Map<string, unknown[]>();
@@ -52,7 +61,7 @@ export async function GET() {
     equipment: equipByAssembly.get(a.id) ?? [],
   }));
 
-  return NextResponse.json({ materials, equipment: eqRes.data ?? [], assemblies });
+  return NextResponse.json({ materials, equipment: eqRes.data ?? [], assemblies, photos });
 }
 
 interface AppInput {
