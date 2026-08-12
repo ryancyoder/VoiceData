@@ -54,7 +54,17 @@ interface PropertyLite {
 }
 type Selection = number | null;
 
-// A still captured during recording — saved to the album as its own photo.
+interface Point {
+  x: number;
+  y: number;
+}
+interface Stroke {
+  color: string;
+  width: number;
+  points: Point[];
+}
+
+// A still captured during recording (with any markup), saved to the album.
 interface Snap {
   id: number;
   blob: Blob;
@@ -69,7 +79,13 @@ function distanceLabel(meters: number): string {
 
 const MAX_OUTPUT_DIM = 1280;
 
-// Pick a MediaRecorder container the browser supports (Safari → mp4, Chrome → webm).
+const PEN_COLORS = [
+  { name: "Red", value: "#ef4444" },
+  { name: "Yellow", value: "#facc15" },
+  { name: "White", value: "#ffffff" },
+  { name: "Black", value: "#111111" },
+];
+
 function pickMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
   const candidates = [
@@ -93,21 +109,46 @@ function extFor(mime: string): string {
   return mime.includes("mp4") ? "mp4" : "webm";
 }
 
+function drawStrokes(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const stroke of strokes) {
+    if (stroke.points.length === 0) continue;
+    ctx.strokeStyle = stroke.color;
+    ctx.fillStyle = stroke.color;
+    ctx.lineWidth = stroke.width;
+    if (stroke.points.length === 1) {
+      const p = stroke.points[0];
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, stroke.width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    ctx.beginPath();
+    ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+    for (let i = 1; i < stroke.points.length; i++) ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+    ctx.stroke();
+  }
+}
+
 export default function VideoSnapshot() {
   const router = useRouter();
 
-  const [mode, setMode] = useState<"idle" | "recording" | "review">("idle");
+  const [mode, setMode] = useState<"idle" | "recording" | "captioning" | "review">("idle");
   const [frozen, setFrozen] = useState(false);
-  const [caption, setCaption] = useState(""); // live caption of the current snap
   const [elapsed, setElapsed] = useState(0);
+  const [markColor, setMarkColor] = useState(PEN_COLORS[0].value);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [snaps, setSnaps] = useState<Snap[]>([]);
+  const [captionIndex, setCaptionIndex] = useState(0);
+  const [captionLive, setCaptionLive] = useState("");
+  const [listening, setListening] = useState(false);
   const [overallCaption, setOverallCaption] = useState("");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [allProperties, setAllProperties] = useState<PropertyLite[]>([]);
   const [propFilter, setPropFilter] = useState("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<Selection>(null);
   const [saving, setSaving] = useState(false);
-  const [snaps, setSnaps] = useState<Snap[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
@@ -122,15 +163,21 @@ export default function VideoSnapshot() {
 
   const frozenRef = useRef(false);
   const frozenBitmapRef = useRef<HTMLCanvasElement | null>(null);
-  const frozenCaptionRef = useRef("");
 
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const finalTranscriptRef = useRef("");
-  const messageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const strokesRef = useRef<Stroke[]>([]);
+  const currentStrokeRef = useRef<Stroke | null>(null);
+  const penSeenRef = useRef(false);
+  const markColorRef = useRef(PEN_COLORS[0].value);
 
-  const videoBlobRef = useRef<{ blob: Blob; mime: string } | null>(null);
   const snapsRef = useRef<Snap[]>([]);
   const snapIdRef = useRef(0);
+  const videoBlobRef = useRef<{ blob: Blob; mime: string } | null>(null);
+
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const captionIntentRef = useRef(false);
+  const captionBaseRef = useRef("");
+  const finalTranscriptRef = useRef("");
+  const messageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function commitSnaps(next: Snap[]) {
     snapsRef.current = next;
@@ -152,36 +199,6 @@ export default function VideoSnapshot() {
   }
 
   // ─── Canvas compositing ─────────────────────────────────────────────
-  function drawCaption(ctx: CanvasRenderingContext2D, text: string, w: number, h: number) {
-    if (!text) return;
-    const fontSize = Math.max(16, Math.round(h * 0.045));
-    ctx.font = `600 ${fontSize}px -apple-system, system-ui, sans-serif`;
-    const maxWidth = w * 0.9;
-    const words = text.split(/\s+/);
-    const lines: string[] = [];
-    let line = "";
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (ctx.measureText(test).width > maxWidth && line) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = test;
-      }
-    }
-    if (line) lines.push(line);
-    const lineHeight = Math.round(fontSize * 1.3);
-    const pad = Math.round(fontSize * 0.6);
-    const blockH = lines.length * lineHeight + pad * 2;
-    const y0 = h - blockH;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, y0, w, blockH);
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    lines.forEach((ln, i) => ctx.fillText(ln, w / 2, y0 + pad + i * lineHeight));
-  }
-
   function startDrawLoop() {
     const draw = () => {
       const canvas = canvasRef.current;
@@ -193,7 +210,7 @@ export default function VideoSnapshot() {
           const h = canvas.height;
           if (frozenRef.current && frozenBitmapRef.current) {
             ctx.drawImage(frozenBitmapRef.current, 0, 0, w, h);
-            drawCaption(ctx, frozenCaptionRef.current, w, h);
+            drawStrokes(ctx, strokesRef.current);
           } else if (video.readyState >= 2) {
             ctx.drawImage(video, 0, 0, w, h);
           }
@@ -204,71 +221,51 @@ export default function VideoSnapshot() {
     rafRef.current = requestAnimationFrame(draw);
   }
 
-  // ─── Dictation (per snap) ───────────────────────────────────────────
-  function startDictation() {
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) return;
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.onend = null;
-        recognitionRef.current.abort();
-      } catch {
-        /* ignore */
-      }
-      recognitionRef.current = null;
-    }
-    const recognition = new Ctor();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    finalTranscriptRef.current = "";
-    recognition.onresult = (e) => {
-      let finalChunk = "";
-      let interimChunk = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const result = e.results[i];
-        if (result.isFinal) finalChunk += result[0].transcript;
-        else interimChunk += result[0].transcript;
-      }
-      if (finalChunk) finalTranscriptRef.current += finalChunk;
-      const spoken = (finalTranscriptRef.current + " " + interimChunk).trim();
-      frozenCaptionRef.current = spoken;
-      setCaption(spoken);
-    };
-    recognition.onerror = (e) => {
-      if (e.error === "no-speech" || e.error === "aborted") return;
-      // A mic conflict with the recorder can surface here on iOS — non-fatal.
-    };
-    recognition.onend = () => {
-      // While still snapped, keep listening for a long caption.
-      if (recognitionRef.current === recognition && frozenRef.current) {
-        try {
-          recognition.start();
-          return;
-        } catch {
-          /* fall through */
-        }
-      }
-      if (recognitionRef.current === recognition) recognitionRef.current = null;
-    };
-    recognitionRef.current = recognition;
-    try {
-      recognition.start();
-    } catch {
-      recognitionRef.current = null;
-    }
+  // ─── Apple Pencil markup (only while frozen) ────────────────────────
+  function canvasPoint(clientX: number, clientY: number): Point {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+    const offX = (rect.width - canvas.width * scale) / 2;
+    const offY = (rect.height - canvas.height * scale) / 2;
+    const x = Math.max(0, Math.min(canvas.width, (clientX - rect.left - offX) / scale));
+    const y = Math.max(0, Math.min(canvas.height, (clientY - rect.top - offY) / scale));
+    return { x, y };
   }
 
-  function stopDictation() {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.onend = null;
-        recognitionRef.current.abort();
-      } catch {
-        /* ignore */
-      }
-      recognitionRef.current = null;
+  function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!frozenRef.current || !canvasRef.current) return;
+    if (e.pointerType === "pen") penSeenRef.current = true;
+    else if (e.pointerType === "touch" && penSeenRef.current) return; // palm rejection once a pen is used
+    const width = Math.max(3, Math.round(canvasRef.current.width * 0.006));
+    const stroke: Stroke = { color: markColorRef.current, width, points: [canvasPoint(e.clientX, e.clientY)] };
+    currentStrokeRef.current = stroke;
+    strokesRef.current = [...strokesRef.current, stroke];
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
     }
+    e.preventDefault();
+  }
+  function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!frozenRef.current || !currentStrokeRef.current) return;
+    if (e.pointerType === "touch" && penSeenRef.current) return;
+    currentStrokeRef.current.points.push(canvasPoint(e.clientX, e.clientY));
+    e.preventDefault();
+  }
+  function onPointerUp() {
+    currentStrokeRef.current = null;
+  }
+  function undoStroke() {
+    strokesRef.current = strokesRef.current.slice(0, -1);
+  }
+  function clearStrokes() {
+    strokesRef.current = [];
+  }
+  function chooseColor(value: string) {
+    markColorRef.current = value;
+    setMarkColor(value);
   }
 
   // ─── Snap toggle (freeze on / off) ──────────────────────────────────
@@ -285,27 +282,35 @@ export default function VideoSnapshot() {
       if (!octx) return;
       octx.drawImage(video, 0, 0, off.width, off.height);
       frozenBitmapRef.current = off;
-      frozenCaptionRef.current = "";
+      strokesRef.current = [];
+      currentStrokeRef.current = null;
       frozenRef.current = true;
       setFrozen(true);
-      setCaption("");
-      startDictation(); // within this tap's gesture (iOS)
     } else {
-      stopDictation();
-      // Keep this still as a real photo for the album, with its dictated caption.
-      const off = frozenBitmapRef.current;
-      const cap = frozenCaptionRef.current;
-      if (off) {
-        off.toBlob(
-          (blob) => {
-            if (!blob) return;
-            const id = ++snapIdRef.current;
-            commitSnaps([...snapsRef.current, { id, blob, previewUrl: URL.createObjectURL(blob), caption: cap }]);
-          },
-          "image/jpeg",
-          0.92
-        );
+      // Bake the still + markup into a photo for the album.
+      const bmp = frozenBitmapRef.current;
+      const strokes = strokesRef.current;
+      if (bmp) {
+        const off = document.createElement("canvas");
+        off.width = bmp.width;
+        off.height = bmp.height;
+        const octx = off.getContext("2d");
+        if (octx) {
+          octx.drawImage(bmp, 0, 0);
+          drawStrokes(octx, strokes);
+          off.toBlob(
+            (blob) => {
+              if (!blob) return;
+              const id = ++snapIdRef.current;
+              commitSnaps([...snapsRef.current, { id, blob, previewUrl: URL.createObjectURL(blob), caption: "" }]);
+            },
+            "image/jpeg",
+            0.92
+          );
+        }
       }
+      strokesRef.current = [];
+      currentStrokeRef.current = null;
       frozenRef.current = false;
       frozenBitmapRef.current = null;
       setFrozen(false);
@@ -320,7 +325,7 @@ export default function VideoSnapshot() {
       typeof (testCanvas as HTMLCanvasElement & { captureStream?: unknown }).captureStream === "function" &&
       typeof MediaRecorder !== "undefined";
     if (!supported) {
-      showMessage("Video snapshot isn't supported in this browser. Try the photo tool, or use Chrome on a computer.");
+      showMessage("Video recording isn't supported in this browser. Try the photo tool, or Chrome on a computer.");
       return;
     }
     resetSession();
@@ -363,13 +368,19 @@ export default function VideoSnapshot() {
           if (prev) URL.revokeObjectURL(prev);
           return url;
         });
-        setMode("review");
         if (allProperties.length === 0) loadProperties();
         requestLocation();
+        // Caption the snapshots one by one, then confirm the property.
+        if (snapsRef.current.length > 0) {
+          setCaptionIndex(0);
+          setCaptionLive("");
+          setMode("captioning");
+        } else {
+          setMode("review");
+        }
       };
       recorderRef.current = recorder;
       recorder.start();
-      // Elapsed timer.
       const started = performance.now();
       timerRef.current = setInterval(() => setElapsed(Math.floor((performance.now() - started) / 1000)), 500);
     } catch {
@@ -384,9 +395,10 @@ export default function VideoSnapshot() {
     rafRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
-    stopDictation();
     frozenRef.current = false;
     frozenBitmapRef.current = null;
+    strokesRef.current = [];
+    currentStrokeRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }
@@ -394,9 +406,7 @@ export default function VideoSnapshot() {
   function finishRecording() {
     if (frozenRef.current) toggleSnap(); // release any open snap first
     const recorder = recorderRef.current;
-    if (recorder && recorder.state !== "inactive") {
-      recorder.stop(); // onstop → review
-    }
+    if (recorder && recorder.state !== "inactive") recorder.stop(); // onstop → captioning/review
     recorderRef.current = null;
     teardownCapture();
     setFrozen(false);
@@ -414,7 +424,6 @@ export default function VideoSnapshot() {
     setMode("idle");
   }
 
-  // Wire the stream to the <video>, size the canvas, and start drawing + recording.
   useEffect(() => {
     if (mode !== "recording") return;
     const video = videoElRef.current;
@@ -443,6 +452,99 @@ export default function VideoSnapshot() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  // ─── Caption cycle (mic is free — recording is done) ────────────────
+  function stopRecognition() {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
+    }
+  }
+
+  function startRecognition(snapId: number) {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) {
+      showMessage("Voice dictation isn't supported here — type the caption instead.");
+      captionIntentRef.current = false;
+      setListening(false);
+      return;
+    }
+    stopRecognition();
+    const recognition = new Ctor();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (e) => {
+      let finalChunk = "";
+      let interimChunk = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const result = e.results[i];
+        if (result.isFinal) finalChunk += result[0].transcript;
+        else interimChunk += result[0].transcript;
+      }
+      if (finalChunk) finalTranscriptRef.current += finalChunk;
+      const spoken = (finalTranscriptRef.current + " " + interimChunk).trim();
+      const full = [captionBaseRef.current, spoken].filter(Boolean).join(" ");
+      setCaptionLive(spoken);
+      setSnapCaption(snapId, full);
+    };
+    recognition.onerror = () => {};
+    recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
+      recognitionRef.current = null;
+      // Safari ends on pauses; keep listening until the user taps "next".
+      if (captionIntentRef.current) {
+        try {
+          startRecognition(snapId);
+        } catch {
+          setListening(false);
+        }
+      }
+    };
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+    }
+  }
+
+  function captionButtonClick() {
+    const snap = snapsRef.current[captionIndex];
+    if (!snap) return;
+    if (!listening) {
+      captionIntentRef.current = true;
+      captionBaseRef.current = (snap.caption || "").trimEnd();
+      finalTranscriptRef.current = "";
+      setCaptionLive("");
+      setListening(true);
+      startRecognition(snap.id); // within this tap's gesture (iOS)
+    } else {
+      captionIntentRef.current = false;
+      stopRecognition();
+      setListening(false);
+      advanceCaption();
+    }
+  }
+
+  function advanceCaption() {
+    captionIntentRef.current = false;
+    stopRecognition();
+    setListening(false);
+    setCaptionLive("");
+    const next = captionIndex + 1;
+    if (next >= snapsRef.current.length) {
+      setCaptionIndex(0);
+      setMode("review");
+    } else {
+      setCaptionIndex(next);
+    }
+  }
 
   // ─── Property resolution + upload ───────────────────────────────────
   async function loadProperties() {
@@ -498,6 +600,7 @@ export default function VideoSnapshot() {
   async function save() {
     const current = videoBlobRef.current;
     if (!current || saving) return;
+    stopRecognition();
     setSaving(true);
     try {
       const ext = extFor(current.mime);
@@ -532,7 +635,6 @@ export default function VideoSnapshot() {
         body: JSON.stringify({
           videoPath: urlData.video.path,
           posterPath,
-          // No lat/lng: the chosen property determines the album.
           propertyId: selectedPropertyId ?? undefined,
           caption: overallCaption.trim() || undefined,
         }),
@@ -540,7 +642,6 @@ export default function VideoSnapshot() {
       const finalizeData = await finalizeRes.json();
       if (!finalizeRes.ok) throw new Error(finalizeData.error || "Failed to save the video");
 
-      // Upload each captured still as its own photo in the same album.
       const snapList = snapsRef.current;
       let snapOk = 0;
       for (const s of snapList) {
@@ -574,8 +675,10 @@ export default function VideoSnapshot() {
     setSelectedPropertyId(null);
     setPropFilter("");
     setOverallCaption("");
-    setCaption("");
-    frozenCaptionRef.current = "";
+    setCaptionLive("");
+    setCaptionIndex(0);
+    setListening(false);
+    penSeenRef.current = false;
     videoBlobRef.current = null;
     snapsRef.current.forEach((s) => URL.revokeObjectURL(s.previewUrl));
     commitSnaps([]);
@@ -583,6 +686,8 @@ export default function VideoSnapshot() {
 
   function close() {
     teardownCapture();
+    stopRecognition();
+    captionIntentRef.current = false;
     if (recorderRef.current && recorderRef.current.state !== "inactive") {
       discardRef.current = true;
       try {
@@ -624,14 +729,15 @@ export default function VideoSnapshot() {
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
+  const currentSnap = snaps[captionIndex];
 
   return (
     <>
       <button
         type="button"
         onClick={startRecording}
-        title="Video with photo snapshots"
-        aria-label="Record video with photo snapshots"
+        title="Video with Pencil markup + photo snapshots"
+        aria-label="Record video with markup and snapshots"
         className="fixed bottom-[15.5rem] right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-600 shadow-lg hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -642,13 +748,18 @@ export default function VideoSnapshot() {
 
       {mode === "recording" && (
         <div className="fixed inset-0 z-50 bg-black">
-          {/* The source video stays on-screen (behind the opaque canvas) rather
-              than display:none — iOS Safari stops decoding a hidden video, which
-              would freeze drawImage(). The canvas on top is what's recorded and
-              what the user sees. */}
+          {/* Source video stays on-screen behind the opaque canvas — iOS stops
+              decoding a hidden video, which would freeze drawImage(). */}
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video ref={videoElRef} playsInline muted autoPlay className="absolute inset-0 h-full w-full object-contain" />
-          <canvas ref={canvasRef} className="absolute inset-0 h-full w-full object-contain" />
+          <canvas
+            ref={canvasRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            className="absolute inset-0 h-full w-full touch-none object-contain"
+          />
 
           <button
             type="button"
@@ -668,30 +779,60 @@ export default function VideoSnapshot() {
           >
             <span className="text-red-500">●</span>
             <span>{mm}:{ss}</span>
-            {frozen && <span className="text-emerald-300">snapshot</span>}
+            {frozen && <span className="text-emerald-300">frozen — mark it up ✎</span>}
           </div>
 
-          {/* Snap toggle on the middle-right edge. */}
-          <div
-            className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center gap-5"
-            style={{ right: "max(1.25rem, env(safe-area-inset-right))" }}
-          >
+          {/* Markup toolbar (only while frozen). */}
+          {frozen && (
+            <div
+              className="absolute left-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-3 rounded-full bg-black/55 px-2 py-3"
+              style={{ left: "max(1rem, env(safe-area-inset-left))" }}
+            >
+              {PEN_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => chooseColor(c.value)}
+                  aria-label={c.name}
+                  className={`h-8 w-8 rounded-full border-2 ${markColor === c.value ? "border-white" : "border-transparent"}`}
+                  style={{ backgroundColor: c.value }}
+                />
+              ))}
+              <button type="button" onClick={undoStroke} aria-label="Undo" className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7v6h6" />
+                  <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+                </svg>
+              </button>
+              <button type="button" onClick={clearStrokes} aria-label="Clear" className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-[0.6rem] font-semibold text-white">
+                CLR
+              </button>
+            </div>
+          )}
+
+          {/* Snap / freeze toggle on the middle-right edge. */}
+          <div className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center" style={{ right: "max(1.25rem, env(safe-area-inset-right))" }}>
             <button
               type="button"
               onClick={toggleSnap}
               aria-label={frozen ? "Finish snapshot" : "Take snapshot"}
               className={`flex h-16 w-16 items-center justify-center rounded-full border-4 shadow-lg ${
-                frozen ? "animate-pulse border-emerald-400 bg-emerald-500 text-white" : "border-white bg-white/30 text-white active:bg-white/60"
+                frozen ? "border-emerald-400 bg-emerald-500 text-white" : "border-white bg-white/30 text-white active:bg-white/60"
               }`}
             >
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                <circle cx="12" cy="13" r="4" />
-              </svg>
+              {frozen ? (
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+              )}
             </button>
           </div>
 
-          {/* Stop / finish. */}
           <div className="absolute bottom-0 left-0 right-0 flex justify-center" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))", paddingTop: "1rem" }}>
             <button
               type="button"
@@ -702,12 +843,54 @@ export default function VideoSnapshot() {
               <span className="h-5 w-5 rounded-[3px] bg-white" />
             </button>
           </div>
+        </div>
+      )}
 
-          {frozen && (
-            <div className="absolute bottom-24 left-1/2 max-w-[80vw] -translate-x-1/2 rounded-lg bg-black/60 px-3 py-1.5 text-center text-sm text-white">
-              🎤 {caption || "listening…"}
-            </div>
-          )}
+      {mode === "captioning" && currentSnap && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black">
+          <div className="flex items-center justify-between px-4 py-3 text-white" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
+            <button type="button" onClick={close} aria-label="Cancel" className="text-zinc-300">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+            <span className="text-sm font-semibold">Caption photo {captionIndex + 1} of {snaps.length}</span>
+            <button type="button" onClick={advanceCaption} className="text-sm text-zinc-300">
+              Skip
+            </button>
+          </div>
+
+          <div className="flex min-h-0 flex-1 items-center justify-center px-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={currentSnap.previewUrl} alt={`Snapshot ${captionIndex + 1}`} className="max-h-full max-w-full rounded-xl object-contain" />
+          </div>
+
+          <div className="px-5 pb-2 text-center text-sm text-white">
+            {currentSnap.caption || (listening ? captionLive || "listening…" : "No caption yet — tap the mic to dictate.")}
+          </div>
+
+          <div className="flex flex-col items-center gap-3 px-5 pb-8" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
+            <button
+              type="button"
+              onClick={captionButtonClick}
+              className={`flex h-20 w-20 items-center justify-center rounded-full border-4 ${
+                listening ? "animate-pulse border-red-400 bg-red-600 text-white" : "border-white bg-white/15 text-white"
+              }`}
+              aria-label={listening ? "Finish and next" : "Start dictation"}
+            >
+              {listening ? (
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor">
+                  <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" />
+                  <path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.93V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.07A7 7 0 0 0 19 11Z" />
+                </svg>
+              )}
+            </button>
+            <span className="text-xs text-zinc-300">{listening ? "Tap to finish & go to next" : "Tap to dictate this photo"}</span>
+          </div>
         </div>
       )}
 
@@ -766,7 +949,7 @@ export default function VideoSnapshot() {
                 </>
               )}
 
-              <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Caption (optional)</label>
+              <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Video caption (optional)</label>
               <textarea
                 value={overallCaption}
                 onChange={(e) => setOverallCaption(e.target.value)}
