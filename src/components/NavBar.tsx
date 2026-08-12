@@ -48,6 +48,16 @@ export default function NavBar() {
           );
         })}
       </div>
+      <button
+        type="button"
+        onClick={async () => {
+          await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+          window.location.href = "/login";
+        }}
+        className="ml-auto shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium whitespace-nowrap text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+      >
+        Sign out
+      </button>
     </nav>
   );
 }
