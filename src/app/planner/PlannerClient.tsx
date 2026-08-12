@@ -14,6 +14,8 @@ const AXIS_H = 36;
 const BAND_H = ROW_H * 0.5;
 const BAND_PAD = (ROW_H - BAND_H) / 2;
 const HORIZONS = [4, 8, 12, 26];
+const ZOOM_PX_PER_DAY = 64; // day width in the zoomed 2-week view
+const FORTNIGHT_DAYS = 14;
 
 function todayKey(): string {
   const d = new Date();
@@ -119,6 +121,8 @@ export default function PlannerClient({
   stageDates: DealStageDates[];
 }) {
   const [horizonWeeks, setHorizonWeeks] = useState(12);
+  const [viewMode, setViewMode] = useState<"full" | "fortnight">("full");
+  const [fortnightPage, setFortnightPage] = useState(0); // 0 = the current 2-week block
   const [today] = useState(todayKey);
   const [placements, setPlacements] = useState<Map<number, Placement>>(() => {
     const m = new Map<number, Placement>();
@@ -183,31 +187,41 @@ export default function PlannerClient({
   // The timeline's left edge is pulled back to the earliest stage-history date
   // among the visible deals, so each row's history band is visible (not just the
   // today-forward scheduling range). Everything is measured from this origin.
-  const rangeStart = rows.reduce((min, r) => {
+  const zoom = viewMode === "fortnight";
+  // Earliest visible history (full mode pulls the left edge back to it).
+  const historyStart = rows.reduce((min, r) => {
     const dd = datesById.get(r.dealId);
     if (!dd) return min;
     const cand = [dd.rfp, dd.appointment, dd.proposal, dd.won, dd.start, dd.end].filter((x): x is string => !!x);
     return cand.reduce((m, k) => (k < m ? k : m), min);
   }, today);
+  // Fortnight (2-week) mode: a single 14-day window aligned to the week (Sunday)
+  // and paged with the prev/next controls.
+  const weekStart = addDays(today, -parseKey(today).getDay());
+  const windowStart = addDays(weekStart, fortnightPage * FORTNIGHT_DAYS);
+
+  const rangeStart = zoom ? windowStart : historyStart;
   const todayOffset = daysBetween(rangeStart, today);
 
-  // Non-uniform time scale: the past is compressed to weekly resolution (a whole
-  // week occupies one day's width) so history stays compact, while the present
-  // and future run at full daily resolution so the forecast has room to breathe.
-  const PAST_PX_PER_DAY = PX_PER_DAY / 7;
-  const pastWidth = todayOffset * PAST_PX_PER_DAY;
+  // Time scale. Full mode: the past is compressed to weekly resolution (a week
+  // occupies one day's width) while the present/future run at full daily
+  // resolution. Fortnight mode: uniform daily resolution, zoomed in — the past
+  // rate equals the day rate, so xOf degenerates to a plain offset × dayPx.
+  const dayPx = zoom ? ZOOM_PX_PER_DAY : PX_PER_DAY;
+  const pastPxPerDay = zoom ? dayPx : PX_PER_DAY / 7;
+  const pastWidth = todayOffset * pastPxPerDay;
   // Left pixel of the day that is `offset` days from rangeStart.
   const xOf = (offset: number) =>
-    Math.min(offset, todayOffset) * PAST_PX_PER_DAY + Math.max(0, offset - todayOffset) * PX_PER_DAY;
+    Math.min(offset, todayOffset) * pastPxPerDay + Math.max(0, offset - todayOffset) * dayPx;
 
-  // Forward end: today → last block window (min 2 weeks), capped at the horizon.
+  // Forward end (full mode): today → last block window (min 2 weeks), capped at the horizon.
   const lastWindow = board.stages
     .flatMap((s) => s.windows.map((w) => w.date))
     .reduce((mx, d) => (d > mx ? d : mx), today);
   const minEnd = addDays(today, 13);
   const rangeEnd = lastWindow > minEnd ? lastWindow : minEnd;
   const endKey = rangeEnd > board.horizonEnd ? board.horizonEnd : rangeEnd;
-  const totalDays = daysBetween(rangeStart, endKey) + 1;
+  const totalDays = zoom ? FORTNIGHT_DAYS : daysBetween(historyStart, endKey) + 1;
   const innerWidth = xOf(totalDays);
   const ticks = Array.from({ length: Math.ceil(totalDays / 7) }, (_, i) => ({
     offset: i * 7,
@@ -228,7 +242,7 @@ export default function PlannerClient({
   });
   // Day-of-month labels: one per day in the uncompressed present/future, but only
   // weekly in the compressed past (per-day would overlap).
-  const dayMarks = days.filter((d) => d.offset >= todayOffset || d.offset % 7 === 0);
+  const dayMarks = days.filter((d) => zoom || d.offset >= todayOffset || d.offset % 7 === 0);
   const monthSegments = days
     .filter((d, i) => i === 0 || days[i - 1].monthKey !== d.monthKey)
     .map((d) => ({ key: d.monthKey, offset: d.offset, label: d.monthLabel }));
@@ -262,6 +276,7 @@ export default function PlannerClient({
     targetIdx: number;
     moved: boolean;
     ctrl: AbortController;
+    dayPx: number;
   } | null>(null);
   // guides / targetPx are in pixels (the non-uniform scale means offsets no
   // longer map linearly to x).
@@ -274,7 +289,7 @@ export default function PlannerClient({
     let best = 0;
     let bestDist = Infinity;
     d.windows.forEach((w, i) => {
-      const dist = Math.abs(w.px + PX_PER_DAY / 2 - x);
+      const dist = Math.abs(w.px + d.dayPx / 2 - x);
       if (dist < bestDist) {
         bestDist = dist;
         best = i;
@@ -310,7 +325,7 @@ export default function PlannerClient({
     const windows = windowsByStage.get(row.stage) ?? [];
     if (windows.length === 0) return;
     const ctrl = new AbortController();
-    dragRef.current = { dealId: row.dealId, windows, rect: innerEl.getBoundingClientRect(), targetIdx: -1, moved: false, ctrl };
+    dragRef.current = { dealId: row.dealId, windows, rect: innerEl.getBoundingClientRect(), targetIdx: -1, moved: false, ctrl, dayPx };
     setDrag({
       dealId: row.dealId,
       color: row.color,
@@ -378,15 +393,41 @@ export default function PlannerClient({
             </button>
           )}
           <label className={styles.horizon}>
-            Horizon
-            <select value={horizonWeeks} onChange={(e) => setHorizonWeeks(Number(e.target.value))}>
-              {HORIZONS.map((w) => (
-                <option key={w} value={w}>
-                  {w} weeks
-                </option>
-              ))}
+            View
+            <select value={viewMode} onChange={(e) => setViewMode(e.target.value as "full" | "fortnight")}>
+              <option value="full">Full timeline</option>
+              <option value="fortnight">2-week</option>
             </select>
           </label>
+          {zoom ? (
+            <div className={styles.fortnightNav}>
+              <button type="button" className={styles.shiftBtn} onClick={() => setFortnightPage((p) => p - 1)} title="Previous 2 weeks">
+                ◀
+              </button>
+              <span className={styles.fortnightLabel}>
+                {fmtTick(windowStart)} – {fmtTick(addDays(windowStart, FORTNIGHT_DAYS - 1))}
+              </span>
+              <button type="button" className={styles.shiftBtn} onClick={() => setFortnightPage((p) => p + 1)} title="Next 2 weeks">
+                ▶
+              </button>
+              {fortnightPage !== 0 && (
+                <button type="button" className={styles.resetAll} onClick={() => setFortnightPage(0)} title="Back to the current 2 weeks">
+                  Today
+                </button>
+              )}
+            </div>
+          ) : (
+            <label className={styles.horizon}>
+              Horizon
+              <select value={horizonWeeks} onChange={(e) => setHorizonWeeks(Number(e.target.value))}>
+                {HORIZONS.map((w) => (
+                  <option key={w} value={w}>
+                    {w} weeks
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
       </div>
 
@@ -473,7 +514,7 @@ export default function PlannerClient({
                 ))}
                 {/* Light day separators — only in the uncompressed present/future. */}
                 {Array.from({ length: totalDays + 1 }, (_, i) => i)
-                  .filter((off) => off >= todayOffset)
+                  .filter((off) => zoom || off >= todayOffset)
                   .map((off) => (
                     <div key={`d${off}`} className={styles.dayGrid} style={{ left: xOf(off), height: fullHeight }} />
                   ))}
@@ -488,7 +529,7 @@ export default function PlannerClient({
                     <div
                       key={`gd${px}`}
                       className={`${styles.dropGuide} ${px === drag.targetPx ? styles.dropTarget : ""}`}
-                      style={{ left: px, width: PX_PER_DAY, top: AXIS_H, height: fullHeight - AXIS_H, ["--stage-color" as string]: drag.color }}
+                      style={{ left: px, width: dayPx, top: AXIS_H, height: fullHeight - AXIS_H, ["--stage-color" as string]: drag.color }}
                     />
                   ))}
                 <div className={styles.today} style={{ left: pastWidth, height: fullHeight }} />
@@ -502,7 +543,7 @@ export default function PlannerClient({
                     <span
                       key={`dn${d.offset}`}
                       className={`${styles.dayNum} ${d.key === today ? styles.dayNumToday : ""}`}
-                      style={{ left: xOf(d.offset), width: PX_PER_DAY }}
+                      style={{ left: xOf(d.offset), width: dayPx }}
                     >
                       {d.dayOfMonth}
                     </span>
@@ -543,7 +584,7 @@ export default function PlannerClient({
                   const placed = !!r.placement;
                   const isDragging = drag?.dealId === r.dealId;
                   const offset = placed ? daysBetween(rangeStart, r.placement!.date) : todayOffset;
-                  if (!isDragging && placed && (offset < 0 || offset >= totalDays)) return null;
+                  if (!isDragging && (offset < 0 || offset >= totalDays)) return null;
                   const left = isDragging ? drag!.targetPx : xOf(offset);
                   const chipCls = r.issue ? styles.chipIssue : r.placement?.manual ? styles.chipPinned : styles.chipAuto;
                   const issueLabel =

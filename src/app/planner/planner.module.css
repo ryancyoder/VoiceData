@@ -80,6 +80,19 @@
   color: var(--text);
 }
 
+.fortnightNav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fortnightLabel {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-width: 150px;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .empty {
   background: var(--surface);
   border: 1px dashed var(--border);
