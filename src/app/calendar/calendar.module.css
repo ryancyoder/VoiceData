@@ -243,6 +243,7 @@
 
 .day-column {
   position: relative;
+  overflow: hidden;
   border-left: 1px solid var(--border);
   background-image: repeating-linear-gradient(
     to bottom,

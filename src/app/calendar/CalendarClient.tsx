@@ -376,6 +376,13 @@ export default function CalendarClient({
   // 1-week (7-day) or 2-week (14-day) span. Prev/Next/swipe page by the span.
   const [twoWeek, setTwoWeek] = useState(false);
   const span = twoWeek ? 14 : 7;
+  // Work Week also condenses the visible time range to business hours (6am–5pm);
+  // otherwise the full 24-hour day is shown. Event/block tops are shifted up by
+  // the grid's start hour so they line up with the condensed axis.
+  const START_HOUR = workWeek ? 6 : 0;
+  const END_HOUR = workWeek ? 17 : 24;
+  const VISIBLE_HOURS = END_HOUR - START_HOUR;
+  const GRID_OFFSET_PX = START_HOUR * HOUR_HEIGHT;
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(() => findLinkedEvent());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [annotatingPhoto, setAnnotatingPhoto] = useState<GeoPhoto | null>(null);
@@ -1115,8 +1122,9 @@ export default function CalendarClient({
   }
 
   useLayoutEffect(() => {
-    if (bodyRef.current) bodyRef.current.scrollTop = 6 * HOUR_HEIGHT;
-  }, []);
+    // Condensed work-week grid already starts at 6am, so no scroll offset needed.
+    if (bodyRef.current) bodyRef.current.scrollTop = workWeek ? 0 : 6 * HOUR_HEIGHT;
+  }, [workWeek]);
 
   const weekDays = useMemo(() => {
     const days = Array.from({ length: span }, (_, i) => addDays(weekStart, i));
@@ -1374,9 +1382,9 @@ export default function CalendarClient({
         {eventsInWeek.length === 0 && <div className={styles["empty-week"]}>No located photo events this week.</div>}
 
         <div className={styles["week-body"]} ref={bodyRef}>
-          <div className={styles["time-gutter"]} style={{ height: HOUR_HEIGHT * 24 }}>
-            {Array.from({ length: 24 }, (_, h) => (
-              <div key={h} className={styles["hour-label"]} style={{ top: h * HOUR_HEIGHT }}>
+          <div className={styles["time-gutter"]} style={{ height: HOUR_HEIGHT * VISIBLE_HOURS }}>
+            {Array.from({ length: VISIBLE_HOURS }, (_, i) => START_HOUR + i).map((h) => (
+              <div key={h} className={styles["hour-label"]} style={{ top: (h - START_HOUR) * HOUR_HEIGHT }}>
                 {formatHour(h)}
               </div>
             ))}
@@ -1406,14 +1414,14 @@ export default function CalendarClient({
                 key={day.toISOString()}
                 data-date={dayKey}
                 className={styles["day-column"]}
-                style={{ height: HOUR_HEIGHT * 24, ["--hour-height" as string]: `${HOUR_HEIGHT}px` }}
+                style={{ height: HOUR_HEIGHT * VISIBLE_HOURS, ["--hour-height" as string]: `${HOUR_HEIGHT}px` }}
               >
                 {dayBlocks.map(({ block, top, height }) => {
                   const color = blockColor(block);
                   const open = () => setBlockEditor({ block, date: block.blockDate ?? localDateKey(day) });
                   const bandDeals = assignmentsByWindow.get(`${block.id}|${dayKey}`) ?? [];
                   const bp = blockDragPreview?.blockId === block.id ? blockDragPreview : null;
-                  const bTop = bp ? (bp.startMin / 60) * HOUR_HEIGHT : top;
+                  const bTop = (bp ? (bp.startMin / 60) * HOUR_HEIGHT : top) - GRID_OFFSET_PX;
                   const bHeight = bp ? Math.max(6, ((bp.endMin - bp.startMin) / 60) * HOUR_HEIGHT) : height;
                   return (
                     <div
@@ -1502,7 +1510,7 @@ export default function CalendarClient({
                           : ""
                     } ${dragPreview?.eventId === event.id ? styles["is-dragging"] : ""}`}
                     style={{
-                      top,
+                      top: top - GRID_OFFSET_PX,
                       height,
                       left: `${(lane / totalLanes) * 100}%`,
                       width: `${100 / totalLanes}%`,
