@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
-import { linkToPropertyEvent } from "@/lib/events";
+import { linkToPropertyEvent, EVENT_TYPES, type EventType } from "@/lib/events";
 import { safeExtension } from "@/lib/storagePaths";
 import { resolvePhotoMetadata } from "@/lib/photoMetadata";
 
@@ -18,6 +18,11 @@ export async function POST(req: NextRequest) {
   const propertyId =
     typeof propertyIdRaw === "string" && propertyIdRaw.trim() && Number.isFinite(Number(propertyIdRaw))
       ? Number(propertyIdRaw)
+      : null;
+  const eventTypeRaw = formData.get("eventType");
+  const eventType: EventType | null =
+    typeof eventTypeRaw === "string" && (EVENT_TYPES as readonly string[]).includes(eventTypeRaw)
+      ? (eventTypeRaw as EventType)
       : null;
 
   if (!(file instanceof File)) {
@@ -43,7 +48,7 @@ export async function POST(req: NextRequest) {
     let resolvedDealId: number | null;
     let isOutlier: boolean;
     try {
-      const linked = await linkToPropertyEvent(propertyId, latitude, longitude, takenAt);
+      const linked = await linkToPropertyEvent(propertyId, latitude, longitude, takenAt, eventType);
       eventId = linked.eventId;
       resolvedDealId = linked.dealId;
       isOutlier = linked.isOutlier;

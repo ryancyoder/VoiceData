@@ -108,8 +108,11 @@ export async function findOrCreateEvent(input: {
   takenAt: string;
   propertyId: number | null;
   dealId?: number | null;
+  // Applied only when a brand-new event is created (never overrides the type of
+  // an existing event a photo merges into).
+  eventType?: EventType | null;
 }): Promise<{ event: Event; isOutlier: boolean }> {
-  const { latitude, longitude, takenAt, propertyId, dealId = null } = input;
+  const { latitude, longitude, takenAt, propertyId, dealId = null, eventType = null } = input;
   const takenAtMs = new Date(takenAt).getTime();
 
   const { data: existing, error } = await supabase.from("events").select("*");
@@ -167,6 +170,7 @@ export async function findOrCreateEvent(input: {
       longitude,
       property_id: propertyId,
       deal_id: dealId,
+      event_type: eventType,
     })
     .select()
     .single();
@@ -235,7 +239,8 @@ async function findOrCreateEventForDeal(
  */
 async function findOrCreateEventForProperty(
   propertyId: number,
-  takenAt: string
+  takenAt: string,
+  eventType: EventType | null = null
 ): Promise<{ event: Event; isOutlier: boolean }> {
   const takenAtMs = new Date(takenAt).getTime();
 
@@ -269,6 +274,7 @@ async function findOrCreateEventForProperty(
       start_time: new Date(newStartMs).toISOString(),
       end_time: new Date(newEndMs).toISOString(),
       property_id: propertyId,
+      event_type: eventType,
     })
     .select()
     .single();
@@ -293,7 +299,9 @@ export async function linkToPropertyEvent(
   propertyId: number | null,
   latitude: number | null,
   longitude: number | null,
-  takenAt: string | null
+  takenAt: string | null,
+  // Applied only to a newly-created event, never to one the media merges into.
+  eventType: EventType | null = null
 ): Promise<{ eventId: number; dealId: number | null; isOutlier: boolean }> {
   const effectiveTakenAt = takenAt ?? new Date().toISOString();
 
@@ -319,9 +327,10 @@ export async function linkToPropertyEvent(
       takenAt: effectiveTakenAt,
       propertyId,
       dealId: null,
+      eventType,
     }));
   } else if (propertyId != null) {
-    ({ event, isOutlier } = await findOrCreateEventForProperty(propertyId, effectiveTakenAt));
+    ({ event, isOutlier } = await findOrCreateEventForProperty(propertyId, effectiveTakenAt, eventType));
   } else {
     const { startMs, endMs } = roundEventRange(
       new Date(effectiveTakenAt).getTime(),
@@ -329,7 +338,7 @@ export async function linkToPropertyEvent(
     );
     const { data: created, error: insertError } = await supabase
       .from("events")
-      .insert({ start_time: new Date(startMs).toISOString(), end_time: new Date(endMs).toISOString() })
+      .insert({ start_time: new Date(startMs).toISOString(), end_time: new Date(endMs).toISOString(), event_type: eventType })
       .select()
       .single();
     if (insertError) throw new Error(insertError.message);

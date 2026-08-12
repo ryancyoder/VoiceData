@@ -11,6 +11,7 @@ import { capturePosterFrame } from "@/lib/videoPoster";
 import { compressVideo } from "@/lib/compressVideo";
 import { readClientExif } from "@/lib/clientExif";
 import { readVideoCreationTime } from "@/lib/videoMetadata";
+import { EVENT_TYPES, type EventType } from "@/lib/events";
 
 const MATCH_FETCH_TIMEOUT_MS = 8000;
 const UPLOAD_TIMEOUT_MS = 60000;
@@ -79,6 +80,9 @@ export default function PhotoUpload({
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [pasting, setPasting] = useState(false);
   const [bulkPropertyId, setBulkPropertyId] = useState<number | "">("");
+  // Event type applied to any NEW event this batch creates (never overrides an
+  // existing event the photos merge into). "" = leave untyped.
+  const [eventType, setEventType] = useState<EventType | "">("");
   const inputRef = useRef<HTMLInputElement>(null);
   const pasteTargetRef = useRef<HTMLTextAreaElement>(null);
   // Whether ⌘V should currently be treated as "paste a photo" — a ref, not
@@ -335,6 +339,7 @@ export default function PhotoUpload({
     const url = target.kind === "event" ? `/api/events/${target.eventId}/photos` : "/api/photos";
     if (target.kind === "property" && target.propertyId != null) {
       formData.append("propertyId", String(target.propertyId));
+      if (eventType) formData.append("eventType", eventType);
     }
 
     const res = await fetchWithTimeout(url, { method: "POST", body: formData }, UPLOAD_TIMEOUT_MS);
@@ -383,7 +388,10 @@ export default function PhotoUpload({
 
     const finalizePath = target.kind === "event" ? `/api/events/${target.eventId}/videos` : "/api/videos";
     const finalizeBody: Record<string, unknown> = { videoPath: urlData.video.path, posterPath, takenAt: item.takenAt };
-    if (target.kind === "property" && target.propertyId != null) finalizeBody.propertyId = target.propertyId;
+    if (target.kind === "property" && target.propertyId != null) {
+      finalizeBody.propertyId = target.propertyId;
+      if (eventType) finalizeBody.eventType = eventType;
+    }
 
     const finalizeRes = await fetchWithTimeout(
       finalizePath,
@@ -419,7 +427,7 @@ export default function PhotoUpload({
           end_time: new Date(endMs).toISOString(),
           property_id: null,
           deal_id: null,
-          event_type: null,
+          event_type: eventType || null,
         }),
       },
       MATCH_FETCH_TIMEOUT_MS
@@ -580,6 +588,24 @@ export default function PhotoUpload({
               <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={closePanel} disabled={uploading}>
                 ×
               </button>
+            </div>
+
+            <div className={styles["upload-eventtype-row"]}>
+              <label className={styles["upload-eventtype-label"]}>Event type for new events</label>
+              <select
+                className={styles["upload-select"]}
+                value={eventType}
+                disabled={uploading}
+                onChange={(e) => setEventType(e.target.value ? (e.target.value as EventType) : "")}
+                title="Applied to any new event these photos create; existing events keep their type"
+              >
+                <option value="">— none —</option>
+                {EVENT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {pending.length > 1 && (

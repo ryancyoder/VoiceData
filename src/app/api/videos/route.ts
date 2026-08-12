@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
-import { linkToPropertyEvent } from "@/lib/events";
+import { linkToPropertyEvent, EVENT_TYPES, type EventType } from "@/lib/events";
 
 // Called after the browser has already uploaded the video (and optional
 // poster image) directly to Storage via a signed URL from upload-url/route.
@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     latitude?: unknown;
     longitude?: unknown;
     caption?: unknown;
+    eventType?: unknown;
   };
 
   const videoPath = typeof body.videoPath === "string" ? body.videoPath : "";
@@ -43,12 +44,17 @@ export async function POST(req: NextRequest) {
     if (!isNaN(parsed.getTime())) takenAt = parsed.toISOString();
   }
 
+  const eventType: EventType | null =
+    typeof body.eventType === "string" && (EVENT_TYPES as readonly string[]).includes(body.eventType)
+      ? (body.eventType as EventType)
+      : null;
+
   try {
     let eventId: number;
     let resolvedDealId: number | null;
     let isOutlier: boolean;
     try {
-      const linked = await linkToPropertyEvent(propertyId, latitude, longitude, takenAt);
+      const linked = await linkToPropertyEvent(propertyId, latitude, longitude, takenAt, eventType);
       eventId = linked.eventId;
       resolvedDealId = linked.dealId;
       isOutlier = linked.isOutlier;
