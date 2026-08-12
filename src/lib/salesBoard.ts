@@ -17,11 +17,16 @@ export type Stage = (typeof STAGES)[number];
 // (deal_id set, event_id null) so it lives in the deal's gallery without being
 // a calendar event.
 export const SITE_PLAN_IMAGE_TYPE = "Site_Plan_Image";
-export type PhotoType = typeof SITE_PLAN_IMAGE_TYPE | null;
+// A general-reference photo of a property itself — not tied to any calendar
+// event or deal (event_id null, deal_id null, property_id set). Lives in the
+// property's album under a "General reference" section.
+export const PROPERTY_REFERENCE_TYPE = "Property_Reference";
+export type PhotoType = typeof SITE_PLAN_IMAGE_TYPE | typeof PROPERTY_REFERENCE_TYPE | null;
 
 export interface DealPhoto {
   id: number;
   deal_id: number | null;
+  property_id?: number | null;
   storage_path: string;
   caption: string | null;
   created_at: string;

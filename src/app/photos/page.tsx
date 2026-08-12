@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
-import { SITE_PLAN_IMAGE_TYPE, type DealPhoto } from "@/lib/salesBoard";
+import { SITE_PLAN_IMAGE_TYPE, PROPERTY_REFERENCE_TYPE, type DealPhoto } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
-import PhotoGalleryClient, { type GalleryEvent } from "./PhotoGalleryClient";
+import PhotoGalleryClient, { type GalleryEvent, refEventId } from "./PhotoGalleryClient";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +115,51 @@ export default async function PhotosPage() {
     };
   });
 
+  // General-reference photos are event-less (and deal-less) property photos, so
+  // they don't come through either query above. Fetch them and slot one
+  // synthetic "General reference" group per property into the same album tree.
+  const { data: refData, error: refError } = await supabase
+    .from("deal_photos")
+    .select("*, properties(id, address, cover_photo_id, contacts(last_name))")
+    .eq("photo_type", PROPERTY_REFERENCE_TYPE)
+    .order("created_at", { ascending: false });
+
+  if (refError) {
+    throw new Error(`Failed to load reference photos: ${refError.message}`);
+  }
+
+  type RawRef = DealPhoto & {
+    properties: { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null } | null;
+  };
+  const refByProperty = new Map<number, RawRef[]>();
+  for (const row of (refData ?? []) as unknown as RawRef[]) {
+    if (!row.properties) continue;
+    const list = refByProperty.get(row.properties.id) ?? [];
+    list.push(row);
+    refByProperty.set(row.properties.id, list);
+  }
+
+  const referenceEvents: GalleryEvent[] = Array.from(refByProperty.entries()).map(([propertyId, rows]) => {
+    const prop = rows[0].properties!;
+    return {
+      id: refEventId(propertyId),
+      name: "General reference",
+      start_time: rows[0].created_at,
+      end_time: rows[0].created_at,
+      event_type: null,
+      isPropertyReference: true,
+      photos: rows.map(({ properties: _p, ...photo }) => photo as DealPhoto),
+      dealId: null,
+      dealName: null,
+      dealCompany: null,
+      dealStage: null,
+      propertyId,
+      propertyAddress: prop.address,
+      propertyContactLastName: prop.contacts?.last_name ?? null,
+      propertyCoverPhotoId: prop.cover_photo_id,
+    };
+  });
+
   // Append after real events so a jobsite photo stays the default album cover.
-  return <PhotoGalleryClient events={[...events, ...sitePlanEvents]} />;
+  return <PhotoGalleryClient events={[...events, ...sitePlanEvents, ...referenceEvents]} />;
 }

@@ -42,6 +42,15 @@ export interface GalleryEvent {
   // (uploaded from the estimator). Rendered with a SITE PLAN badge and no
   // calendar link / add controls, since it isn't a real calendar event.
   isSitePlan?: boolean;
+  // A synthetic group holding a property's event-less general-reference photos.
+  // Rendered under a "General reference" section with its own uploader.
+  isPropertyReference?: boolean;
+}
+
+// Deterministic synthetic event id for a property's reference-photo group,
+// offset far from real ids and the site-plan groups (-dealId).
+export function refEventId(propertyId: number): number {
+  return -2_000_000 - propertyId;
 }
 
 interface DealGroup {
@@ -56,11 +65,14 @@ interface PropertyGroup {
   propertyId: number | null;
   propertyLabel: string;
   coverPhotoId: number | null;
+  referencePhotos: DealPhoto[];
   deals: DealGroup[];
 }
 
 function flattenPropertyPhotos(property: PropertyGroup): DealPhoto[] {
-  return property.deals.flatMap((d) => d.events.flatMap((e) => e.photos));
+  // Reference photos come first so they line up with the render order (the
+  // General reference section is drawn above the deal groups).
+  return [...property.referencePhotos, ...property.deals.flatMap((d) => d.events.flatMap((e) => e.photos))];
 }
 
 function propertyKey(propertyId: number | null): string {
@@ -85,6 +97,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const [coverOverrides, setCoverOverrides] = useState<Map<string, number | null>>(new Map());
   const scrollTargetDealId = useRef<number | null>(null);
   const [uploadingEventId, setUploadingEventId] = useState<number | null>(null);
+  const [uploadingPropertyId, setUploadingPropertyId] = useState<number | null>(null);
   const [pasteFeedback, setPasteFeedback] = useState<{ eventId: number; message: string } | null>(null);
   const pasteTargetRef = useRef<HTMLTextAreaElement>(null);
   // Which event (if any) a bare ⌘V should be treated as "add a photo to" —
@@ -96,10 +109,10 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const propertyGroups = useMemo(() => {
     const propMap = new Map<
       string,
-      { propertyId: number | null; propertyLabel: string; coverPhotoId: number | null; dealMap: Map<string, DealGroup> }
+      { propertyId: number | null; propertyLabel: string; coverPhotoId: number | null; referencePhotos: DealPhoto[]; dealMap: Map<string, DealGroup> }
     >();
     for (const event of events) {
-      if (event.photos.length === 0) continue;
+      if (event.photos.length === 0 && !event.isPropertyReference) continue;
       const pKey = propertyKey(event.propertyId);
       if (!propMap.has(pKey)) {
         propMap.set(pKey, {
@@ -108,10 +121,19 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
             ? formatPropertyLabel({ address: event.propertyAddress, contactLastName: event.propertyContactLastName })
             : "No property",
           coverPhotoId: event.propertyCoverPhotoId,
+          referencePhotos: [],
           dealMap: new Map(),
         });
       }
       const propGroup = propMap.get(pKey)!;
+      // General-reference photos attach to the property, not any deal/event.
+      if (event.isPropertyReference) {
+        propGroup.referencePhotos.push(...event.photos);
+        if (event.propertyAddress && propGroup.propertyLabel === "No property") {
+          propGroup.propertyLabel = formatPropertyLabel({ address: event.propertyAddress, contactLastName: event.propertyContactLastName });
+        }
+        continue;
+      }
       const dKey = event.dealId != null ? String(event.dealId) : "none";
       if (!propGroup.dealMap.has(dKey)) {
         propGroup.dealMap.set(dKey, {
@@ -129,6 +151,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
         propertyId: p.propertyId,
         propertyLabel: p.propertyLabel,
         coverPhotoId: coverOverrides.has(key) ? coverOverrides.get(key)! : p.coverPhotoId,
+        referencePhotos: p.referencePhotos,
         deals: Array.from(p.dealMap.values()),
       }))
       .sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel));
@@ -353,6 +376,67 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     [uploadPhotoToEvent]
   );
 
+  // General-reference (property-level, event-less) photo upload.
+  const uploadPhotoToProperty = useCallback(async (propertyId: number, coverPhotoId: number | null, file: File) => {
+    const { gps, takenAt } = await readClientExif(file);
+    const uploadFile = await compressImage(file);
+    const formData = new FormData();
+    formData.append("file", uploadFile);
+    if (gps) {
+      formData.append("latitude", String(gps.latitude));
+      formData.append("longitude", String(gps.longitude));
+    }
+    if (takenAt) formData.append("takenAt", takenAt);
+
+    const res = await fetchWithTimeout(`/api/properties/${propertyId}/photos`, { method: "POST", body: formData }, UPLOAD_TIMEOUT_MS);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Upload failed");
+
+    const photo = data.photo as DealPhoto;
+    const evId = refEventId(propertyId);
+    setEvents((es) => {
+      if (es.some((e) => e.id === evId)) {
+        return es.map((e) => (e.id === evId ? { ...e, photos: [...e.photos, photo] } : e));
+      }
+      // First reference photo for this property — synthesize its group.
+      return [
+        ...es,
+        {
+          id: evId,
+          name: "General reference",
+          start_time: photo.created_at,
+          end_time: photo.created_at,
+          event_type: null,
+          isPropertyReference: true,
+          photos: [photo],
+          dealId: null,
+          dealName: null,
+          dealCompany: null,
+          dealStage: null,
+          propertyId,
+          propertyAddress: null,
+          propertyContactLastName: null,
+          propertyCoverPhotoId: coverPhotoId,
+        },
+      ];
+    });
+  }, []);
+
+  const uploadFilesToProperty = useCallback(
+    async (propertyId: number, coverPhotoId: number | null, files: File[]) => {
+      if (files.length === 0) return;
+      setUploadingPropertyId(propertyId);
+      try {
+        for (const file of files) await uploadPhotoToProperty(propertyId, coverPhotoId, file);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setUploadingPropertyId(null);
+      }
+    },
+    [uploadPhotoToProperty]
+  );
+
   function armPasteForEvent(eventId: number) {
     pasteArmedEventIdRef.current = eventId;
     pasteTargetRef.current?.focus();
@@ -540,6 +624,93 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                   value=""
                   onChange={() => {}}
                 />
+                {activeProperty.propertyId != null && (
+                  <div className={styles["deal-group"]}>
+                    <div className={styles["event-groups"]}>
+                      <div className={styles["event-group"]}>
+                        <div className={styles["event-group-header"]}>
+                          <span className={styles["event-type-badge"]}>REFERENCE</span>
+                          <span className={styles["event-group-name"]}>General reference</span>
+                          <span className={styles["event-group-date"]}>property photos — not event-specific</span>
+                          <span className={styles["event-add-actions"]}>
+                            <label className={styles["event-add-btn"]}>
+                              + Add
+                              <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                disabled={uploadingPropertyId === activeProperty.propertyId}
+                                onChange={(e) => {
+                                  const files = e.target.files ? Array.from(e.target.files) : [];
+                                  e.target.value = "";
+                                  if (files.length > 0) uploadFilesToProperty(activeProperty.propertyId!, activeProperty.coverPhotoId, files);
+                                }}
+                              />
+                            </label>
+                            {uploadingPropertyId === activeProperty.propertyId && (
+                              <span className={styles["event-upload-status"]}>Uploading…</span>
+                            )}
+                          </span>
+                        </div>
+                        {activeProperty.referencePhotos.length > 0 ? (
+                          <div className={styles.grid}>
+                            {activeProperty.referencePhotos.map((photo) => {
+                              runningIndex += 1;
+                              const i = runningIndex;
+                              const thumbUrl = dealThumbUrl(photo);
+                              return (
+                                <div key={photo.id} className={styles.thumb}>
+                                  <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
+                                    <span className={styles["thumb-image-wrap"]}>
+                                      {thumbUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={thumbUrl} alt={photo.caption ?? "Reference photo"} loading="lazy" />
+                                      ) : (
+                                        <span className={styles["thumb-placeholder"]}>🎬</span>
+                                      )}
+                                      {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                                      {showCaptions && photo.caption && (
+                                        <span className={styles["thumb-caption-overlay"]}>{photo.caption}</span>
+                                      )}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`${styles["thumb-cover"]} ${photo.id === activeProperty.coverPhotoId ? styles["is-cover"] : ""}`}
+                                    aria-label={photo.id === activeProperty.coverPhotoId ? "Unset as cover photo" : "Set as cover photo"}
+                                    title={photo.id === activeProperty.coverPhotoId ? "Cover photo — click to unset" : "Set as cover photo"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSetCover(activeProperty, photo.id === activeProperty.coverPhotoId ? null : photo.id);
+                                    }}
+                                  >
+                                    {photo.id === activeProperty.coverPhotoId ? "★" : "☆"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={styles["thumb-delete"]}
+                                    aria-label="Delete photo"
+                                    disabled={deletingId === photo.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDelete(photo);
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className={styles["reference-empty"]}>
+                            No reference photos yet — add general property photos here.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {activeProperty.deals.map((deal) => (
                   <div key={deal.dealId ?? "none"} className={styles["deal-group"]} data-deal-group={deal.dealId ?? undefined}>
                     <div className={styles["deal-group-header"]}>
