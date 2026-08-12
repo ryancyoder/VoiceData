@@ -68,6 +68,7 @@ export default function CameraCapture() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [cameraOn, setCameraOn] = useState(false);
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -81,6 +82,8 @@ export default function CameraCapture() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const finalTranscriptRef = useRef("");
   const captionBaseRef = useRef(""); // caption text present when dictation (re)starts
@@ -162,32 +165,110 @@ export default function CameraCapture() {
   }
 
   // ─── Capture ────────────────────────────────────────────────────────
-  function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
-    const chosen = e.target.files?.[0];
-    // Reset the input so picking the same file again re-fires change.
-    e.target.value = "";
-    if (!chosen) return;
-
-    setFile(chosen);
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return URL.createObjectURL(chosen);
-    });
+  // Clear any prior draft state; called synchronously at the capture gesture.
+  function prepareForCapture() {
     setCaption("");
     setCandidates([]);
     setSelectedPropertyId(null);
     setPropFilter("");
     setGps(null);
+  }
+
+  // Move from a captured File into the review/annotate sheet. Dictation is
+  // started separately, at the gesture site, so iOS keeps the user activation.
+  function beginReview(captured: File) {
+    setFile(captured);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(captured);
+    });
     setOpen(true);
-
-    // Start dictation synchronously within this change gesture — iOS only
-    // allows speech recognition to begin from a user activation.
-    startListening();
-
-    // Location + property list load in the background.
     if (allProperties.length === 0) loadProperties();
     requestLocation();
   }
+
+  // Live in-app camera (getUserMedia) so a single shutter tap captures the
+  // frame — no native iOS "Use Photo / Retake" confirmation. Falls back to the
+  // native file picker when a live camera isn't available or is denied.
+  async function openCamera() {
+    const md = navigator.mediaDevices;
+    if (!md?.getUserMedia) {
+      fileInputRef.current?.click();
+      return;
+    }
+    try {
+      const stream = await md.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1440 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCameraOn(true);
+    } catch {
+      // No camera, or permission denied — fall back to the native picker.
+      fileInputRef.current?.click();
+    }
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraOn(false);
+  }
+
+  // Grab the current video frame straight into the review sheet.
+  function capturePhoto() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+
+    // Speech recognition must begin from this tap's user activation (iOS).
+    prepareForCapture();
+    startListening();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      stopCamera();
+      showMessage("Couldn't capture the photo — try again.");
+      return;
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    stopCamera();
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          showMessage("Couldn't capture the photo — try again.");
+          return;
+        }
+        beginReview(new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
+      },
+      "image/jpeg",
+      0.92
+    );
+  }
+
+  // Fallback path: a photo chosen via the native file input.
+  function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const chosen = e.target.files?.[0];
+    // Reset the input so picking the same file again re-fires change.
+    e.target.value = "";
+    if (!chosen) return;
+    prepareForCapture();
+    // Start dictation synchronously within this change gesture (iOS).
+    startListening();
+    beginReview(chosen);
+  }
+
+  // Attach the live stream once the <video> is mounted.
+  useEffect(() => {
+    if (cameraOn && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {
+        /* autoplay rejection is harmless — the stream still renders */
+      });
+    }
+  }, [cameraOn]);
 
   async function loadProperties() {
     try {
@@ -303,6 +384,7 @@ export default function CameraCapture() {
       if (messageTimerRef.current) clearTimeout(messageTimerRef.current);
       if (maxListenTimerRef.current) clearTimeout(maxListenTimerRef.current);
       recognitionRef.current?.abort();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -329,7 +411,7 @@ export default function CameraCapture() {
 
       <button
         type="button"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={openCamera}
         title="Photo + voice note"
         aria-label="Capture photo with voice note"
         className="fixed bottom-[12rem] right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-600 shadow-lg hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
@@ -339,6 +421,32 @@ export default function CameraCapture() {
           <circle cx="12" cy="13" r="4" />
         </svg>
       </button>
+
+      {cameraOn && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black">
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video ref={videoRef} playsInline muted autoPlay className="min-h-0 flex-1 w-full object-contain" />
+          <button
+            type="button"
+            onClick={stopCamera}
+            aria-label="Close camera"
+            className="absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
+            style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+          <div className="flex items-center justify-center py-6" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
+            <button
+              type="button"
+              onClick={capturePhoto}
+              aria-label="Take photo"
+              className="h-16 w-16 rounded-full border-4 border-white bg-white/30 ring-2 ring-black/20 active:bg-white/60"
+            />
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={(e) => e.target === e.currentTarget && !saving && close()}>
