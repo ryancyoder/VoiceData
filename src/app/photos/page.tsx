@@ -42,7 +42,12 @@ export default async function PhotosPage() {
   const { data, error } = await supabase
     .from("events")
     .select(
-      'id, name, start_time, end_time, event_type, property_id, deal_id, deal_photos(*), deal:"Sales Board"(id, deal_name, company, stage, lost_at), properties(id, address, cover_photo_id, contacts(last_name))'
+      // deal_photos has FKs to events, "Sales Board", AND properties, so
+      // PostgREST now sees it as a junction table between every pair of them.
+      // That makes both the "Sales Board" and properties embeds below ambiguous
+      // (each is reachable directly AND via the deal_photos junction), so we pin
+      // each to its direct foreign-key column with a `!<column>` hint.
+      'id, name, start_time, end_time, event_type, property_id, deal_id, deal_photos(*), deal:"Sales Board"!deal_id(id, deal_name, company, stage, lost_at), properties!property_id(id, address, cover_photo_id, contacts(last_name))'
     )
     .order("start_time", { ascending: true });
 
@@ -77,7 +82,10 @@ export default async function PhotosPage() {
   const { data: sitePlanData, error: sitePlanError } = await supabase
     .from("deal_photos")
     .select(
-      '*, deal:"Sales Board"(id, deal_name, company, stage, property_id, properties(id, address, cover_photo_id, contacts(last_name)))'
+      // properties is reachable from "Sales Board" both directly and via the
+      // deal_photos junction, so pin it to the direct FK column (see the events
+      // query above for the full explanation).
+      '*, deal:"Sales Board"(id, deal_name, company, stage, property_id, properties!property_id(id, address, cover_photo_id, contacts(last_name)))'
     )
     .eq("photo_type", SITE_PLAN_IMAGE_TYPE)
     .order("created_at", { ascending: false });
