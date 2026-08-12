@@ -152,7 +152,6 @@ const HOUR_HEIGHT = 48;
 const MIN_EVENT_MS = 20 * 60 * 1000;
 const SNAP_MS = 15 * 60 * 1000;
 const MIN_DRAG_DURATION_MS = SNAP_MS;
-const MS_PER_PX = (60 * 60 * 1000) / HOUR_HEIGHT;
 
 function snapToQuarterHour(ms: number) {
   return Math.round(ms / SNAP_MS) * SNAP_MS;
@@ -186,7 +185,7 @@ interface LaidOutEvent {
   height: number;
 }
 
-function layoutDay(day: Date, events: CalendarEvent[]): LaidOutEvent[] {
+function layoutDay(day: Date, events: CalendarEvent[], hourPx: number): LaidOutEvent[] {
   const dayStart = new Date(day);
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = addDays(dayStart, 1);
@@ -219,8 +218,8 @@ function layoutDay(day: Date, events: CalendarEvent[]): LaidOutEvent[] {
   const totalLanes = laneEndTimes.length || 1;
 
   return placed.map(({ event, lane, start, end }) => {
-    const top = ((start.getTime() - dayStart.getTime()) / 60000 / 60) * HOUR_HEIGHT;
-    const bottom = ((end.getTime() - dayStart.getTime()) / 60000 / 60) * HOUR_HEIGHT;
+    const top = ((start.getTime() - dayStart.getTime()) / 60000 / 60) * hourPx;
+    const bottom = ((end.getTime() - dayStart.getTime()) / 60000 / 60) * hourPx;
     return { event, lane, totalLanes, top, height: Math.max(4, bottom - top) };
   });
 }
@@ -249,15 +248,15 @@ function minToTime(min: number): string {
 
 // Planning blocks that fall on a given day, positioned by the same
 // minutes-from-midnight → pixel mapping the events use.
-function blocksForDay(day: Date, blocks: PlanningBlock[]): LaidOutBlock[] {
+function blocksForDay(day: Date, blocks: PlanningBlock[], hourPx: number): LaidOutBlock[] {
   const dateKey = localDateKey(day);
   const weekday = day.getDay();
   return blocks
     .filter((b) => blockOccursOn(b, dateKey, weekday))
     .map((b) => {
       const [sh, sm] = b.startTime.split(":").map(Number);
-      const top = ((sh * 60 + sm) / 60) * HOUR_HEIGHT;
-      const height = Math.max(6, blockHours(b.startTime, b.endTime) * HOUR_HEIGHT);
+      const top = ((sh * 60 + sm) / 60) * hourPx;
+      const height = Math.max(6, blockHours(b.startTime, b.endTime) * hourPx);
       return { block: b, top, height };
     });
 }
@@ -384,13 +383,21 @@ export default function CalendarClient({
   const START_HOUR = workWeek ? 6 : 0;
   const END_HOUR = workWeek ? 17 : 24;
   const VISIBLE_HOURS = END_HOUR - START_HOUR;
-  const GRID_OFFSET_PX = START_HOUR * HOUR_HEIGHT;
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(() => findLinkedEvent());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [annotatingPhoto, setAnnotatingPhoto] = useState<GeoPhoto | null>(null);
   const [revertingPhotoId, setRevertingPhotoId] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  // In the condensed work-week view the hours stretch to fill the grid's
+  // available height (so the axis fills the screen instead of leaving blank
+  // space); the full 24h view keeps a fixed hour height and scrolls. bodyH is
+  // the measured height of the scroll body.
+  const [bodyH, setBodyH] = useState(0);
+  const hourPx = workWeek && bodyH > 0 ? Math.max(HOUR_HEIGHT, bodyH / VISIBLE_HOURS) : HOUR_HEIGHT;
+  const msPerPx = (60 * 60 * 1000) / hourPx;
+  const GRID_OFFSET_PX = START_HOUR * hourPx;
 
   // A horizontal swipe changes the week, the same as tapping Prev/Next —
   // tracked passively (no preventDefault anywhere) so it never interferes
@@ -684,7 +691,7 @@ export default function CalendarClient({
   useEffect(() => {
     if (!isBlockDragging) return;
     const SNAP = 15;
-    const pxPerMin = HOUR_HEIGHT / 60;
+    const pxPerMin = hourPx / 60;
 
     function onMove(e: PointerEvent) {
       const d = blockDragRef.current;
@@ -786,7 +793,7 @@ export default function CalendarClient({
       const d = dragRef.current;
       if (!d) return;
       const deltaPx = e.clientY - d.startClientY;
-      const deltaMs = snapToQuarterHour(deltaPx * MS_PER_PX);
+      const deltaMs = snapToQuarterHour(deltaPx * msPerPx);
 
       let currentStartMs = d.originStartMs;
       let currentEndMs = d.originEndMs;
@@ -1128,6 +1135,16 @@ export default function CalendarClient({
     if (bodyRef.current) bodyRef.current.scrollTop = workWeek ? 0 : 6 * HOUR_HEIGHT;
   }, [workWeek]);
 
+  // Track the scroll body's height so the condensed work-week grid can stretch
+  // its hours to fill it.
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setBodyH(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const weekDays = useMemo(() => {
     const days = Array.from({ length: span }, (_, i) => addDays(weekStart, i));
     return workWeek ? days.filter((d) => d.getDay() !== 0 && d.getDay() !== 6) : days;
@@ -1384,21 +1401,21 @@ export default function CalendarClient({
         {eventsInWeek.length === 0 && <div className={styles["empty-week"]}>No located photo events this week.</div>}
 
         <div className={styles["week-body"]} ref={bodyRef}>
-          <div className={styles["time-gutter"]} style={{ height: HOUR_HEIGHT * VISIBLE_HOURS }}>
+          <div className={styles["time-gutter"]} style={{ height: hourPx * VISIBLE_HOURS }}>
             {Array.from({ length: VISIBLE_HOURS }, (_, i) => START_HOUR + i).map((h) => (
-              <div key={h} className={styles["hour-label"]} style={{ top: (h - START_HOUR) * HOUR_HEIGHT }}>
+              <div key={h} className={styles["hour-label"]} style={{ top: (h - START_HOUR) * hourPx }}>
                 {formatHour(h)}
               </div>
             ))}
           </div>
           {weekDays.map((day) => {
-            const laidOut = layoutDay(day, eventsForLayout);
+            const laidOut = layoutDay(day, eventsForLayout, hourPx);
             const dayKey = localDateKey(day);
             // While dragging, move the grabbed occurrence out of its origin day
             // into the target day. For a recurring block only that one occurrence
             // moves; the rest of the series stays in place.
             const dayBlocks = (() => {
-              const base = blocksForDay(day, blocks);
+              const base = blocksForDay(day, blocks, hourPx);
               if (!blockDragPreview) return base;
               const dragged = blocks.find((b) => b.id === blockDragPreview.blockId);
               if (!dragged) return base;
@@ -1416,15 +1433,15 @@ export default function CalendarClient({
                 key={day.toISOString()}
                 data-date={dayKey}
                 className={styles["day-column"]}
-                style={{ height: HOUR_HEIGHT * VISIBLE_HOURS, ["--hour-height" as string]: `${HOUR_HEIGHT}px` }}
+                style={{ height: hourPx * VISIBLE_HOURS, ["--hour-height" as string]: `${hourPx}px` }}
               >
                 {dayBlocks.map(({ block, top, height }) => {
                   const color = blockColor(block);
                   const open = () => setBlockEditor({ block, date: block.blockDate ?? localDateKey(day) });
                   const bandDeals = assignmentsByWindow.get(`${block.id}|${dayKey}`) ?? [];
                   const bp = blockDragPreview?.blockId === block.id ? blockDragPreview : null;
-                  const bTop = (bp ? (bp.startMin / 60) * HOUR_HEIGHT : top) - GRID_OFFSET_PX;
-                  const bHeight = bp ? Math.max(6, ((bp.endMin - bp.startMin) / 60) * HOUR_HEIGHT) : height;
+                  const bTop = (bp ? (bp.startMin / 60) * hourPx : top) - GRID_OFFSET_PX;
+                  const bHeight = bp ? Math.max(6, ((bp.endMin - bp.startMin) / 60) * hourPx) : height;
                   return (
                     <div
                       key={block.id}
