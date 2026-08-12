@@ -277,7 +277,7 @@
   top: 0;
   left: 0;
   width: 2px;
-  background: var(--c-propose);
+  background: #dc2626;
   z-index: 3;
   pointer-events: none;
 }
