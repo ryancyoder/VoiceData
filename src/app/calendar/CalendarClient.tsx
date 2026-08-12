@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./calendar.module.css";
 import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, type PropertyOption } from "@/lib/salesBoard";
 import { EVENT_TYPES, type EventType } from "@/lib/events";
+import { usePersistentState } from "@/lib/usePersistentState";
 import PhotoUpload from "./PhotoUpload";
 import EventMediaUpload from "./EventMediaUpload";
 import EventPhotoUpload from "./EventPhotoUpload";
@@ -371,10 +372,11 @@ export default function CalendarClient({
     return startOfWeek(linked ? new Date(linked.start) : new Date());
   });
   // Hides Sat/Sun from the grid without changing what a "week" means for
-  // navigation — Prev/Next/swipe still move by the full calendar week.
-  const [workWeek, setWorkWeek] = useState(false);
+  // navigation — Prev/Next/swipe still move by the full calendar week. Persisted
+  // so the chosen view sticks across reloads.
+  const [workWeek, setWorkWeek] = usePersistentState("calendar.workWeek", false);
   // 1-week (7-day) or 2-week (14-day) span. Prev/Next/swipe page by the span.
-  const [twoWeek, setTwoWeek] = useState(false);
+  const [twoWeek, setTwoWeek] = usePersistentState("calendar.twoWeek", false);
   const span = twoWeek ? 14 : 7;
   // Work Week also condenses the visible time range to business hours (6am–5pm);
   // otherwise the full 24-hour day is shown. Event/block tops are shifted up by

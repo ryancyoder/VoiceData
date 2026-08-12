@@ -5,6 +5,7 @@ import { STAGE_COLORS, type PlanningBlock } from "@/lib/planning/blocks";
 import type { ForecastDeal } from "@/lib/planning/schedule";
 import { computeBoard, type Placement, type BoardDealRow } from "@/lib/planning/board";
 import { STAGES, type Stage } from "@/lib/salesBoard";
+import { usePersistentState } from "@/lib/usePersistentState";
 import styles from "./planner.module.css";
 
 const PX_PER_DAY = 26;
@@ -120,9 +121,9 @@ export default function PlannerClient({
   initialPlacements: Placement[];
   stageDates: DealStageDates[];
 }) {
-  const [horizonWeeks, setHorizonWeeks] = useState(12);
-  const [viewMode, setViewMode] = useState<"full" | "fortnight">("full");
-  const [fortnightPage, setFortnightPage] = useState(0); // 0 = the current 2-week block
+  const [horizonWeeks, setHorizonWeeks] = usePersistentState("planner.horizonWeeks", 12);
+  const [viewMode, setViewMode] = usePersistentState<"full" | "fortnight">("planner.viewMode", "full");
+  const [fortnightPage, setFortnightPage] = useState(0); // 0 = the current 2-week block (navigation, not persisted)
   const [today] = useState(todayKey);
   const [placements, setPlacements] = useState<Map<number, Placement>>(() => {
     const m = new Map<number, Placement>();
@@ -131,15 +132,12 @@ export default function PlannerClient({
   });
   // Filter bar: which stages to show, and whether to restrict to deals whose
   // stage has planning blocks (the schedulable view this page used to show).
-  const [stageFilter, setStageFilter] = useState<Set<Stage>>(() => new Set(STAGES));
-  const [blocksOnly, setBlocksOnly] = useState(false);
+  // Persisted as an array (Sets don't JSON-serialize); used as a Set for lookups.
+  const [stageArr, setStageArr] = usePersistentState<Stage[]>("planner.stageFilter", [...STAGES]);
+  const stageFilter = useMemo(() => new Set(stageArr), [stageArr]);
+  const [blocksOnly, setBlocksOnly] = usePersistentState("planner.blocksOnly", false);
   function toggleStage(s: Stage) {
-    setStageFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
+    setStageArr((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
 
   const board = useMemo(
