@@ -19,7 +19,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  if (password !== appPassword) {
+  // Trim both sides: a trailing space/newline is easy to paste into the env var
+  // value by accident, which would otherwise reject the correct password.
+  if (password.trim() !== appPassword.trim()) {
     return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
   }
 
