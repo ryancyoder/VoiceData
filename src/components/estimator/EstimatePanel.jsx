@@ -21,6 +21,7 @@ export default function EstimatePanel({
   subtotal,
   metacategoryTotals,
   stageTotals,
+  stageOptions,
   totalLoads,
   taxAmount,
   total,
@@ -85,6 +86,7 @@ export default function EstimatePanel({
                         isActive={row.id === activeGroupId}
                         onSetActive={onSetActiveGroup}
                         hasMapLink={planShapes.some(s => s.groupId === row.id)}
+                        stageOptions={stageOptions}
                       >
                         <SortableContext
                           items={row.items.map(i => i.id)}
@@ -129,6 +131,7 @@ export default function EstimatePanel({
             subtotal={subtotal}
             metacategoryTotals={metacategoryTotals}
             stageTotals={stageTotals}
+            stageOptions={stageOptions}
             totalLoads={totalLoads}
             taxAmount={taxAmount}
             total={total}

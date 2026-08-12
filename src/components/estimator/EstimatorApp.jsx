@@ -15,6 +15,7 @@ import {
 import { useEstimate, SHAPE_COLORS } from '@/lib/estimator/useEstimate';
 import { useCatalog } from '@/lib/estimator/useCatalog';
 import { useAssemblyKits } from '@/lib/estimator/useAssemblyKits';
+import { usePhases } from '@/lib/estimator/usePhases';
 import CatalogPanel from './CatalogPanel';
 import CatalogEditor from './CatalogEditor';
 import ImportModal from './ImportModal';
@@ -39,6 +40,7 @@ export default function App({ estimateId }) {
   };
   const { catalogItems, deliveryRate, updateDeliveryRate, updateCatalogItem, addCatalogItem, removeCatalogItem, saveCatalog } = useCatalog(catalogSource);
   const { kits, saveKit, removeKit, updateKit } = useAssemblyKits(catalogSource);
+  const { stageOptions } = usePhases();
 
   const {
     estimate,
@@ -458,6 +460,7 @@ export default function App({ estimateId }) {
               subtotal={subtotal}
               metacategoryTotals={metacategoryTotals}
               stageTotals={stageTotals}
+              stageOptions={stageOptions}
               totalLoads={totalLoads}
               taxAmount={taxAmount}
               total={total}

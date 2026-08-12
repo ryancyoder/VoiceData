@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { STAGE_ORDER, STAGE_LABELS } from '@/lib/estimator/catalog';
 
 function itemLineTotal(item) {
   if (item.isWallAssembly) {
@@ -43,7 +42,8 @@ function DimInput({ label, value, onChange, step = 'any', readOnly = false }) {
   );
 }
 
-export default function TakeOffGroupRow({ group, onUpdate, onToggleCollapse, onRemove, onSaveAsKit, isActive, onSetActive, hasMapLink, children }) {
+export default function TakeOffGroupRow({ group, onUpdate, onToggleCollapse, onRemove, onSaveAsKit, isActive, onSetActive, hasMapLink, stageOptions = [], children }) {
+  const stageLabelOf = (name) => stageOptions.find(s => s.name === name)?.label ?? name;
   const [notesOpen, setNotesOpen] = useState(!!group.notes);
   const hasNotes = !!group.notes;
   const faceFt = group.linearFt * group.height;
@@ -173,16 +173,16 @@ export default function TakeOffGroupRow({ group, onUpdate, onToggleCollapse, onR
               }`}
             >
               <option value="">Phase…</option>
-              {STAGE_ORDER.map(s => (
-                <option key={s} value={s}>{STAGE_LABELS[s]}</option>
+              {stageOptions.map(s => (
+                <option key={s.name} value={s.name}>{s.label}</option>
               ))}
-              {group.stage && !STAGE_ORDER.includes(group.stage) && (
+              {group.stage && !stageOptions.some(s => s.name === group.stage) && (
                 <option value={group.stage}>{group.stage}</option>
               )}
             </select>
             {group.stage && (
               <span className="hidden print:inline text-xs text-indigo-600 font-medium shrink-0">
-                {STAGE_LABELS[group.stage] ?? group.stage}
+                {stageLabelOf(group.stage)}
               </span>
             )}
           </>

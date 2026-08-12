@@ -1,4 +1,4 @@
-import { METACATEGORIES, STAGE_ORDER, STAGE_LABELS } from '@/lib/estimator/catalog';
+import { METACATEGORIES } from '@/lib/estimator/catalog';
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -11,12 +11,14 @@ const META_LABELS = {
   LOGISTICS: 'Logistics',
 };
 
-export default function EstimateSummary({ subtotal, metacategoryTotals, stageTotals, totalLoads, taxAmount, total, taxRate, onTaxRateChange }) {
+export default function EstimateSummary({ subtotal, metacategoryTotals, stageTotals, stageOptions = [], totalLoads, taxAmount, total, taxRate, onTaxRateChange }) {
   const activeMetas = METACATEGORIES.filter(m => (metacategoryTotals?.[m] ?? 0) > 0);
-  // Known stages first (in crew order), then any custom stage, then unstaged.
+  const stageOrder = stageOptions.map(s => s.name);
+  const stageLabelOf = (name) => stageOptions.find(s => s.name === name)?.label ?? name;
+  // Canonical sequence first (crew order), then any custom stage, then unstaged.
   const stageKeys = [
-    ...STAGE_ORDER.filter(s => (stageTotals?.[s] ?? 0) !== 0),
-    ...Object.keys(stageTotals ?? {}).filter(s => s !== 'unstaged' && !STAGE_ORDER.includes(s) && (stageTotals[s] ?? 0) !== 0),
+    ...stageOrder.filter(s => (stageTotals?.[s] ?? 0) !== 0),
+    ...Object.keys(stageTotals ?? {}).filter(s => s !== 'unstaged' && !stageOrder.includes(s) && (stageTotals[s] ?? 0) !== 0),
     ...(((stageTotals?.unstaged ?? 0) !== 0) ? ['unstaged'] : []),
   ];
   // Only worth showing the phase breakdown once work is actually split by stage.
@@ -51,7 +53,7 @@ export default function EstimateSummary({ subtotal, metacategoryTotals, stageTot
             <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">By phase</div>
             {stageKeys.map(stage => (
               <div key={stage} className="flex justify-between text-xs text-gray-500">
-                <span>{stage === 'unstaged' ? 'Unstaged' : (STAGE_LABELS[stage] ?? stage)}</span>
+                <span>{stage === 'unstaged' ? 'Unstaged' : stageLabelOf(stage)}</span>
                 <span>${fmt(stageTotals[stage])}</span>
               </div>
             ))}
