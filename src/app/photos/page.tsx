@@ -1,23 +1,33 @@
 import { supabase } from "@/lib/supabaseClient";
 import { SITE_PLAN_IMAGE_TYPE, PROPERTY_REFERENCE_TYPE, type DealPhoto } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
-import PhotoGalleryClient, { type GalleryEvent, refEventId } from "./PhotoGalleryClient";
+import PhotoGalleryClient, { type GalleryEvent } from "./PhotoGalleryClient";
+import { refEventId } from "./refEventId";
 
 export const dynamic = "force-dynamic";
 
-// A deal's event-less site plan photos, joined to their deal + property so
-// they can be slotted into the album's property→deal grouping.
-type RawSitePlan = DealPhoto & {
-  deal:
-    | {
-        id: number;
-        deal_name: string;
-        company: string | null;
-        stage: string | null;
-        property_id: number | null;
-        properties: { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null } | null;
-      }
-    | null;
+// deal_photos now carries foreign keys to events, "Sales Board", AND
+// properties, so PostgREST treats it as a junction table between every pair of
+// those. Any embed that hops across those tables became ambiguous (reachable
+// both directly and through the deal_photos junction) and made the whole page
+// throw. To stay immune to that entirely, this page fetches each table with a
+// PLAIN query (no cross-table embeds except the single-FK ones that can never
+// be ambiguous) and joins them together in code by id.
+
+type PropRow = {
+  id: number;
+  address: string;
+  cover_photo_id: number | null;
+  contacts: { last_name: string | null } | null;
+};
+
+type DealRow = {
+  id: number;
+  deal_name: string;
+  company: string | null;
+  stage: string | null;
+  lost_at: string | null;
+  property_id: number | null;
 };
 
 type RawEvent = {
@@ -29,73 +39,114 @@ type RawEvent = {
   property_id: number | null;
   deal_id: number | null;
   deal_photos: DealPhoto[] | null;
-  deal: { id: number; deal_name: string; company: string | null; stage: string; lost_at: string | null } | null;
-  properties: { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null } | null;
 };
 
-export default async function PhotosPage() {
-  // Photos are reached only by way of their event, and an event's deal and
-  // property are each independent (an event may have neither, either, or
-  // both) — querying events directly, rather than starting from deals,
-  // is the only way to see every photographed event regardless of whether
-  // it's been attached to a deal yet.
+// Fetch properties (with their contact's last name) by id into a lookup map.
+// properties<->contacts is a single-FK relationship with no junction table, so
+// that one embed is always safe.
+async function fetchProperties(ids: number[]): Promise<Map<number, PropRow>> {
+  const map = new Map<number, PropRow>();
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return map;
   const { data, error } = await supabase
+    .from("properties")
+    .select("id, address, cover_photo_id, contacts(last_name)")
+    .in("id", unique);
+  if (error) throw new Error(`load properties: ${error.message}`);
+  for (const p of (data ?? []) as unknown as PropRow[]) map.set(p.id, p);
+  return map;
+}
+
+async function fetchDeals(ids: number[]): Promise<Map<number, DealRow>> {
+  const map = new Map<number, DealRow>();
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return map;
+  const { data, error } = await supabase
+    .from("Sales Board")
+    .select("id, deal_name, company, stage, lost_at, property_id")
+    .in("id", unique);
+  if (error) throw new Error(`load deals: ${error.message}`);
+  for (const d of (data ?? []) as unknown as DealRow[]) map.set(d.id, d);
+  return map;
+}
+
+async function loadGallery(): Promise<GalleryEvent[]> {
+  // 1) Events with their photos. deal_photos<->events is a single FK (no
+  //    junction), so this embed is unambiguous and safe.
+  const { data: eventData, error: eventError } = await supabase
     .from("events")
-    .select(
-      'id, name, start_time, end_time, event_type, property_id, deal_id, deal_photos(*), deal:"Sales Board"(id, deal_name, company, stage, lost_at), properties(id, address, cover_photo_id, contacts(last_name))'
-    )
+    .select("id, name, start_time, end_time, event_type, property_id, deal_id, deal_photos(*)")
     .order("start_time", { ascending: true });
+  if (eventError) throw new Error(`load events: ${eventError.message}`);
+  const rawEvents = (eventData ?? []) as unknown as RawEvent[];
 
-  if (error) {
-    throw new Error(`Failed to load photos: ${error.message}`);
-  }
-
-  const rawEvents = (data ?? []) as unknown as RawEvent[];
-
-  const events: GalleryEvent[] = rawEvents
-    .filter((e) => (e.deal_photos ?? []).length > 0)
-    .map((e) => ({
-      id: e.id,
-      name: e.name,
-      start_time: e.start_time,
-      end_time: e.end_time,
-      event_type: e.event_type,
-      photos: e.deal_photos ?? [],
-      dealId: e.deal_id,
-      dealName: e.deal?.deal_name ?? null,
-      dealCompany: e.deal?.company ?? null,
-      dealStage: e.deal?.stage ?? null,
-      propertyId: e.property_id,
-      propertyAddress: e.properties?.address ?? null,
-      propertyContactLastName: e.properties?.contacts?.last_name ?? null,
-      propertyCoverPhotoId: e.properties?.cover_photo_id ?? null,
-    }));
-
-  // Site plan images are event-less deal photos, so they don't come through the
-  // events query above. Fetch them separately and slot one synthetic "Site
-  // Plan" group per deal into the same property→deal album structure.
+  // 2) Site-plan photos (event-less deal photos), plain — grouped by deal below.
   const { data: sitePlanData, error: sitePlanError } = await supabase
     .from("deal_photos")
-    .select(
-      '*, deal:"Sales Board"(id, deal_name, company, stage, property_id, properties(id, address, cover_photo_id, contacts(last_name)))'
-    )
+    .select("*")
     .eq("photo_type", SITE_PLAN_IMAGE_TYPE)
     .order("created_at", { ascending: false });
+  if (sitePlanError) throw new Error(`load site plans: ${sitePlanError.message}`);
+  const sitePlanPhotos = (sitePlanData ?? []) as DealPhoto[];
 
-  if (sitePlanError) {
-    throw new Error(`Failed to load site plan photos: ${sitePlanError.message}`);
+  // 3) General-reference photos (event-less, deal-less property photos), plain.
+  const { data: refData, error: refError } = await supabase
+    .from("deal_photos")
+    .select("*")
+    .eq("photo_type", PROPERTY_REFERENCE_TYPE)
+    .order("created_at", { ascending: false });
+  if (refError) throw new Error(`load reference photos: ${refError.message}`);
+  const refPhotos = (refData ?? []) as DealPhoto[];
+
+  // Resolve every deal and property referenced above in two batched lookups.
+  const dealIds = [
+    ...rawEvents.map((e) => e.deal_id),
+    ...sitePlanPhotos.map((p) => p.deal_id),
+  ].filter((id): id is number => id != null);
+  const deals = await fetchDeals(dealIds);
+
+  const propertyIds = [
+    ...rawEvents.map((e) => e.property_id),
+    ...Array.from(deals.values()).map((d) => d.property_id),
+    ...refPhotos.map((p) => p.property_id),
+  ].filter((id): id is number => id != null);
+  const props = await fetchProperties(propertyIds);
+
+  // --- Real events -----------------------------------------------------------
+  const events: GalleryEvent[] = rawEvents
+    .filter((e) => (e.deal_photos ?? []).length > 0)
+    .map((e) => {
+      const deal = e.deal_id != null ? deals.get(e.deal_id) ?? null : null;
+      const prop = e.property_id != null ? props.get(e.property_id) ?? null : null;
+      return {
+        id: e.id,
+        name: e.name,
+        start_time: e.start_time,
+        end_time: e.end_time,
+        event_type: e.event_type,
+        photos: e.deal_photos ?? [],
+        dealId: e.deal_id,
+        dealName: deal?.deal_name ?? null,
+        dealCompany: deal?.company ?? null,
+        dealStage: deal?.stage ?? null,
+        propertyId: e.property_id,
+        propertyAddress: prop?.address ?? null,
+        propertyContactLastName: prop?.contacts?.last_name ?? null,
+        propertyCoverPhotoId: prop?.cover_photo_id ?? null,
+      };
+    });
+
+  // --- Site plans (one synthetic group per deal) -----------------------------
+  const sitePlansByDeal = new Map<number, DealPhoto[]>();
+  for (const photo of sitePlanPhotos) {
+    if (photo.deal_id == null || !deals.has(photo.deal_id)) continue;
+    const list = sitePlansByDeal.get(photo.deal_id) ?? [];
+    list.push(photo);
+    sitePlansByDeal.set(photo.deal_id, list);
   }
-
-  const sitePlansByDeal = new Map<number, RawSitePlan[]>();
-  for (const row of (sitePlanData ?? []) as unknown as RawSitePlan[]) {
-    if (!row.deal) continue;
-    const list = sitePlansByDeal.get(row.deal.id) ?? [];
-    list.push(row);
-    sitePlansByDeal.set(row.deal.id, list);
-  }
-
   const sitePlanEvents: GalleryEvent[] = Array.from(sitePlansByDeal.entries()).map(([dealId, rows]) => {
-    const deal = rows[0].deal!;
+    const deal = deals.get(dealId)!;
+    const prop = deal.property_id != null ? props.get(deal.property_id) ?? null : null;
     return {
       id: -dealId, // synthetic, negative so it never collides with a real event id
       name: "Site Plan",
@@ -103,47 +154,28 @@ export default async function PhotosPage() {
       end_time: rows[0].created_at,
       event_type: null,
       isSitePlan: true,
-      photos: rows.map(({ deal: _deal, ...photo }) => photo as DealPhoto),
+      photos: rows,
       dealId,
       dealName: deal.deal_name,
       dealCompany: deal.company,
       dealStage: deal.stage,
       propertyId: deal.property_id,
-      propertyAddress: deal.properties?.address ?? null,
-      propertyContactLastName: deal.properties?.contacts?.last_name ?? null,
-      propertyCoverPhotoId: deal.properties?.cover_photo_id ?? null,
+      propertyAddress: prop?.address ?? null,
+      propertyContactLastName: prop?.contacts?.last_name ?? null,
+      propertyCoverPhotoId: prop?.cover_photo_id ?? null,
     };
   });
 
-  // General-reference photos are event-less (and deal-less) property photos, so
-  // they don't come through either query above. Fetch them and slot one
-  // synthetic "General reference" group per property into the same album tree.
-  const { data: refData, error: refError } = await supabase
-    .from("deal_photos")
-    // Disambiguate the embed: deal_photos links to properties by BOTH
-    // property_id (this FK) and the reverse properties.cover_photo_id, so the
-    // relationship must be named explicitly or PostgREST errors as ambiguous.
-    .select("*, properties!deal_photos_property_id_fkey(id, address, cover_photo_id, contacts(last_name))")
-    .eq("photo_type", PROPERTY_REFERENCE_TYPE)
-    .order("created_at", { ascending: false });
-
-  if (refError) {
-    throw new Error(`Failed to load reference photos: ${refError.message}`);
+  // --- General reference (one synthetic group per property) ------------------
+  const refByProperty = new Map<number, DealPhoto[]>();
+  for (const photo of refPhotos) {
+    if (photo.property_id == null || !props.has(photo.property_id)) continue;
+    const list = refByProperty.get(photo.property_id) ?? [];
+    list.push(photo);
+    refByProperty.set(photo.property_id, list);
   }
-
-  type RawRef = DealPhoto & {
-    properties: { id: number; address: string; cover_photo_id: number | null; contacts: { last_name: string | null } | null } | null;
-  };
-  const refByProperty = new Map<number, RawRef[]>();
-  for (const row of (refData ?? []) as unknown as RawRef[]) {
-    if (!row.properties) continue;
-    const list = refByProperty.get(row.properties.id) ?? [];
-    list.push(row);
-    refByProperty.set(row.properties.id, list);
-  }
-
   const referenceEvents: GalleryEvent[] = Array.from(refByProperty.entries()).map(([propertyId, rows]) => {
-    const prop = rows[0].properties!;
+    const prop = props.get(propertyId)!;
     return {
       id: refEventId(propertyId),
       name: "General reference",
@@ -151,7 +183,7 @@ export default async function PhotosPage() {
       end_time: rows[0].created_at,
       event_type: null,
       isPropertyReference: true,
-      photos: rows.map(({ properties: _p, ...photo }) => photo as DealPhoto),
+      photos: rows,
       dealId: null,
       dealName: null,
       dealCompany: null,
@@ -163,6 +195,42 @@ export default async function PhotosPage() {
     };
   });
 
-  // Append after real events so a jobsite photo stays the default album cover.
-  return <PhotoGalleryClient events={[...events, ...sitePlanEvents, ...referenceEvents]} />;
+  // Append synthetic groups after real events so a jobsite photo stays the
+  // default album cover.
+  return [...events, ...sitePlanEvents, ...referenceEvents];
+}
+
+export default async function PhotosPage() {
+  let gallery: GalleryEvent[];
+  try {
+    gallery = await loadGallery();
+  } catch (err) {
+    // Surface the real message instead of Next's generic error digest, so the
+    // exact failing query is visible on the page.
+    const message = err instanceof Error ? err.message : String(err);
+    return (
+      <div style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
+        <h1 style={{ fontSize: "1.15rem", fontWeight: 700, marginBottom: 8 }}>Photos failed to load</h1>
+        <p style={{ color: "#71717a", fontSize: "0.9rem", marginBottom: 12 }}>
+          The gallery data query returned an error. Details:
+        </p>
+        <pre
+          style={{
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            color: "#b91c1c",
+            padding: 14,
+            borderRadius: 10,
+            fontSize: "0.85rem",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {message}
+        </pre>
+      </div>
+    );
+  }
+
+  return <PhotoGalleryClient events={gallery} />;
 }
