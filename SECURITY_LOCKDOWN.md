@@ -9,6 +9,14 @@ delete the whole database and storage. This branch closes that off:
    so the app keeps working once the open policies are removed.
 3. A final DB step **revokes anon access** and **removes anon write on storage**.
 
+**Chosen posture:** close the database (no anon read/write) and stop file
+tampering (no anon upload/overwrite/delete), but **keep buckets public-read** so
+image display needs zero code changes. Concretely: run steps **D.1, D.2, D.4**
+and **skip D.3**. Residual risk accepted: an individual file remains downloadable
+by anyone who has its exact random-UUID URL — but once D.1 runs, there's no way
+to enumerate those URLs, so bulk theft is closed. (To also close that last gap,
+switch image display to signed URLs and run D.3 — a later follow-up.)
+
 The code (steps 1–2) is safe to deploy *before* the DB step: the gate is
 inactive until `SESSION_TOKEN` is set, and the server falls back to the anon
 key until `SUPABASE_SERVICE_ROLE_KEY` is set. **Do the DB step (step D) only
