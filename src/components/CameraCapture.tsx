@@ -422,9 +422,9 @@ export default function CameraCapture() {
       </button>
 
       {cameraOn && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black">
+        <div className="fixed inset-0 z-50 bg-black">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video ref={videoRef} playsInline muted autoPlay className="min-h-0 flex-1 w-full object-contain" />
+          <video ref={videoRef} playsInline muted autoPlay className="h-full w-full object-contain" />
           <button
             type="button"
             onClick={stopCamera}
@@ -436,14 +436,14 @@ export default function CameraCapture() {
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
           </button>
-          <div className="flex items-center justify-center py-6" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
-            <button
-              type="button"
-              onClick={capturePhoto}
-              aria-label="Take photo"
-              className="h-16 w-16 rounded-full border-4 border-white bg-white/30 ring-2 ring-black/20 active:bg-white/60"
-            />
-          </div>
+          {/* Shutter on the middle-right edge (thumb-reach in landscape). */}
+          <button
+            type="button"
+            onClick={capturePhoto}
+            aria-label="Take photo"
+            className="absolute top-1/2 h-16 w-16 -translate-y-1/2 rounded-full border-4 border-white bg-white/30 ring-2 ring-black/20 active:bg-white/60"
+            style={{ right: "max(1.25rem, env(safe-area-inset-right))" }}
+          />
         </div>
       )}
 
