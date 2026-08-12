@@ -43,6 +43,7 @@ export async function GET() {
       id: p.id,
       label: p.address,
       subtitle: contactName || null,
+      contactLastName: contact?.last_name ?? null,
     };
   });
 

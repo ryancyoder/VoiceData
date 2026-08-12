@@ -195,10 +195,10 @@ export default function CameraCapture() {
       const data = await res.json();
       if (Array.isArray(data.properties)) {
         setAllProperties(
-          data.properties.map((p: { id: number; label: string; subtitle: string | null }) => ({
+          data.properties.map((p: { id: number; label: string; contactLastName: string | null }) => ({
             id: p.id,
             address: p.label,
-            contactLastName: null, // subtitle already folds in the contact name
+            contactLastName: p.contactLastName ?? null,
           }))
         );
       }
