@@ -373,6 +373,9 @@ export default function CalendarClient({
   // Hides Sat/Sun from the grid without changing what a "week" means for
   // navigation — Prev/Next/swipe still move by the full calendar week.
   const [workWeek, setWorkWeek] = useState(false);
+  // 1-week (7-day) or 2-week (14-day) span. Prev/Next/swipe page by the span.
+  const [twoWeek, setTwoWeek] = useState(false);
+  const span = twoWeek ? 14 : 7;
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(() => findLinkedEvent());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [annotatingPhoto, setAnnotatingPhoto] = useState<GeoPhoto | null>(null);
@@ -401,7 +404,7 @@ export default function CalendarClient({
     const dx = touch.clientX - start.x;
     const dy = touch.clientY - start.y;
     if (Math.abs(dx) < SWIPE_MIN_DISTANCE || Math.abs(dx) < Math.abs(dy) * SWIPE_DIRECTIONAL_RATIO) return;
-    setWeekStart((d) => addDays(d, dx < 0 ? 7 : -7));
+    setWeekStart((d) => addDays(d, dx < 0 ? span : -span));
   }
 
   // After creating an event elsewhere (e.g. the Outlook importer), the
@@ -1116,10 +1119,10 @@ export default function CalendarClient({
   }, []);
 
   const weekDays = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+    const days = Array.from({ length: span }, (_, i) => addDays(weekStart, i));
     return workWeek ? days.filter((d) => d.getDay() !== 0 && d.getDay() !== 6) : days;
-  }, [weekStart, workWeek]);
-  const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
+  }, [weekStart, workWeek, span]);
+  const weekEnd = useMemo(() => addDays(weekStart, span), [weekStart, span]);
 
   const eventsInWeek = useMemo(
     () => events.filter((e) => new Date(e.start) < weekEnd && new Date(e.end) >= weekStart),
@@ -1217,13 +1220,13 @@ export default function CalendarClient({
       </div>
 
       <div className={styles.toolbar}>
-        <button type="button" className={styles["nav-btn"]} onClick={() => setWeekStart((d) => addDays(d, -7))}>
+        <button type="button" className={styles["nav-btn"]} onClick={() => setWeekStart((d) => addDays(d, -span))}>
           ‹ Prev
         </button>
         <button type="button" className={styles["nav-btn"]} onClick={() => setWeekStart(startOfWeek(new Date()))}>
           Today
         </button>
-        <button type="button" className={styles["nav-btn"]} onClick={() => setWeekStart((d) => addDays(d, 7))}>
+        <button type="button" className={styles["nav-btn"]} onClick={() => setWeekStart((d) => addDays(d, span))}>
           Next ›
         </button>
         <button
@@ -1233,6 +1236,15 @@ export default function CalendarClient({
           aria-pressed={workWeek}
         >
           Work Week
+        </button>
+        <button
+          type="button"
+          className={`${styles["nav-btn"]} ${twoWeek ? styles["is-active"] : ""}`}
+          onClick={() => setTwoWeek((v) => !v)}
+          aria-pressed={twoWeek}
+          title="Toggle 1-week / 2-week view"
+        >
+          2 Weeks
         </button>
         <span className={styles["range-label"]}>{rangeLabel}</span>
         <PhotoUpload
