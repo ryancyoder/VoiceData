@@ -1,8 +1,18 @@
 # Security lockdown runbook
 
-Today the app ships the public Supabase **anon key** to the browser and every
-table/bucket has "allow all" policies for `anon`, so anyone can read/write/
-delete the whole database and storage. This branch closes that off:
+> **STATUS: COMPLETED.** Code (steps 1–2) merged to production and the three env
+> vars (`SUPABASE_SERVICE_ROLE_KEY`, `APP_PASSWORD`, `SESSION_TOKEN`) are set for
+> Production + Preview. The database step ran on the live project: **D.1** dropped
+> all 144 allow-all public policies, **D.2** dropped all 33 anon storage-write
+> policies (11 SELECT/public-read policies kept), and **D.4** pinned the
+> `plant_albums` search_path. **D.3 was intentionally skipped** — buckets remain
+> public-read. Security advisors now report only the expected
+> `rls_enabled_no_policy` INFO notices (RLS on + no policy = deny-all for anon).
+> The steps below are retained as the record and for rollback.
+
+Originally the app shipped the public Supabase **anon key** to the browser and
+every table/bucket had "allow all" policies for `anon`, so anyone could read/
+write/delete the whole database and storage. This closed that off:
 
 1. A **password gate** (middleware) in front of the whole app + API.
 2. The server Supabase client uses the **service-role key** (bypasses RLS),
