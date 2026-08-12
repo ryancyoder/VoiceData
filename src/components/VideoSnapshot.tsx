@@ -63,8 +63,6 @@ interface Stroke {
   width: number;
   points: Point[];
 }
-
-// A still captured during recording (with any markup), saved to the album.
 interface Snap {
   id: number;
   blob: Blob;
@@ -78,7 +76,6 @@ function distanceLabel(meters: number): string {
 }
 
 const MAX_OUTPUT_DIM = 1280;
-
 const PEN_COLORS = [
   { name: "Red", value: "#ef4444" },
   { name: "Yellow", value: "#facc15" },
@@ -88,13 +85,7 @@ const PEN_COLORS = [
 
 function pickMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
-  const candidates = [
-    "video/mp4",
-    "video/mp4;codecs=h264,aac",
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm",
-  ];
+  const candidates = ["video/mp4", "video/mp4;codecs=h264,aac", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
   for (const c of candidates) {
     try {
       if (MediaRecorder.isTypeSupported(c)) return c;
@@ -131,11 +122,21 @@ function drawStrokes(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
   }
 }
 
+function canvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number): Point {
+  const rect = canvas.getBoundingClientRect();
+  const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+  const offX = (rect.width - canvas.width * scale) / 2;
+  const offY = (rect.height - canvas.height * scale) / 2;
+  const x = Math.max(0, Math.min(canvas.width, (clientX - rect.left - offX) / scale));
+  const y = Math.max(0, Math.min(canvas.height, (clientY - rect.top - offY) / scale));
+  return { x, y };
+}
+
 export default function VideoSnapshot() {
   const router = useRouter();
 
   const [mode, setMode] = useState<"idle" | "recording" | "captioning" | "review">("idle");
-  const [frozen, setFrozen] = useState(false);
+  const [markingUp, setMarkingUp] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [markColor, setMarkColor] = useState(PEN_COLORS[0].value);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -153,26 +154,23 @@ export default function VideoSnapshot() {
 
   const streamRef = useRef<MediaStream | null>(null);
   const videoElRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const rafRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const mimeRef = useRef<string>("");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const discardRef = useRef(false);
 
-  const frozenRef = useRef(false);
-  const frozenBitmapRef = useRef<HTMLCanvasElement | null>(null);
-
-  const strokesRef = useRef<Stroke[]>([]);
-  const currentStrokeRef = useRef<Stroke | null>(null);
+  // Markup overlay (a still image drawn on its own light loop — no video).
+  const stillCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const markCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const markStrokesRef = useRef<Stroke[]>([]);
+  const markCurrentRef = useRef<Stroke | null>(null);
   const penSeenRef = useRef(false);
   const markColorRef = useRef(PEN_COLORS[0].value);
 
   const snapsRef = useRef<Snap[]>([]);
   const snapIdRef = useRef(0);
   const videoBlobRef = useRef<{ blob: Blob; mime: string } | null>(null);
-  const keepAliveRef = useRef(0);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const captionIntentRef = useRef(false);
@@ -192,149 +190,15 @@ export default function VideoSnapshot() {
     if (target) URL.revokeObjectURL(target.previewUrl);
     commitSnaps(snapsRef.current.filter((s) => s.id !== id));
   }
-
   function showMessage(text: string, ms = 4500) {
     setMessage(text);
     if (messageTimerRef.current) clearTimeout(messageTimerRef.current);
     messageTimerRef.current = setTimeout(() => setMessage(null), ms);
   }
 
-  // ─── Canvas compositing ─────────────────────────────────────────────
-  function startDrawLoop() {
-    const draw = () => {
-      const canvas = canvasRef.current;
-      const video = videoElRef.current;
-      if (canvas && video) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const w = canvas.width;
-          const h = canvas.height;
-          // Always draw the live video first — an occluded video that we stop
-          // reading gets paused by iOS, which froze the feed after the first
-          // snapshot. When frozen we cover it with the still + markup, so it
-          // keeps decoding underneath and comes right back on release.
-          if (video.readyState >= 2) ctx.drawImage(video, 0, 0, w, h);
-          if (video.paused) video.play().catch(() => {});
-          if (frozenRef.current && frozenBitmapRef.current) {
-            ctx.drawImage(frozenBitmapRef.current, 0, 0, w, h);
-            drawStrokes(ctx, strokesRef.current);
-          }
-          // 1px per-frame change so canvas.captureStream never sees a fully
-          // static canvas (which can make it stop emitting frames) during a
-          // freeze — keeps the recording flowing.
-          keepAliveRef.current ^= 1;
-          ctx.fillStyle = keepAliveRef.current ? "rgba(255,255,255,0.004)" : "rgba(0,0,0,0.004)";
-          ctx.fillRect(w - 1, h - 1, 1, 1);
-        }
-      }
-      rafRef.current = requestAnimationFrame(draw);
-    };
-    rafRef.current = requestAnimationFrame(draw);
-  }
-
-  // ─── Apple Pencil markup (only while frozen) ────────────────────────
-  function canvasPoint(clientX: number, clientY: number): Point {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
-    const offX = (rect.width - canvas.width * scale) / 2;
-    const offY = (rect.height - canvas.height * scale) / 2;
-    const x = Math.max(0, Math.min(canvas.width, (clientX - rect.left - offX) / scale));
-    const y = Math.max(0, Math.min(canvas.height, (clientY - rect.top - offY) / scale));
-    return { x, y };
-  }
-
-  function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!frozenRef.current || !canvasRef.current) return;
-    if (e.pointerType === "pen") penSeenRef.current = true;
-    else if (e.pointerType === "touch" && penSeenRef.current) return; // palm rejection once a pen is used
-    const width = Math.max(3, Math.round(canvasRef.current.width * 0.006));
-    const stroke: Stroke = { color: markColorRef.current, width, points: [canvasPoint(e.clientX, e.clientY)] };
-    currentStrokeRef.current = stroke;
-    strokesRef.current = [...strokesRef.current, stroke];
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-    e.preventDefault();
-  }
-  function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!frozenRef.current || !currentStrokeRef.current) return;
-    if (e.pointerType === "touch" && penSeenRef.current) return;
-    currentStrokeRef.current.points.push(canvasPoint(e.clientX, e.clientY));
-    e.preventDefault();
-  }
-  function onPointerUp() {
-    currentStrokeRef.current = null;
-  }
-  function undoStroke() {
-    strokesRef.current = strokesRef.current.slice(0, -1);
-  }
-  function clearStrokes() {
-    strokesRef.current = [];
-  }
-  function chooseColor(value: string) {
-    markColorRef.current = value;
-    setMarkColor(value);
-  }
-
-  // ─── Snap toggle (freeze on / off) ──────────────────────────────────
-  function toggleSnap() {
-    if (mode !== "recording") return;
-    if (!frozenRef.current) {
-      const video = videoElRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas) return;
-      const off = document.createElement("canvas");
-      off.width = canvas.width;
-      off.height = canvas.height;
-      const octx = off.getContext("2d");
-      if (!octx) return;
-      octx.drawImage(video, 0, 0, off.width, off.height);
-      frozenBitmapRef.current = off;
-      strokesRef.current = [];
-      currentStrokeRef.current = null;
-      frozenRef.current = true;
-      setFrozen(true);
-    } else {
-      // Bake the still + markup into a photo for the album.
-      const bmp = frozenBitmapRef.current;
-      const strokes = strokesRef.current;
-      if (bmp) {
-        const off = document.createElement("canvas");
-        off.width = bmp.width;
-        off.height = bmp.height;
-        const octx = off.getContext("2d");
-        if (octx) {
-          octx.drawImage(bmp, 0, 0);
-          drawStrokes(octx, strokes);
-          off.toBlob(
-            (blob) => {
-              if (!blob) return;
-              const id = ++snapIdRef.current;
-              commitSnaps([...snapsRef.current, { id, blob, previewUrl: URL.createObjectURL(blob), caption: "" }]);
-            },
-            "image/jpeg",
-            0.92
-          );
-        }
-      }
-      strokesRef.current = [];
-      currentStrokeRef.current = null;
-      frozenRef.current = false;
-      frozenBitmapRef.current = null;
-      setFrozen(false);
-    }
-  }
-
-  // ─── Recording lifecycle ────────────────────────────────────────────
+  // ─── Recording (raw camera stream — no canvas, so it's stable + smooth) ─
   async function startRecording() {
-    const testCanvas = document.createElement("canvas");
-    const supported =
-      typeof navigator.mediaDevices?.getUserMedia === "function" &&
-      typeof (testCanvas as HTMLCanvasElement & { captureStream?: unknown }).captureStream === "function" &&
-      typeof MediaRecorder !== "undefined";
+    const supported = typeof navigator.mediaDevices?.getUserMedia === "function" && typeof MediaRecorder !== "undefined";
     if (!supported) {
       showMessage("Video recording isn't supported in this browser. Try the photo tool, or Chrome on a computer.");
       return;
@@ -354,13 +218,10 @@ export default function VideoSnapshot() {
   }
 
   function startRecorder() {
-    const canvas = canvasRef.current;
     const stream = streamRef.current;
-    if (!canvas || !stream) return;
+    if (!stream || recorderRef.current) return;
     try {
-      const canvasStream = (canvas as HTMLCanvasElement & { captureStream: (fps?: number) => MediaStream }).captureStream(30);
-      const combined = new MediaStream([...canvasStream.getVideoTracks(), ...stream.getAudioTracks()]);
-      const recorder = mimeRef.current ? new MediaRecorder(combined, { mimeType: mimeRef.current }) : new MediaRecorder(combined);
+      const recorder = mimeRef.current ? new MediaRecorder(stream, { mimeType: mimeRef.current }) : new MediaRecorder(stream);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
@@ -381,7 +242,6 @@ export default function VideoSnapshot() {
         });
         if (allProperties.length === 0) loadProperties();
         requestLocation();
-        // Caption the snapshots one by one, then confirm the property.
         if (snapsRef.current.length > 0) {
           setCaptionIndex(0);
           setCaptionLive("");
@@ -402,25 +262,18 @@ export default function VideoSnapshot() {
   }
 
   function teardownCapture() {
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
-    frozenRef.current = false;
-    frozenBitmapRef.current = null;
-    strokesRef.current = [];
-    currentStrokeRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }
 
   function finishRecording() {
-    if (frozenRef.current) toggleSnap(); // release any open snap first
+    setMarkingUp(false);
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") recorder.stop(); // onstop → captioning/review
     recorderRef.current = null;
     teardownCapture();
-    setFrozen(false);
     setElapsed(0);
   }
 
@@ -430,41 +283,141 @@ export default function VideoSnapshot() {
     if (recorder && recorder.state !== "inactive") recorder.stop();
     recorderRef.current = null;
     teardownCapture();
-    setFrozen(false);
+    setMarkingUp(false);
     setElapsed(0);
     setMode("idle");
   }
 
+  // Attach the stream to the preview <video> and start recording the stream.
   useEffect(() => {
     if (mode !== "recording") return;
     const video = videoElRef.current;
-    const canvas = canvasRef.current;
     const stream = streamRef.current;
-    if (!video || !canvas || !stream) return;
+    if (!video || !stream) return;
     video.srcObject = stream;
     video.muted = true;
-    let cancelled = false;
-    const onReady = () => {
-      if (cancelled) return;
-      const vw = video.videoWidth || 1280;
-      const vh = video.videoHeight || 720;
-      const scale = Math.min(1, MAX_OUTPUT_DIM / Math.max(vw, vh));
-      canvas.width = Math.round(vw * scale);
-      canvas.height = Math.round(vh * scale);
-      startDrawLoop();
-      startRecorder();
-    };
-    video.onloadedmetadata = () => {
-      video.play().then(onReady).catch(onReady);
-    };
-    return () => {
-      cancelled = true;
-      video.onloadedmetadata = null;
-    };
+    video.play().catch(() => {});
+    startRecorder();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // ─── Caption cycle (mic is free — recording is done) ────────────────
+  // ─── Snapshot → markup overlay (recording keeps running underneath) ─────
+  function takeSnapshot() {
+    const video = videoElRef.current;
+    if (!video || !video.videoWidth) return;
+    const scale = Math.min(1, MAX_OUTPUT_DIM / Math.max(video.videoWidth, video.videoHeight));
+    const w = Math.round(video.videoWidth * scale);
+    const h = Math.round(video.videoHeight * scale);
+    const still = document.createElement("canvas");
+    still.width = w;
+    still.height = h;
+    still.getContext("2d")?.drawImage(video, 0, 0, w, h);
+    stillCanvasRef.current = still;
+    markStrokesRef.current = [];
+    markCurrentRef.current = null;
+    setMarkingUp(true);
+  }
+
+  // Light draw loop for the markup canvas (a static image + a few strokes).
+  useEffect(() => {
+    if (!markingUp) return;
+    const canvas = markCanvasRef.current;
+    const still = stillCanvasRef.current;
+    if (canvas && still) {
+      canvas.width = still.width;
+      canvas.height = still.height;
+    }
+    let raf = 0;
+    const draw = () => {
+      const c = markCanvasRef.current;
+      const s = stillCanvasRef.current;
+      if (c && s) {
+        const ctx = c.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(s, 0, 0, c.width, c.height);
+          drawStrokes(ctx, markStrokesRef.current);
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [markingUp]);
+
+  function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = markCanvasRef.current;
+    if (!canvas) return;
+    if (e.pointerType === "pen") penSeenRef.current = true;
+    else if (e.pointerType === "touch" && penSeenRef.current) return;
+    const width = Math.max(3, Math.round(canvas.width * 0.006));
+    const stroke: Stroke = { color: markColorRef.current, width, points: [canvasPoint(canvas, e.clientX, e.clientY)] };
+    markCurrentRef.current = stroke;
+    markStrokesRef.current = [...markStrokesRef.current, stroke];
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    e.preventDefault();
+  }
+  function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = markCanvasRef.current;
+    if (!canvas || !markCurrentRef.current) return;
+    if (e.pointerType === "touch" && penSeenRef.current) return;
+    markCurrentRef.current.points.push(canvasPoint(canvas, e.clientX, e.clientY));
+    e.preventDefault();
+  }
+  function onPointerUp() {
+    markCurrentRef.current = null;
+  }
+  function undoStroke() {
+    markStrokesRef.current = markStrokesRef.current.slice(0, -1);
+  }
+  function clearStrokes() {
+    markStrokesRef.current = [];
+  }
+  function chooseColor(value: string) {
+    markColorRef.current = value;
+    setMarkColor(value);
+  }
+
+  function finishMarkup() {
+    const still = stillCanvasRef.current;
+    if (still) {
+      const off = document.createElement("canvas");
+      off.width = still.width;
+      off.height = still.height;
+      const octx = off.getContext("2d");
+      if (octx) {
+        octx.drawImage(still, 0, 0);
+        drawStrokes(octx, markStrokesRef.current);
+        off.toBlob(
+          (blob) => {
+            if (!blob) return;
+            const id = ++snapIdRef.current;
+            commitSnaps([...snapsRef.current, { id, blob, previewUrl: URL.createObjectURL(blob), caption: "" }]);
+          },
+          "image/jpeg",
+          0.92
+        );
+      }
+    }
+    stillCanvasRef.current = null;
+    markStrokesRef.current = [];
+    markCurrentRef.current = null;
+    setMarkingUp(false);
+    videoElRef.current?.play().catch(() => {});
+  }
+
+  function discardMarkup() {
+    stillCanvasRef.current = null;
+    markStrokesRef.current = [];
+    markCurrentRef.current = null;
+    setMarkingUp(false);
+    videoElRef.current?.play().catch(() => {});
+  }
+
+  // ─── Caption cycle (recording done — mic is free) ───────────────────
   function stopRecognition() {
     if (recognitionRef.current) {
       try {
@@ -476,7 +429,6 @@ export default function VideoSnapshot() {
       recognitionRef.current = null;
     }
   }
-
   function startRecognition(snapId: number) {
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
@@ -500,15 +452,13 @@ export default function VideoSnapshot() {
       }
       if (finalChunk) finalTranscriptRef.current += finalChunk;
       const spoken = (finalTranscriptRef.current + " " + interimChunk).trim();
-      const full = [captionBaseRef.current, spoken].filter(Boolean).join(" ");
       setCaptionLive(spoken);
-      setSnapCaption(snapId, full);
+      setSnapCaption(snapId, [captionBaseRef.current, spoken].filter(Boolean).join(" "));
     };
     recognition.onerror = () => {};
     recognition.onend = () => {
       if (recognitionRef.current !== recognition) return;
       recognitionRef.current = null;
-      // Safari ends on pauses; keep listening until the user taps "next".
       if (captionIntentRef.current) {
         try {
           startRecognition(snapId);
@@ -524,7 +474,6 @@ export default function VideoSnapshot() {
       recognitionRef.current = null;
     }
   }
-
   function captionButtonClick() {
     const snap = snapsRef.current[captionIndex];
     if (!snap) return;
@@ -534,7 +483,7 @@ export default function VideoSnapshot() {
       finalTranscriptRef.current = "";
       setCaptionLive("");
       setListening(true);
-      startRecognition(snap.id); // within this tap's gesture (iOS)
+      startRecognition(snap.id);
     } else {
       captionIntentRef.current = false;
       stopRecognition();
@@ -542,7 +491,6 @@ export default function VideoSnapshot() {
       advanceCaption();
     }
   }
-
   function advanceCaption() {
     captionIntentRef.current = false;
     stopRecognition();
@@ -575,7 +523,6 @@ export default function VideoSnapshot() {
       /* manual picker still works from GPS candidates */
     }
   }
-
   function requestLocation() {
     if (!("geolocation" in navigator)) return;
     navigator.geolocation.getCurrentPosition(
@@ -599,7 +546,6 @@ export default function VideoSnapshot() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
   }
-
   function selectedPropertyLabel(): string | null {
     if (selectedPropertyId == null) return null;
     const cand = candidates.find((c) => c.id === selectedPropertyId);
@@ -689,7 +635,10 @@ export default function VideoSnapshot() {
     setCaptionLive("");
     setCaptionIndex(0);
     setListening(false);
+    setMarkingUp(false);
     penSeenRef.current = false;
+    stillCanvasRef.current = null;
+    markStrokesRef.current = [];
     videoBlobRef.current = null;
     snapsRef.current.forEach((s) => URL.revokeObjectURL(s.previewUrl));
     commitSnaps([]);
@@ -714,7 +663,6 @@ export default function VideoSnapshot() {
     });
     resetSession();
     setSaving(false);
-    setFrozen(false);
     setElapsed(0);
     setMode("idle");
   }
@@ -759,101 +707,108 @@ export default function VideoSnapshot() {
 
       {mode === "recording" && (
         <div className="fixed inset-0 z-50 bg-black">
-          {/* Source video stays on-screen behind the opaque canvas — iOS stops
-              decoding a hidden video, which would freeze drawImage(). */}
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video ref={videoElRef} playsInline muted autoPlay className="absolute inset-0 h-full w-full object-contain" />
-          <canvas
-            ref={canvasRef}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            className="absolute inset-0 h-full w-full touch-none object-contain"
-          />
 
-          <button
-            type="button"
-            onClick={cancelRecording}
-            aria-label="Cancel"
-            className="absolute left-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
-            style={{ top: "max(1rem, env(safe-area-inset-top))" }}
-          >
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-
-          <div
-            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/55 px-4 py-2 text-sm font-semibold text-white"
-            style={{ top: "max(1rem, env(safe-area-inset-top))" }}
-          >
-            <span className="text-red-500">●</span>
-            <span>{mm}:{ss}</span>
-            {frozen && <span className="text-emerald-300">frozen — mark it up ✎</span>}
-          </div>
-
-          {/* Markup toolbar (only while frozen). */}
-          {frozen && (
-            <div
-              className="absolute left-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-3 rounded-full bg-black/55 px-2 py-3"
-              style={{ left: "max(1rem, env(safe-area-inset-left))" }}
-            >
-              {PEN_COLORS.map((c) => (
-                <button
-                  key={c.value}
-                  type="button"
-                  onClick={() => chooseColor(c.value)}
-                  aria-label={c.name}
-                  className={`h-8 w-8 rounded-full border-2 ${markColor === c.value ? "border-white" : "border-transparent"}`}
-                  style={{ backgroundColor: c.value }}
-                />
-              ))}
-              <button type="button" onClick={undoStroke} aria-label="Undo" className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 7v6h6" />
-                  <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+          {!markingUp && (
+            <>
+              <button
+                type="button"
+                onClick={cancelRecording}
+                aria-label="Cancel"
+                className="absolute left-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
+                style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+              >
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
                 </svg>
               </button>
-              <button type="button" onClick={clearStrokes} aria-label="Clear" className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-[0.6rem] font-semibold text-white">
-                CLR
-              </button>
-            </div>
+
+              <div
+                className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/55 px-4 py-2 text-sm font-semibold text-white"
+                style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+              >
+                <span className="text-red-500">●</span>
+                <span>{mm}:{ss}</span>
+              </div>
+
+              <div className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center" style={{ right: "max(1.25rem, env(safe-area-inset-right))" }}>
+                <button
+                  type="button"
+                  onClick={takeSnapshot}
+                  aria-label="Take snapshot"
+                  className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-white/30 text-white active:bg-white/60"
+                >
+                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="absolute bottom-0 left-0 right-0 flex justify-center" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))", paddingTop: "1rem" }}>
+                <button
+                  type="button"
+                  onClick={finishRecording}
+                  aria-label="Stop recording"
+                  className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-red-600 active:bg-red-500"
+                >
+                  <span className="h-5 w-5 rounded-[3px] bg-white" />
+                </button>
+              </div>
+            </>
           )}
 
-          {/* Snap / freeze toggle on the middle-right edge. */}
-          <div className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center" style={{ right: "max(1.25rem, env(safe-area-inset-right))" }}>
-            <button
-              type="button"
-              onClick={toggleSnap}
-              aria-label={frozen ? "Finish snapshot" : "Take snapshot"}
-              className={`flex h-16 w-16 items-center justify-center rounded-full border-4 shadow-lg ${
-                frozen ? "border-emerald-400 bg-emerald-500 text-white" : "border-white bg-white/30 text-white active:bg-white/60"
-              }`}
-            >
-              {frozen ? (
-                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-              )}
-            </button>
-          </div>
+          {markingUp && (
+            <div className="absolute inset-0 bg-black">
+              <canvas
+                ref={markCanvasRef}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                className="absolute inset-0 h-full w-full touch-none object-contain"
+              />
 
-          <div className="absolute bottom-0 left-0 right-0 flex justify-center" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))", paddingTop: "1rem" }}>
-            <button
-              type="button"
-              onClick={finishRecording}
-              aria-label="Stop recording"
-              className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-red-600 active:bg-red-500"
-            >
-              <span className="h-5 w-5 rounded-[3px] bg-white" />
-            </button>
-          </div>
+              <div
+                className="absolute left-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-3 rounded-full bg-black/55 px-2 py-3"
+                style={{ left: "max(1rem, env(safe-area-inset-left))" }}
+              >
+                {PEN_COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => chooseColor(c.value)}
+                    aria-label={c.name}
+                    className={`h-8 w-8 rounded-full border-2 ${markColor === c.value ? "border-white" : "border-transparent"}`}
+                    style={{ backgroundColor: c.value }}
+                  />
+                ))}
+                <button type="button" onClick={undoStroke} aria-label="Undo" className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 7v6h6" />
+                    <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+                  </svg>
+                </button>
+                <button type="button" onClick={clearStrokes} aria-label="Clear" className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-[0.6rem] font-semibold text-white">
+                  CLR
+                </button>
+              </div>
+
+              <div className="absolute left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-4 py-1.5 text-xs text-white" style={{ top: "max(1rem, env(safe-area-inset-top))" }}>
+                Mark up the shot — recording continues
+              </div>
+
+              <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-3 px-6" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))", paddingTop: "1rem" }}>
+                <button type="button" onClick={discardMarkup} className="rounded-full bg-white/15 px-6 py-3 text-base font-medium text-white">
+                  Discard
+                </button>
+                <button type="button" onClick={finishMarkup} className="rounded-full bg-emerald-600 px-8 py-3 text-base font-semibold text-white">
+                  Save shot
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -906,10 +861,7 @@ export default function VideoSnapshot() {
       )}
 
       {mode === "review" && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
-          onClick={(e) => e.target === e.currentTarget && !saving && close()}
-        >
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={(e) => e.target === e.currentTarget && !saving && close()}>
           <div className="flex h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-auto sm:max-h-[92vh] sm:rounded-2xl dark:bg-zinc-900">
             <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
               <span className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Save video</span>
