@@ -21,7 +21,7 @@ const APPLICATION_COLS =
 const EQUIPMENT_COLS = "id, equipment_name, category, unit, cost_per_unit, sort_order";
 
 export async function GET() {
-  const [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes, photosRes] = await Promise.all([
+  const [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes, photosRes, seqRes, defRes, wfRes, stepsRes] = await Promise.all([
     supabase.from("materials").select(MATERIAL_COLS).order("sort_order", { ascending: true }),
     supabase.from("applications").select(APPLICATION_COLS),
     supabase.from("equipment").select(EQUIPMENT_COLS).order("sort_order", { ascending: true }),
@@ -29,8 +29,12 @@ export async function GET() {
     supabase.from("assembly_roles").select("assembly_id, role_key, application_id, required, sort_order").order("sort_order", { ascending: true }),
     supabase.from("assembly_equipment").select("assembly_id, equipment_id, sort_order").order("sort_order", { ascending: true }),
     supabase.from("master_photos").select("id, entity_type, entity_id, storage_path, is_cover").order("is_cover", { ascending: false }).order("created_at", { ascending: true }),
+    supabase.from("sequence_stages").select("name, sort_order").order("sort_order", { ascending: true }),
+    supabase.from("stage_defaults").select("stage, unit_of_work, units_per_man_hr, cost_per_unit_baseline"),
+    supabase.from("stage_workflows").select("stage, description"),
+    supabase.from("stage_workflow_steps").select("stage, step, sort_order").order("sort_order", { ascending: true }),
   ]);
-  for (const r of [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes, photosRes]) {
+  for (const r of [matsRes, appsRes, eqRes, asmRes, rolesRes, asmEqRes, photosRes, seqRes, defRes, wfRes, stepsRes]) {
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 500 });
   }
 
@@ -61,7 +65,29 @@ export async function GET() {
     equipment: equipByAssembly.get(a.id) ?? [],
   }));
 
-  return NextResponse.json({ materials, equipment: eqRes.data ?? [], assemblies, photos });
+  // Production phases: the canonical ordered sequence, each with its per-stage
+  // defaults (unit of work, production rate, baseline cost), optional workflow
+  // description, and ordered workflow steps.
+  const defByStage = new Map((defRes.data ?? []).map((d) => [d.stage, d]));
+  const wfByStage = new Map((wfRes.data ?? []).map((w) => [w.stage, w.description]));
+  const stepsByStage = new Map<string, { step: string; sort_order: number }[]>();
+  for (const s of stepsRes.data ?? []) {
+    (stepsByStage.get(s.stage) ?? stepsByStage.set(s.stage, []).get(s.stage)!).push({ step: s.step, sort_order: s.sort_order });
+  }
+  const phases = (seqRes.data ?? []).map((s) => {
+    const def = defByStage.get(s.name);
+    return {
+      name: s.name,
+      sort_order: s.sort_order,
+      unit_of_work: def?.unit_of_work ?? null,
+      units_per_man_hr: def?.units_per_man_hr ?? null,
+      cost_per_unit_baseline: def?.cost_per_unit_baseline ?? null,
+      description: wfByStage.get(s.name) ?? null,
+      steps: stepsByStage.get(s.name) ?? [],
+    };
+  });
+
+  return NextResponse.json({ materials, equipment: eqRes.data ?? [], assemblies, phases, photos });
 }
 
 interface AppInput {

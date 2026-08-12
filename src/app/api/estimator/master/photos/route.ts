@@ -3,13 +3,14 @@ import { supabase } from "@/lib/supabaseClient";
 import { MASTER_PHOTOS_BUCKET, masterPhotoUrl } from "@/lib/estimator/masterPhotos";
 import { safeExtension } from "@/lib/storagePaths";
 
-// Which base table owns each entity type — used to confirm the owner exists
-// before attaching a photo (the master_photos table is polymorphic, so there
-// is no FK to enforce it).
-const OWNER_TABLE: Record<string, string> = {
-  material: "materials",
-  assembly: "assemblies",
-  equipment: "equipment",
+// Which base table (and its id column) owns each entity type — used to confirm
+// the owner exists before attaching a photo (the master_photos table is
+// polymorphic, so there is no FK to enforce it). Stages are keyed by name.
+const OWNER: Record<string, { table: string; idCol: string }> = {
+  material: { table: "materials", idCol: "id" },
+  assembly: { table: "assemblies", idCol: "id" },
+  equipment: { table: "equipment", idCol: "id" },
+  stage: { table: "sequence_stages", idCol: "name" },
 };
 
 // POST multipart { file, entity_type, entity_id } — upload a photo for a
@@ -26,20 +27,20 @@ export async function POST(req: NextRequest) {
   if (!file.type.startsWith("image/")) {
     return NextResponse.json({ error: "Only image files are supported" }, { status: 400 });
   }
-  const ownerTable = OWNER_TABLE[entityType];
-  if (!ownerTable) {
-    return NextResponse.json({ error: "entity_type must be material, assembly, or equipment" }, { status: 400 });
+  const owner = OWNER[entityType];
+  if (!owner) {
+    return NextResponse.json({ error: "entity_type must be material, assembly, equipment, or stage" }, { status: 400 });
   }
   if (!entityId) {
     return NextResponse.json({ error: "entity_id is required" }, { status: 400 });
   }
 
   // The owner must exist.
-  const { data: owner, error: ownerError } = await supabase.from(ownerTable).select("id").eq("id", entityId).maybeSingle();
+  const { data: ownerRow, error: ownerError } = await supabase.from(owner.table).select(owner.idCol).eq(owner.idCol, entityId).maybeSingle();
   if (ownerError) {
     return NextResponse.json({ error: ownerError.message }, { status: 500 });
   }
-  if (!owner) {
+  if (!ownerRow) {
     return NextResponse.json({ error: "Save the item before adding photos." }, { status: 404 });
   }
 

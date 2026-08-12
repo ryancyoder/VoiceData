@@ -29,16 +29,23 @@ interface Assembly {
   id: string; name?: string; operation_stage?: string | null; unit_of_work?: string | null;
   equipment_required?: boolean | null; roles: Role[]; equipment: AssemblyEquip[];
 }
+interface Phase {
+  name: string; sort_order: number; unit_of_work?: string | null;
+  units_per_man_hr?: number | string | null; cost_per_unit_baseline?: number | string | null;
+  description?: string | null; steps: { step: string; sort_order: number }[];
+}
 
-type EntityType = "material" | "assembly" | "equipment";
+type EntityType = "material" | "assembly" | "equipment" | "stage";
 type Ref = { type: EntityType; id: string };
 
 const TABS: { key: EntityType; label: string; icon: string }[] = [
+  { key: "stage", label: "Phases", icon: "🏗️" },
   { key: "material", label: "Materials", icon: "📦" },
   { key: "assembly", label: "Assemblies", icon: "🧱" },
   { key: "equipment", label: "Equipment", icon: "🚜" },
 ];
-const FALLBACK_ICON: Record<EntityType, string> = { material: "📦", assembly: "🧱", equipment: "🚜" };
+const FALLBACK_ICON: Record<EntityType, string> = { material: "📦", assembly: "🧱", equipment: "🚜", stage: "🏗️" };
+const PLURAL: Record<EntityType, string> = { material: "materials", assembly: "assemblies", equipment: "equipment", stage: "phases" };
 
 function money(v: unknown): string {
   const n = typeof v === "number" ? v : Number(v ?? 0);
@@ -51,10 +58,11 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
   const [materials, setMaterials] = useState<Material[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
+  const [phases, setPhases] = useState<Phase[]>([]);
   const [photos, setPhotos] = useState<Record<string, Photo[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<EntityType>("material");
+  const [tab, setTab] = useState<EntityType>("stage");
   const [query, setQuery] = useState("");
   const [stack, setStack] = useState<Ref[]>([]);
   const [locked, setLocked] = useState(true);
@@ -67,6 +75,7 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
         setMaterials((Array.isArray(data.materials) ? data.materials : []).map((m: Material) => ({ ...m, applications: m.applications ?? [] })));
         setEquipment(Array.isArray(data.equipment) ? data.equipment : []);
         setAssemblies((Array.isArray(data.assemblies) ? data.assemblies : []).map((a: Assembly) => ({ ...a, roles: a.roles ?? [], equipment: a.equipment ?? [] })));
+        setPhases((Array.isArray(data.phases) ? data.phases : []).map((p: Phase) => ({ ...p, steps: p.steps ?? [] })));
         setPhotos(data.photos ?? {});
         setError(null);
       })
@@ -93,6 +102,12 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
   const assembliesByEquip = useMemo(() => {
     const m = new Map<string, Assembly[]>();
     for (const a of assemblies) for (const e of a.equipment) if (e.equipment_id) (m.get(e.equipment_id) ?? m.set(e.equipment_id, []).get(e.equipment_id)!).push(a);
+    return m;
+  }, [assemblies]);
+  const phaseByName = useMemo(() => new Map(phases.map((p) => [p.name, p])), [phases]);
+  const assembliesByStage = useMemo(() => {
+    const m = new Map<string, Assembly[]>();
+    for (const a of assemblies) if (a.operation_stage) (m.get(a.operation_stage) ?? m.set(a.operation_stage, []).get(a.operation_stage)!).push(a);
     return m;
   }, [assemblies]);
 
@@ -172,6 +187,12 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
       const a = assemblyById.get(id); if (!a) return null;
       return { name: a.name ?? id, sub: `${titleCase(a.operation_stage)} · ${a.roles.length} role${a.roles.length === 1 ? "" : "s"}`, fallback: "🧱" };
     }
+    if (type === "stage") {
+      const p = phaseByName.get(id); if (!p) return null;
+      const rate = p.units_per_man_hr != null ? `${p.units_per_man_hr} ${p.unit_of_work ?? "u"}/hr` : (p.unit_of_work ?? "—");
+      const n = (assembliesByStage.get(id) ?? []).length;
+      return { name: titleCase(p.name), sub: rate, fallback: "🏗️", badge: n ? `${n} assembly${n === 1 ? "" : "s"}` : undefined };
+    }
     const e = equipmentById.get(id); if (!e) return null;
     return { name: e.equipment_name ?? id, sub: `${titleCase(e.category)} · ${money(e.cost_per_unit)}/${e.unit}`, fallback: "🚜" };
   }
@@ -209,16 +230,45 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
   // Top-level search over the active tab
   const q = query.trim().toLowerCase();
   const topLevel = useMemo(() => {
+    if (tab === "stage") return phases.filter((p) => !q || p.name.toLowerCase().includes(q)).map((p) => p.name);
     if (tab === "material") return materials.filter((m) => !q || (m.material_name ?? "").toLowerCase().includes(q) || (m.category ?? "").toLowerCase().includes(q)).map((m) => m.id);
     if (tab === "equipment") return equipment.filter((e) => !q || (e.equipment_name ?? "").toLowerCase().includes(q) || (e.category ?? "").toLowerCase().includes(q)).map((e) => e.id);
     return assemblies.filter((a) => !q || (a.name ?? "").toLowerCase().includes(q) || (a.operation_stage ?? "").toLowerCase().includes(q)).map((a) => a.id);
-  }, [tab, q, materials, equipment, assemblies]);
+  }, [tab, q, phases, materials, equipment, assemblies]);
 
   // Focused entity → its related sections
   const focusMeta = focus ? tileFor(focus.type, focus.id) : null;
   let relatedSections: { label: string; type: EntityType; ids: string[]; empty: string }[] = [];
   let focusFields: { label: string; value: string }[] = [];
-  if (focus?.type === "material") {
+  let focusExtra: React.ReactNode = null;
+  if (focus?.type === "stage") {
+    const p = phaseByName.get(focus.id);
+    if (p) {
+      focusFields = [
+        { label: "Sequence", value: `#${p.sort_order} of ${phases.length}` },
+        { label: "Unit of work", value: p.unit_of_work ?? "—" },
+        { label: "Production rate", value: p.units_per_man_hr != null ? `${p.units_per_man_hr} ${p.unit_of_work ?? "u"} / man-hr` : "—" },
+        ...(p.cost_per_unit_baseline != null ? [{ label: "Baseline cost", value: money(p.cost_per_unit_baseline) }] : []),
+        ...(p.description ? [{ label: "Workflow", value: p.description }] : []),
+      ];
+      if (p.steps.length > 0) {
+        focusExtra = (
+          <div className="mt-3">
+            <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Workflow steps</h4>
+            <ol className="flex flex-wrap items-center gap-1.5">
+              {p.steps.map((s, i) => (
+                <span key={`${s.step}-${i}`} className="flex items-center gap-1.5">
+                  {i > 0 && <span className="text-zinc-300 dark:text-zinc-600">→</span>}
+                  <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">{titleCase(s.step)}</span>
+                </span>
+              ))}
+            </ol>
+          </div>
+        );
+      }
+      relatedSections = [{ label: "Assemblies in this phase", type: "assembly", ids: (assembliesByStage.get(p.name) ?? []).map((a) => a.id), empty: "No assemblies in this phase yet." }];
+    }
+  } else if (focus?.type === "material") {
     const m = materialById.get(focus.id);
     if (m) {
       focusFields = [
@@ -245,10 +295,23 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
     const a = assemblyById.get(focus.id);
     if (a) {
       focusFields = [
-        { label: "Operation stage", value: titleCase(a.operation_stage) || "—" },
         { label: "Unit of work", value: a.unit_of_work ?? "—" },
         { label: "Equipment", value: a.equipment_required ? "required" : "—" },
       ];
+      if (a.operation_stage && phaseByName.has(a.operation_stage)) {
+        const stageName = a.operation_stage;
+        focusExtra = (
+          <div className="mt-3 flex items-center gap-2 text-sm">
+            <span className="text-[11px] uppercase tracking-wide text-zinc-400">Phase</span>
+            <button
+              onClick={() => drillTo("stage", stageName)}
+              className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-300"
+            >
+              🏗️ {titleCase(stageName)} →
+            </button>
+          </div>
+        );
+      }
       relatedSections = [
         { label: "Materials in this assembly", type: "material", ids: materialsForAssembly(a).map((m) => m.id), empty: "No materials." },
         { label: "Equipment in this assembly", type: "equipment", ids: equipmentForAssembly(a).map((e) => e.id), empty: "No equipment." },
@@ -284,7 +347,7 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
       {/* Breadcrumb (only while drilled in) */}
       {focus && (
         <nav className="mb-4 flex flex-wrap items-center gap-1 text-sm text-zinc-500 dark:text-zinc-400">
-          <button onClick={() => gotoDepth(0)} className="rounded px-1.5 py-0.5 hover:text-zinc-800 dark:hover:text-zinc-100">All {tab === "material" ? "materials" : tab === "assembly" ? "assemblies" : "equipment"}</button>
+          <button onClick={() => gotoDepth(0)} className="rounded px-1.5 py-0.5 hover:text-zinc-800 dark:hover:text-zinc-100">All {PLURAL[tab]}</button>
           {stack.map((r, i) => {
             const meta = tileFor(r.type, r.id);
             return (
@@ -349,6 +412,8 @@ export function MasterGalleryClient({ viewToggle }: { viewToggle?: React.ReactNo
                 ))}
               </dl>
             )}
+
+            {focusExtra}
 
             <div className="mt-4">
               <PhotoStrip
