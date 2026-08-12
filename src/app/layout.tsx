@@ -5,6 +5,7 @@ import NavBar from "@/components/NavBar";
 import QuickAddTask from "@/components/QuickAddTask";
 import QuickAddEvent from "@/components/QuickAddEvent";
 import CameraCapture from "@/components/CameraCapture";
+import VideoSnapshot from "@/components/VideoSnapshot";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <QuickAddTask />
         <QuickAddEvent />
         <CameraCapture />
+        <VideoSnapshot />
       </body>
     </html>
   );
