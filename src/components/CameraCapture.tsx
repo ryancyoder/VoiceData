@@ -73,7 +73,6 @@ export default function CameraCapture() {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
-  const [gps, setGps] = useState<{ latitude: number; longitude: number } | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [allProperties, setAllProperties] = useState<PropertyLite[]>([]);
   const [propFilter, setPropFilter] = useState("");
@@ -81,6 +80,11 @@ export default function CameraCapture() {
   const [listening, setListening] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Device location is used only to suggest the nearest property — it is
+  // deliberately NOT sent with the upload. The chosen property drives which
+  // event/album the photo files under; sending raw device GPS would let the
+  // server match the photo to whatever event is physically nearest (e.g. from
+  // the office), overriding the user's explicit property choice.
 
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -171,7 +175,6 @@ export default function CameraCapture() {
     setCandidates([]);
     setSelectedPropertyId(null);
     setPropFilter("");
-    setGps(null);
   }
 
   // Move from a captured File into the review/annotate sheet. Dictation is
@@ -293,7 +296,6 @@ export default function CameraCapture() {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-        setGps(coords);
         try {
           const res = await fetch("/api/properties/match-location", {
             method: "POST",
@@ -329,10 +331,8 @@ export default function CameraCapture() {
       formData.append("file", uploadFile);
       const trimmed = caption.trim();
       if (trimmed) formData.append("caption", trimmed);
-      if (gps) {
-        formData.append("latitude", String(gps.latitude));
-        formData.append("longitude", String(gps.longitude));
-      }
+      // No latitude/longitude: the chosen property (below) determines the
+      // album, not the device's current location.
       if (selectedPropertyId != null) formData.append("propertyId", String(selectedPropertyId));
 
       const res = await fetch("/api/photos", { method: "POST", body: formData });
@@ -376,7 +376,6 @@ export default function CameraCapture() {
     setCandidates([]);
     setSelectedPropertyId(null);
     setPropFilter("");
-    setGps(null);
   }
 
   useEffect(() => {
@@ -450,9 +449,9 @@ export default function CameraCapture() {
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={(e) => e.target === e.currentTarget && !saving && close()}>
-          <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl dark:bg-zinc-900">
-            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">New photo note</span>
+          <div className="flex h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-auto sm:max-h-[92vh] sm:rounded-2xl dark:bg-zinc-900">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+              <span className="text-base font-semibold text-zinc-900 dark:text-zinc-100">New photo note</span>
               <button type="button" onClick={close} disabled={saving} className="text-zinc-400 hover:text-zinc-700 disabled:opacity-50 dark:hover:text-zinc-200" aria-label="Cancel">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6 6 18M6 6l12 12" />
@@ -460,47 +459,47 @@ export default function CameraCapture() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-3">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
               {previewUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewUrl} alt="Captured" className="mb-3 max-h-56 w-full rounded-lg object-contain" />
+                <img src={previewUrl} alt="Captured" className="mb-4 max-h-[45vh] w-full rounded-xl object-contain" />
               )}
 
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400">Annotation</label>
-              <div className="mb-4 flex items-start gap-2">
+              <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Annotation</label>
+              <div className="mb-5 flex items-start gap-2">
                 <textarea
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
                   placeholder={listening ? "Listening…" : "Speak or type a note for this photo…"}
-                  rows={3}
-                  className="flex-1 resize-none rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-100"
+                  rows={4}
+                  className="flex-1 resize-none rounded-lg border border-zinc-300 bg-transparent px-3 py-2.5 text-base outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-100"
                 />
                 <button
                   type="button"
                   onClick={toggleListening}
                   title={listening ? "Stop dictation" : "Start dictation"}
                   aria-label={listening ? "Stop dictation" : "Start dictation"}
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border transition-colors ${
                     listening
                       ? "animate-pulse border-red-600 bg-red-600 text-white"
                       : "border-zinc-300 bg-white text-zinc-600 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
                   }`}
                 >
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                     <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" />
                     <path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.93V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.07A7 7 0 0 0 19 11Z" />
                   </svg>
                 </button>
               </div>
 
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400">Property</label>
-              <div className="space-y-1">
+              <label className="mb-1.5 block text-sm font-semibold uppercase tracking-wide text-zinc-400">Property</label>
+              <div className="space-y-1.5">
                 {candidates.map((c) => (
                   <button
                     key={`cand-${c.id}`}
                     type="button"
                     onClick={() => setSelectedPropertyId(c.id)}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-base ${
                       selectedPropertyId === c.id ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100"
                     }`}
                   >
@@ -513,7 +512,7 @@ export default function CameraCapture() {
                   value={propFilter}
                   onChange={(e) => setPropFilter(e.target.value)}
                   placeholder="Search other properties…"
-                  className="mt-1 w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-100"
+                  className="mt-1 w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2.5 text-base outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-100"
                 />
 
                 {propFilter.trim() &&
@@ -522,7 +521,7 @@ export default function CameraCapture() {
                       key={`prop-${p.id}`}
                       type="button"
                       onClick={() => setSelectedPropertyId(p.id)}
-                      className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm ${
+                      className={`flex w-full items-center rounded-lg px-3 py-2.5 text-left text-base ${
                         selectedPropertyId === p.id ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100"
                       }`}
                     >
@@ -533,7 +532,7 @@ export default function CameraCapture() {
                 <button
                   type="button"
                   onClick={() => setSelectedPropertyId(null)}
-                  className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm ${
+                  className={`flex w-full items-center rounded-lg px-3 py-2.5 text-left text-base ${
                     selectedPropertyId == null ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100"
                   }`}
                 >
@@ -542,11 +541,11 @@ export default function CameraCapture() {
               </div>
             </div>
 
-            <div className="flex gap-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <button type="button" onClick={close} disabled={saving} className="flex-1 rounded-lg border border-zinc-300 py-2 text-sm font-medium text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200">
+            <div className="flex gap-3 border-t border-zinc-200 px-5 py-4 dark:border-zinc-800">
+              <button type="button" onClick={close} disabled={saving} className="flex-1 rounded-lg border border-zinc-300 py-2.5 text-base font-medium text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200">
                 Cancel
               </button>
-              <button type="button" onClick={save} disabled={saving} className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60">
+              <button type="button" onClick={save} disabled={saving} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-base font-semibold text-white hover:bg-emerald-500 disabled:opacity-60">
                 {saving ? "Saving…" : "Save photo"}
               </button>
             </div>
