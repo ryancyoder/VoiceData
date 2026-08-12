@@ -333,6 +333,11 @@
   border-radius: 5px;
   background: var(--stage-color);
   z-index: 2;
+  cursor: grab;
+  touch-action: none;
+}
+.pmTile:active {
+  cursor: grabbing;
 }
 .pmTileName {
   position: absolute;

@@ -282,6 +282,83 @@ export default function PlannerClient({
   // longer map linearly to x).
   const [drag, setDrag] = useState<{ dealId: number; color: string; guides: number[]; targetPx: number } | null>(null);
 
+  // Production-window drag: the solid Project Management tiles can be dragged
+  // horizontally to reschedule their start/end days. prodDrag is the live
+  // preview during a drag; prodOverrides holds the optimistic new dates until
+  // the server round-trips.
+  const [prodDrag, setProdDrag] = useState<{ dealId: number; startDate: string; endDate: string } | null>(null);
+  const [prodOverrides, setProdOverrides] = useState<Map<number, { start: string; end: string }>>(() => new Map());
+  const prodDragRef = useRef<{
+    dealId: number;
+    startClientX: number;
+    dayPx: number;
+    origStart: string;
+    origEnd: string;
+    curStart: string;
+    curEnd: string;
+    moved: boolean;
+    ctrl: AbortController;
+  } | null>(null);
+
+  // Effective stage dates for a deal, with any live/optimistic production
+  // reschedule applied — used by both the stage-history band and the PM tile so
+  // they move together.
+  function effDates(dealId: number): DealStageDates | undefined {
+    const base = datesById.get(dealId);
+    if (!base) return undefined;
+    const live = prodDrag?.dealId === dealId ? prodDrag : null;
+    const ov = prodOverrides.get(dealId);
+    if (!live && !ov) return base;
+    return { ...base, start: live?.startDate ?? ov?.start ?? base.start, end: live?.endDate ?? ov?.end ?? base.end };
+  }
+
+  const onProdMove = useCallback((e: PointerEvent) => {
+    const d = prodDragRef.current;
+    if (!d) return;
+    const deltaDays = Math.round((e.clientX - d.startClientX) / d.dayPx);
+    d.curStart = addDays(d.origStart, deltaDays);
+    d.curEnd = addDays(d.origEnd, deltaDays);
+    d.moved = d.moved || Math.abs(e.clientX - d.startClientX) > 3;
+    setProdDrag({ dealId: d.dealId, startDate: d.curStart, endDate: d.curEnd });
+  }, []);
+
+  const onProdUp = useCallback(() => {
+    const d = prodDragRef.current;
+    prodDragRef.current = null;
+    d?.ctrl.abort();
+    setProdDrag(null);
+    if (!d || !d.moved || (d.curStart === d.origStart && d.curEnd === d.origEnd)) return;
+    const { dealId, curStart, curEnd } = d;
+    // Optimistic: show the new window immediately, persist in the background.
+    setProdOverrides((prev) => new Map(prev).set(dealId, { start: curStart, end: curEnd }));
+    fetch(`/api/sales-board/${dealId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start_date: curStart, end_date: curEnd }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("save failed");
+      })
+      .catch(() => {
+        window.alert("Failed to reschedule production.");
+        setProdOverrides((prev) => {
+          const m = new Map(prev);
+          m.delete(dealId);
+          return m;
+        });
+      });
+  }, []);
+
+  function beginProdDrag(e: React.PointerEvent, dealId: number, start: string, end: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const ctrl = new AbortController();
+    prodDragRef.current = { dealId, startClientX: e.clientX, dayPx, origStart: start, origEnd: end, curStart: start, curEnd: end, moved: false, ctrl };
+    setProdDrag({ dealId, startDate: start, endDate: end });
+    window.addEventListener("pointermove", onProdMove, { signal: ctrl.signal });
+    window.addEventListener("pointerup", onProdUp, { signal: ctrl.signal });
+  }
+
   const onDragMove = useCallback((e: PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
@@ -481,7 +558,7 @@ export default function PlannerClient({
                 {/* Stage-history bands (row backgrounds): each deal's time in a
                     stage, colored by the stage. Behind the grid and drag rows. */}
                 {rows.map((r, i) => {
-                  const dd = datesById.get(r.dealId);
+                  const dd = effDates(r.dealId);
                   if (!dd) return null;
                   return buildSegments(dd, today).map((seg, si) => {
                     const from = Math.max(0, daysBetween(rangeStart, seg.start));
@@ -554,21 +631,24 @@ export default function PlannerClient({
                   // Project Management deals aren't block-backed — instead of a
                   // point chip they show as a solid tile spanning their
                   // production window (start → end day).
-                  const pmDates = datesById.get(r.dealId);
+                  const pmDates = effDates(r.dealId);
                   if (r.stage === "Project Management" && pmDates?.start) {
-                    const end = pmDates.end && pmDates.end >= pmDates.start ? pmDates.end : pmDates.start;
-                    const from = Math.max(0, daysBetween(rangeStart, pmDates.start));
+                    const startKey = pmDates.start;
+                    const end = pmDates.end && pmDates.end >= startKey ? pmDates.end : startKey;
+                    const from = Math.max(0, daysBetween(rangeStart, startKey));
                     const to = Math.min(totalDays, daysBetween(rangeStart, end) + 1);
                     if (to <= from) return null;
                     const tileLeft = xOf(from);
                     const tileRight = xOf(to);
-                    const title = `${r.name} · Project Management · ${fmtTick(pmDates.start)} – ${fmtTick(end)}`;
+                    const dragging = prodDrag?.dealId === r.dealId;
+                    const title = `${r.name} · Project Management · ${fmtTick(startKey)} – ${fmtTick(end)} — drag to reschedule`;
                     return (
                       <Fragment key={r.dealId}>
                         <div
-                          className={styles.pmTile}
+                          className={`${styles.pmTile} ${dragging ? styles.itemDragging : ""}`}
                           style={{ ["--stage-color" as string]: r.color, left: tileLeft, width: tileRight - tileLeft, top: AXIS_H + i * ROW_H + BAND_PAD, height: BAND_H }}
                           title={title}
+                          onPointerDown={(e) => beginProdDrag(e, r.dealId, startKey, end)}
                         />
                         {/* Name sits to the right of the tile so it's never clipped. */}
                         <span
