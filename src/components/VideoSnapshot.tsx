@@ -68,6 +68,7 @@ interface Snap {
   blob: Blob;
   previewUrl: string;
   caption: string;
+  takenAt: string; // ISO time the shot was taken (offset into the video is taken_at - video start)
 }
 
 function distanceLabel(meters: number): string {
@@ -171,6 +172,8 @@ export default function VideoSnapshot() {
   const snapsRef = useRef<Snap[]>([]);
   const snapIdRef = useRef(0);
   const videoBlobRef = useRef<{ blob: Blob; mime: string } | null>(null);
+  const recordStartIsoRef = useRef<string | null>(null);
+  const pendingSnapTakenAtRef = useRef<string>("");
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const captionIntentRef = useRef(false);
@@ -251,6 +254,7 @@ export default function VideoSnapshot() {
         }
       };
       recorderRef.current = recorder;
+      recordStartIsoRef.current = new Date().toISOString();
       recorder.start();
       const started = performance.now();
       timerRef.current = setInterval(() => setElapsed(Math.floor((performance.now() - started) / 1000)), 500);
@@ -313,6 +317,7 @@ export default function VideoSnapshot() {
     still.height = h;
     still.getContext("2d")?.drawImage(video, 0, 0, w, h);
     stillCanvasRef.current = still;
+    pendingSnapTakenAtRef.current = new Date().toISOString(); // the moment the shot was taken
     markStrokesRef.current = [];
     markCurrentRef.current = null;
     setMarkingUp(true);
@@ -395,7 +400,8 @@ export default function VideoSnapshot() {
           (blob) => {
             if (!blob) return;
             const id = ++snapIdRef.current;
-            commitSnaps([...snapsRef.current, { id, blob, previewUrl: URL.createObjectURL(blob), caption: "" }]);
+            const takenAt = pendingSnapTakenAtRef.current || new Date().toISOString();
+            commitSnaps([...snapsRef.current, { id, blob, previewUrl: URL.createObjectURL(blob), caption: "", takenAt }]);
           },
           "image/jpeg",
           0.92
@@ -594,6 +600,9 @@ export default function VideoSnapshot() {
           posterPath,
           propertyId: selectedPropertyId ?? undefined,
           caption: overallCaption.trim() || undefined,
+          // Recording start — each snapshot's offset is its taken_at minus this,
+          // which is all a later splicing step needs.
+          takenAt: recordStartIsoRef.current ?? undefined,
         }),
       });
       const finalizeData = await finalizeRes.json();
@@ -608,6 +617,7 @@ export default function VideoSnapshot() {
           fd.append("file", uploadFile);
           const cap = s.caption.trim();
           if (cap) fd.append("caption", cap);
+          if (s.takenAt) fd.append("takenAt", s.takenAt);
           if (selectedPropertyId != null) fd.append("propertyId", String(selectedPropertyId));
           const res = await fetch("/api/photos", { method: "POST", body: fd });
           if (res.ok) snapOk += 1;
