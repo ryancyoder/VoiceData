@@ -717,6 +717,33 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
     return sum + Math.ceil(item.quantity / item.unitsPerLoad);
   }, 0);
   const totalDelivery = totalLoads * deliveryRate;
+
+  // Per-material delivery loads, so the plan view can show one truck icon per
+  // load and have that count grow/shrink live as take-off quantities change.
+  // Grouped by material name; per-item loads are ceil()'d and summed so the
+  // icon total always matches totalLoads (and the delivery charge).
+  const loadBreakdown = (() => {
+    const map = new Map();
+    for (const item of allItems) {
+      if (!item.deliveryFee || !item.unitsPerLoad || !(item.quantity > 0)) continue;
+      const loads = Math.ceil(item.quantity / item.unitsPerLoad);
+      if (loads <= 0) continue;
+      const key = item.name || item.category || 'Material';
+      const cur = map.get(key) || {
+        key,
+        name: item.name || 'Material',
+        category: item.category || 'bulk_materials',
+        unit: item.unit || '',
+        loads: 0,
+        quantity: 0,
+        unitsPerLoad: item.unitsPerLoad,
+      };
+      cur.loads += loads;
+      cur.quantity += item.quantity;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.loads - a.loads);
+  })();
   // subtotal includes delivery (delivery is a logistics cost, not a separate line)
   const subtotal = allItems.reduce((sum, item) => sum + itemLineTotal(item), 0) + totalDelivery;
   const metacategoryTotals = METACATEGORIES.reduce((acc, meta) => {
@@ -796,6 +823,7 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
     stageTotals,
     totalLoads,
     totalDelivery,
+    loadBreakdown,
     taxAmount,
     total,
   };

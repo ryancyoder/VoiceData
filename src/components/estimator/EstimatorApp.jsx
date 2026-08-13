@@ -76,6 +76,7 @@ export default function App({ estimateId }) {
     stageTotals,
     totalLoads,
     totalDelivery,
+    loadBreakdown,
     taxAmount,
     total,
   } = useEstimate(deliveryRate, estimateId);
@@ -505,6 +506,7 @@ export default function App({ estimateId }) {
             onClose={() => setPlanOpen(false)}
             kits={kits}
             onApplyKit={(kit) => addKitToGroup(kit, null)}
+            loadBreakdown={loadBreakdown}
             photoPins={photoPins}
             placingPhoto={!!placingPinLink}
             onPlacePhotoPin={placePhotoPin}

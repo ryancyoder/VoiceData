@@ -6,6 +6,24 @@ import { genId, SHAPE_COLORS } from '@/lib/estimator/useEstimate';
 const PLANT_SYMBOL_MAP = Object.fromEntries(PLANT_TYPES.map(pt => [pt.key, pt]));
 const ITEM_TYPE_MAP = Object.fromEntries(ITEM_TYPES.map(it => [it.key, it]));
 
+// Delivery-load icon per material category. Each icon = one truckload; a truck
+// is the semantic for a delivery, with a couple of material-specific glyphs.
+const LOAD_ICON_BY_CATEGORY = {
+  bulk_materials: '🚛',
+  standard_materials: '🚚',
+  hardscape: '🧱',
+  edging: '🚚',
+  drainage: '🚚',
+  plants: '🌳',
+  lawn: '🌱',
+};
+function loadIcon(category) {
+  return LOAD_ICON_BY_CATEGORY[category] || '🚛';
+}
+// Cap the rendered icons per material so a huge take-off can't blow out the bar;
+// the remainder shows as "+N". The bar also scrolls horizontally.
+const MAX_LOAD_ICONS = 24;
+
 function ToolBtn({ label, icon, active, onClick }) {
   return (
     <button
@@ -30,6 +48,7 @@ export default function PlanView({
   onClose,
   kits,
   onApplyKit,
+  loadBreakdown = [],
   photoPins = [],
   placingPhoto = false,
   onPlacePhotoPin,
@@ -299,6 +318,54 @@ export default function PlanView({
           onApplyKit={onApplyKit}
         />
       </div>
+
+      {/* Delivery-loads bar: one truck icon per truckload the take-off needs,
+          grouped by material. Counts update live as take-off quantities change. */}
+      <LoadsBar loadBreakdown={loadBreakdown} />
+    </div>
+  );
+}
+
+function LoadsBar({ loadBreakdown }) {
+  const totalLoads = loadBreakdown.reduce((s, g) => s + g.loads, 0);
+  return (
+    <div className="shrink-0 border-t border-gray-700 bg-gray-900 px-4 py-2 overflow-x-auto">
+      {loadBreakdown.length === 0 ? (
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span>🚛</span>
+          <span>No delivery loads yet — plot take-off areas for bulk materials to see loads here.</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-5">
+          <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Loads
+            <span className="ml-1.5 rounded bg-gray-700 px-1.5 py-0.5 text-gray-100">{totalLoads}</span>
+          </span>
+          {loadBreakdown.map((g) => {
+            const icon = loadIcon(g.category);
+            const shown = Math.min(g.loads, MAX_LOAD_ICONS);
+            return (
+              <div key={g.key} className="flex shrink-0 items-center gap-2">
+                <div className="flex items-center" title={`${g.loads} load${g.loads === 1 ? '' : 's'} of ${g.name}`}>
+                  {Array.from({ length: shown }).map((_, i) => (
+                    <span key={i} className="text-xl leading-none">{icon}</span>
+                  ))}
+                  {g.loads > MAX_LOAD_ICONS && (
+                    <span className="ml-1 text-xs font-semibold text-gray-400">+{g.loads - MAX_LOAD_ICONS}</span>
+                  )}
+                </div>
+                <div className="flex flex-col leading-tight">
+                  <span className="whitespace-nowrap text-xs font-medium text-gray-200">{g.name}</span>
+                  <span className="whitespace-nowrap text-[10px] text-gray-500">
+                    {g.loads} load{g.loads === 1 ? '' : 's'}
+                    {g.unit ? ` · ${g.quantity.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${g.unit}` : ''}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
