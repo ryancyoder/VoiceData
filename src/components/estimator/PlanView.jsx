@@ -20,9 +20,6 @@ const LOAD_ICON_BY_CATEGORY = {
 function loadIcon(category) {
   return LOAD_ICON_BY_CATEGORY[category] || '🚛';
 }
-// Cap the rendered icons per material so a huge take-off can't blow out the bar;
-// the remainder shows as "+N". The bar also scrolls horizontally.
-const MAX_LOAD_ICONS = 24;
 
 function ToolBtn({ label, icon, active, onClick }) {
   return (
@@ -274,6 +271,8 @@ export default function PlanView({
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
+        {/* Delivery-loads column: trucks stacked into production days. */}
+        <LoadsColumn loadBreakdown={loadBreakdown} />
         <PlanCanvas
           plan={estimate.plan}
           groups={groups}
@@ -318,54 +317,93 @@ export default function PlanView({
           onApplyKit={onApplyKit}
         />
       </div>
-
-      {/* Delivery-loads bar: one truck icon per truckload the take-off needs,
-          grouped by material. Counts update live as take-off quantities change. */}
-      <LoadsBar loadBreakdown={loadBreakdown} />
     </div>
   );
 }
 
-function LoadsBar({ loadBreakdown }) {
-  const totalLoads = loadBreakdown.reduce((s, g) => s + g.loads, 0);
+const TRUCKS_PER_DAY_STORE = 'plan_trucks_per_day';
+
+// Delivery loads laid out as a production schedule: every truckload the take-off
+// needs becomes one truck icon, packed N-per-row where N is the daily
+// mobilization (1/2/3 trucks going to site per day). Each row is one production
+// day, so the row count is the number of production days. Trucks stay grouped by
+// material and keep the material's icon. Everything recomputes live as take-off
+// quantities change.
+function LoadsColumn({ loadBreakdown }) {
+  const [trucksPerRow, setTrucksPerRow] = useState(() => {
+    if (typeof window === 'undefined') return 2;
+    const v = parseInt(localStorage.getItem(TRUCKS_PER_DAY_STORE), 10);
+    return v === 1 || v === 2 || v === 3 ? v : 2;
+  });
+  function pick(n) {
+    setTrucksPerRow(n);
+    if (typeof window !== 'undefined') localStorage.setItem(TRUCKS_PER_DAY_STORE, String(n));
+  }
+
+  // Flatten to one entry per truckload, preserving material identity/order.
+  const trucks = [];
+  for (const g of loadBreakdown) {
+    for (let i = 0; i < g.loads; i++) trucks.push({ icon: loadIcon(g.category), name: g.name });
+  }
+  const totalLoads = trucks.length;
+  const rows = [];
+  for (let i = 0; i < trucks.length; i += trucksPerRow) rows.push(trucks.slice(i, i + trucksPerRow));
+  const productionDays = rows.length;
+
   return (
-    <div className="shrink-0 border-t border-gray-700 bg-gray-900 px-4 py-2 overflow-x-auto">
-      {loadBreakdown.length === 0 ? (
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span>🚛</span>
-          <span>No delivery loads yet — plot take-off areas for bulk materials to see loads here.</span>
+    <div className="flex w-40 shrink-0 flex-col border-r border-gray-700 bg-gray-900">
+      {/* Header + trucks-per-day (mobilization) selector */}
+      <div className="shrink-0 border-b border-gray-700 px-3 py-2">
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Loads</span>
+          <span className="rounded bg-gray-700 px-1.5 py-0.5 text-xs font-semibold text-gray-100">{totalLoads}</span>
         </div>
-      ) : (
-        <div className="flex items-center gap-5">
-          <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">
-            Loads
-            <span className="ml-1.5 rounded bg-gray-700 px-1.5 py-0.5 text-gray-100">{totalLoads}</span>
-          </span>
-          {loadBreakdown.map((g) => {
-            const icon = loadIcon(g.category);
-            const shown = Math.min(g.loads, MAX_LOAD_ICONS);
-            return (
-              <div key={g.key} className="flex shrink-0 items-center gap-2">
-                <div className="flex items-center" title={`${g.loads} load${g.loads === 1 ? '' : 's'} of ${g.name}`}>
-                  {Array.from({ length: shown }).map((_, i) => (
-                    <span key={i} className="text-xl leading-none">{icon}</span>
+        <div className="mt-2 text-[10px] uppercase tracking-wide text-gray-500">Trucks / day</div>
+        <div className="mt-1 flex gap-1">
+          {[1, 2, 3].map((n) => (
+            <button
+              key={n}
+              onClick={() => pick(n)}
+              className={`flex-1 rounded py-1 text-xs font-semibold transition-colors ${
+                trucksPerRow === n ? 'bg-white text-gray-900' : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        {totalLoads > 0 && (
+          <div className="mt-2 text-[10px] leading-tight text-gray-500">
+            {productionDays} production day{productionDays === 1 ? '' : 's'} · {trucksPerRow}/day
+          </div>
+        )}
+      </div>
+
+      {/* Production-day rows */}
+      <div className="flex-1 overflow-y-auto px-2 py-2">
+        {totalLoads === 0 ? (
+          <p className="px-1 text-[11px] leading-snug text-gray-500">
+            No delivery loads yet — plot take-off areas for bulk materials to see loads here.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {rows.map((row, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-1.5 rounded bg-gray-800/60 px-1.5 py-1"
+                title={`Production day ${idx + 1}: ${row.map((t) => t.name).join(', ')}`}
+              >
+                <span className="w-5 shrink-0 text-right text-[10px] font-semibold text-gray-500">{idx + 1}</span>
+                <div className="flex flex-wrap items-center gap-0.5">
+                  {row.map((t, i) => (
+                    <span key={i} className="text-xl leading-none">{t.icon}</span>
                   ))}
-                  {g.loads > MAX_LOAD_ICONS && (
-                    <span className="ml-1 text-xs font-semibold text-gray-400">+{g.loads - MAX_LOAD_ICONS}</span>
-                  )}
-                </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="whitespace-nowrap text-xs font-medium text-gray-200">{g.name}</span>
-                  <span className="whitespace-nowrap text-[10px] text-gray-500">
-                    {g.loads} load{g.loads === 1 ? '' : 's'}
-                    {g.unit ? ` · ${g.quantity.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${g.unit}` : ''}
-                  </span>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
