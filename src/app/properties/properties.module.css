@@ -223,6 +223,20 @@
 .map-popup-title { font-weight: 650; margin-bottom: 2px; }
 .map-popup-detail { font-size: 0.8rem; color: #444; }
 
+/* Always-on contact-last-name label next to each map pin. The doubled class
+   raises specificity so it beats Leaflet's default .leaflet-tooltip styles. */
+.map-pin-label.map-pin-label {
+  font-weight: 650;
+  font-size: 0.78rem;
+  color: #1a1a1a;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

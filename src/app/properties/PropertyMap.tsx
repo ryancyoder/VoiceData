@@ -1,6 +1,6 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import styles from "./properties.module.css";
@@ -39,6 +39,9 @@ export default function PropertyMap({ properties }: { properties: PropertyRow[] 
       />
       {geocoded.map((p) => (
         <Marker key={p.id} position={[p.latitude, p.longitude]}>
+          <Tooltip permanent direction="top" offset={[0, -34]} className={styles["map-pin-label"]}>
+            {p.contact?.last_name?.trim() || formatPropertyLabel({ address: p.address, contactLastName: null })}
+          </Tooltip>
           <Popup>
             <div className={styles["map-popup-title"]}>
               {formatPropertyLabel({ address: p.address, contactLastName: p.contact?.last_name ?? null })}
