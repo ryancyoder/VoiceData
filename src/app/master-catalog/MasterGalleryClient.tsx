@@ -463,6 +463,31 @@ function PhotoStrip({ photos, locked, uploading, onUpload, onDelete, onSetCover 
   photos: Photo[]; locked: boolean; uploading: boolean;
   onUpload: (f: File) => void; onDelete: (id: string) => void; onSetCover: (id: string) => void;
 }) {
+  const [pasteErr, setPasteErr] = useState<string | null>(null);
+
+  async function handlePasteImage() {
+    setPasteErr(null);
+    try {
+      if (!navigator.clipboard?.read) {
+        setPasteErr("Clipboard paste isn't supported in this browser.");
+        return;
+      }
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imgType = item.types.find((t) => t.startsWith("image/"));
+        if (imgType) {
+          const blob = await item.getType(imgType);
+          const ext = (imgType.split("/")[1] || "png").replace("jpeg", "jpg");
+          onUpload(new File([blob], `pasted-${Date.now()}.${ext}`, { type: imgType }));
+          return;
+        }
+      }
+      setPasteErr("No image found on the clipboard.");
+    } catch {
+      setPasteErr("Couldn't read the clipboard — check paste permission.");
+    }
+  }
+
   return (
     <div>
       {photos.length > 0 ? (
@@ -487,11 +512,23 @@ function PhotoStrip({ photos, locked, uploading, onUpload, onDelete, onSetCover 
         </p>
       )}
       {!locked && (
-        <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500">
-          {uploading ? "Uploading…" : "+ Add photo"}
-          <input type="file" accept="image/*" className="hidden" disabled={uploading}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = ""; }} />
-        </label>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500">
+            {uploading ? "Uploading…" : "+ Add photo"}
+            <input type="file" accept="image/*" className="hidden" disabled={uploading}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = ""; }} />
+          </label>
+          <button
+            type="button"
+            onClick={handlePasteImage}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+            title="Paste an image copied to your clipboard"
+          >
+            📋 Paste image
+          </button>
+          {pasteErr && <span className="text-xs text-red-500">{pasteErr}</span>}
+        </div>
       )}
     </div>
   );
