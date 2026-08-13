@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { dealPhotoUrl } from '@/lib/salesBoard';
 
 function fmt(n) {
@@ -140,6 +141,13 @@ export default function PhotoLinksModal({ estimateId, group, onClose, onChanged,
                             📍 {link.plan_x != null ? 'On plan' : 'Plan'}
                           </button>
                         )}
+                        <Link
+                          href={`/photos?photo=${link.photo_id}`}
+                          className="absolute right-8 top-1 rounded-full bg-black/60 px-2 py-0.5 text-[0.6rem] font-semibold text-white hover:bg-black/80"
+                          title="Open this photo in the gallery"
+                        >
+                          ⤢ Gallery
+                        </Link>
                       </div>
                     );
                   })}

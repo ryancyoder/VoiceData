@@ -87,6 +87,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const [activeTakeoff, setActiveTakeoff] = useState<
     { id: string; label: string; sqFt: number; linearFt: number; height: number }[]
   >([]);
+  // The estimate the open photo belongs to, so we can jump into the estimator.
+  const [activeEstimateId, setActiveEstimateId] = useState<string | null>(null);
   const [revertingId, setRevertingId] = useState<number | null>(null);
   // Overlay captions on the fronts of the images — a viewing preference,
   // persisted per browser.
@@ -98,6 +100,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // cover choice lives on the property row, not any individual event.
   const [coverOverrides, setCoverOverrides] = useState<Map<string, number | null>>(new Map());
   const scrollTargetDealId = useRef<number | null>(null);
+  // A ?photo=<id> deep link: pop this photo's lightbox once its album opens.
+  const openPhotoTargetId = useRef<number | null>(null);
   const [uploadingEventId, setUploadingEventId] = useState<number | null>(null);
   const [uploadingPropertyId, setUploadingPropertyId] = useState<number | null>(null);
   const [pasteFeedback, setPasteFeedback] = useState<{ eventId: number; message: string } | null>(null);
@@ -185,6 +189,14 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   }, [propertyGroups, selectedStages]);
 
   const [activePropertyKey, setActivePropertyKey] = useState<string | null>(() => {
+    // ?photo=<id> opens the album that contains a specific photo and (via the
+    // effect below) pops its lightbox — used to jump here from the estimator.
+    const photoParam = searchParams.get("photo");
+    const targetPhotoId = photoParam ? Number(photoParam) : NaN;
+    if (Number.isFinite(targetPhotoId)) {
+      const match = initialEvents.find((e) => e.photos.some((p) => p.id === targetPhotoId));
+      if (match) return propertyKey(match.propertyId);
+    }
     // ?property=<id> opens that property's album directly (used by the global
     // command palette's "Photo albums" results).
     const propertyParam = searchParams.get("property");
@@ -207,6 +219,9 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     const dealParam = searchParams.get("deal");
     const dealId = dealParam ? Number(dealParam) : NaN;
     if (Number.isFinite(dealId)) scrollTargetDealId.current = dealId;
+    const photoParam = searchParams.get("photo");
+    const photoId = photoParam ? Number(photoParam) : NaN;
+    if (Number.isFinite(photoId)) openPhotoTargetId.current = photoId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -215,6 +230,14 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // grid below renders it: deal by deal, then event by event within a deal.
   const activePhotos = useMemo(() => (activeProperty ? flattenPropertyPhotos(activeProperty) : []), [activeProperty]);
   const activePhoto: DealPhoto | null = activeIndex != null ? activePhotos[activeIndex] ?? null : null;
+
+  // Once the target album is open, pop the deep-linked photo's lightbox.
+  useEffect(() => {
+    if (openPhotoTargetId.current == null || activePhotos.length === 0) return;
+    const idx = activePhotos.findIndex((p) => p.id === openPhotoTargetId.current);
+    openPhotoTargetId.current = null;
+    if (idx >= 0) setActiveIndex(idx);
+  }, [activePhotos]);
 
   useEffect(() => {
     if (!scrollTargetDealId.current || !activeProperty) return;
@@ -247,10 +270,12 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     const id = activePhoto?.id;
     if (id == null) {
       setActiveTakeoff([]);
+      setActiveEstimateId(null);
       return;
     }
     let cancelled = false;
     setActiveTakeoff([]);
+    setActiveEstimateId(null);
     (async () => {
       try {
         const res = await fetch(`/api/photos/${id}/estimate-groups`);
@@ -262,6 +287,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           (g: { id: string }) => linked.has(g.id),
         );
         setActiveTakeoff(groups);
+        // Only offer the jump when the photo is actually linked to a take-off.
+        setActiveEstimateId(groups.length > 0 ? (data.estimateId ?? null) : null);
       } catch {
         /* leave empty */
       }
@@ -984,6 +1011,16 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                 <button type="button" className={styles["lightbox-annotate"]} onClick={() => setLinkingPhoto(activePhoto)}>
                   🔗 Link to take-off
                 </button>
+                {activeEstimateId && (
+                  <>
+                    <Link className={styles["lightbox-annotate"]} href={`/estimator/${activeEstimateId}`}>
+                      📐 Open estimate
+                    </Link>
+                    <Link className={styles["lightbox-annotate"]} href={`/estimator/${activeEstimateId}?plan=1`}>
+                      📍 View on plan
+                    </Link>
+                  </>
+                )}
                 {activePhoto.original_storage_path && (
                   <button
                     type="button"

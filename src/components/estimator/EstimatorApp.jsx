@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   DndContext,
@@ -30,6 +30,7 @@ import { CATEGORY_COLORS } from '@/lib/estimator/catalog';
 
 export default function App({ estimateId }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   // Catalog data source: 'legacy' (catalog_items) or 'master' (the normalized
   // tables via the -v2 endpoints). Persisted so a reload keeps the choice.
   const [catalogSource, setCatalogSource] = useState(() => {
@@ -101,6 +102,12 @@ export default function App({ estimateId }) {
       .catch(() => {});
   }, [estimateId]);
   useEffect(() => { refetchPhotoLinks(); }, [refetchPhotoLinks]);
+
+  // Arriving from a gallery photo's "View on plan" link opens the plan view.
+  useEffect(() => {
+    if (searchParams.get('plan') === '1') setPlanOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // group_id -> number of linked photos, for the take-off group row badge.
   const photoLinkCounts = photoLinks.reduce((m, l) => {
@@ -616,9 +623,14 @@ export default function App({ estimateId }) {
             <img src={dealPhotoUrl(pinPhotoView.photo.storage_path)} alt={pinPhotoView.photo.caption || ''} className="max-h-[90vh] max-w-full object-contain" />
             {pinPhotoView.group && <DimsOverlay group={pinPhotoView.group} />}
             <button onClick={() => setPinPhotoView(null)} className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white" aria-label="Close">×</button>
-            <button onClick={() => removePinFromPlan(pinPhotoView.linkId)} className="absolute left-2 top-2 rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white hover:bg-black/80">
-              Remove pin
-            </button>
+            <div className="absolute left-2 top-2 flex gap-2">
+              <button onClick={() => removePinFromPlan(pinPhotoView.linkId)} className="rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white hover:bg-black/80">
+                Remove pin
+              </button>
+              <Link href={`/photos?photo=${pinPhotoView.photo.id}`} className="rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white hover:bg-black/80">
+                ⤢ Open in gallery
+              </Link>
+            </div>
           </div>
         </div>
       )}
