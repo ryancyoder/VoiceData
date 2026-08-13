@@ -21,7 +21,14 @@ export const SITE_PLAN_IMAGE_TYPE = "Site_Plan_Image";
 // event or deal (event_id null, deal_id null, property_id set). Lives in the
 // property's album under a "General reference" section.
 export const PROPERTY_REFERENCE_TYPE = "Property_Reference";
-export type PhotoType = typeof SITE_PLAN_IMAGE_TYPE | typeof PROPERTY_REFERENCE_TYPE | null;
+// A video recorded with the Video Snapshot walkthrough tool — a normal event
+// video, but tagged so the gallery can badge it with a distinct walkthrough icon.
+export const WALKTHROUGH_VIDEO_TYPE = "Video_Walkthrough";
+export type PhotoType =
+  | typeof SITE_PLAN_IMAGE_TYPE
+  | typeof PROPERTY_REFERENCE_TYPE
+  | typeof WALKTHROUGH_VIDEO_TYPE
+  | null;
 
 export interface DealPhoto {
   id: number;

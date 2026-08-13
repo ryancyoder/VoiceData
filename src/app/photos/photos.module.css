@@ -335,6 +335,20 @@
   font-size: 0.6rem;
   line-height: 1;
 }
+.walkthrough-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(16, 128, 67, 0.92);
+  color: #fff;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  z-index: 2;
+}
 .outlier-badge {
   position: absolute;
   top: 4px;

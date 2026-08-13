@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { DEAL_PHOTOS_BUCKET } from "@/lib/salesBoard";
 import { linkToPropertyEvent, EVENT_TYPES, type EventType } from "@/lib/events";
+import { WALKTHROUGH_VIDEO_TYPE } from "@/lib/salesBoard";
 
 // Called after the browser has already uploaded the video (and optional
 // poster image) directly to Storage via a signed URL from upload-url/route.
@@ -17,7 +18,9 @@ export async function POST(req: NextRequest) {
     longitude?: unknown;
     caption?: unknown;
     eventType?: unknown;
+    walkthrough?: unknown;
   };
+  const isWalkthrough = body.walkthrough === true;
 
   const videoPath = typeof body.videoPath === "string" ? body.videoPath : "";
   if (!videoPath) {
@@ -72,6 +75,7 @@ export async function POST(req: NextRequest) {
         storage_path: videoPath,
         poster_path: posterPath,
         media_type: "video",
+        photo_type: isWalkthrough ? WALKTHROUGH_VIDEO_TYPE : null,
         caption: typeof body.caption === "string" && body.caption.trim() ? body.caption.trim() : null,
         latitude,
         longitude,

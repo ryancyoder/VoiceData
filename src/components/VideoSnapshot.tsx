@@ -368,6 +368,7 @@ export default function VideoSnapshot() {
           propertyId: selectedPropertyId ?? undefined,
           caption: overallCaption.trim() || undefined,
           takenAt: recordStartIsoRef.current ?? undefined,
+          walkthrough: true, // tag it for the distinct gallery walkthrough badge
         }),
       });
       const finalizeData = await finalizeRes.json();
@@ -619,18 +620,7 @@ export default function VideoSnapshot() {
             <span className="block h-3.5 w-3.5 rounded-full bg-red-500 shadow-[0_0_0_2px_rgba(255,255,255,0.85)]" />
           </div>
 
-          <button
-            type="button"
-            onClick={cancelRecording}
-            aria-label="Cancel"
-            className="absolute left-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"
-            style={{ top: "max(1rem, env(safe-area-inset-top))" }}
-          >
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-
+          {/* Recording indicator (info) stays top-center. */}
           <div
             className="absolute left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-black/55 px-4 py-2 text-sm font-semibold text-white"
             style={{ top: "max(1rem, env(safe-area-inset-top))" }}
@@ -639,8 +629,18 @@ export default function VideoSnapshot() {
             {snaps.length > 0 && <span className="text-zinc-300">📷 {snaps.length}</span>}
           </div>
 
-          {/* Snapshot (instant — keeps recording + narration going). */}
-          <div className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center" style={{ right: "max(1.25rem, env(safe-area-inset-right))" }}>
+          {/* All controls on the right edge — thumb reach (iPad held two-handed). */}
+          <div className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center gap-5" style={{ right: "max(1rem, env(safe-area-inset-right))" }}>
+            <button
+              type="button"
+              onClick={cancelRecording}
+              aria-label="Cancel"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white"
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
             <button
               type="button"
               onClick={takeSnapshot}
@@ -652,9 +652,6 @@ export default function VideoSnapshot() {
                 <circle cx="12" cy="13" r="4" />
               </svg>
             </button>
-          </div>
-
-          <div className="absolute bottom-0 left-0 right-0 flex justify-center" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))", paddingTop: "1rem" }}>
             <button
               type="button"
               onClick={finishRecording}
@@ -777,38 +774,32 @@ export default function VideoSnapshot() {
       )}
 
       {mode === "cycle" && currentPhoto && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black">
-          <div className="flex items-center justify-between px-4 py-3 text-white" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
-            <button type="button" onClick={finishCycle} className="text-sm text-zinc-300">
-              Done
-            </button>
-            <span className="text-sm font-semibold">Photo {cycleIndex + 1} of {uploaded.length}</span>
-            <button type="button" onClick={() => goToPhoto(cycleIndex + 1)} className="text-sm text-zinc-300">
-              {cycleIndex + 1 >= uploaded.length ? "Finish" : "Skip"}
-            </button>
-          </div>
-
-          <div className="flex min-h-0 flex-1 items-center justify-center px-4">
+        <div className="fixed inset-0 z-50 bg-black">
+          {/* Photo fills the area to the left of the control column. */}
+          <div className="absolute inset-0 flex items-center justify-center pb-28 pl-4 pr-24 pt-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={dealPhotoUrl(currentPhoto.storage_path)} alt={`Photo ${cycleIndex + 1}`} className="max-h-full max-w-full rounded-xl object-contain" />
           </div>
 
-          <div className="px-5 pb-2">
+          {/* Caption bar (kept clear of the right control column). */}
+          <div className="absolute bottom-0 left-0 right-24 px-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
             <textarea
               value={draftCaption}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={listening ? "Listening…" : "Speak or type a caption…"}
+              placeholder={listening ? "Listening…" : "Speak (mic →) or type a caption…"}
               rows={2}
               className="w-full resize-none rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-base text-white outline-none placeholder:text-zinc-400"
             />
           </div>
 
-          <div className="flex items-center justify-center gap-4 px-5 pb-8" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
+          {/* All controls on the right edge — thumb reach. */}
+          <div className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center gap-3" style={{ right: "max(1rem, env(safe-area-inset-right))" }}>
+            <span className="rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-white">{cycleIndex + 1}/{uploaded.length}</span>
             <button
               type="button"
               onClick={openMarkup}
               aria-label="Mark up"
-              className="flex h-14 w-14 flex-col items-center justify-center rounded-full border-2 border-white/50 text-[0.6rem] font-semibold text-white"
+              className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-white/50 text-white"
             >
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 20h9" />
@@ -831,12 +822,15 @@ export default function VideoSnapshot() {
             <button
               type="button"
               onClick={() => goToPhoto(cycleIndex + 1)}
-              aria-label="Next photo"
-              className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-white/50 text-white"
+              aria-label={cycleIndex + 1 >= uploaded.length ? "Finish" : "Next photo"}
+              className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-white/50 text-white"
             >
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m9 18 6-6-6-6" />
               </svg>
+            </button>
+            <button type="button" onClick={finishCycle} className="rounded-full bg-white/15 px-3 py-2 text-xs font-semibold text-white">
+              Done
             </button>
           </div>
         </div>

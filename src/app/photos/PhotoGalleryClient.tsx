@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
-import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, type DealPhoto, type Stage } from "@/lib/salesBoard";
+import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, WALKTHROUGH_VIDEO_TYPE, type DealPhoto, type Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import { readClientExif } from "@/lib/clientExif";
@@ -674,6 +674,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                         <span className={styles["thumb-placeholder"]}>🎬</span>
                                       )}
                                       {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                                      {photo.photo_type === WALKTHROUGH_VIDEO_TYPE && <span className={styles["walkthrough-badge"]}>WALK-THRU</span>}
                                       {showCaptions && photo.caption && (
                                         <span className={styles["thumb-caption-overlay"]}>{photo.caption}</span>
                                       )}
@@ -797,6 +798,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                           <span className={styles["thumb-placeholder"]}>🎬</span>
                                         )}
                                         {photo.media_type === "video" && <span className={styles["video-badge"]}>▶</span>}
+                                      {photo.photo_type === WALKTHROUGH_VIDEO_TYPE && <span className={styles["walkthrough-badge"]}>WALK-THRU</span>}
                                         {photo.is_outlier && (
                                           <span
                                             className={styles["outlier-badge"]}
@@ -873,6 +875,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? activeProperty.propertyLabel} />
               )}
+              {activePhoto.photo_type === WALKTHROUGH_VIDEO_TYPE && <span className={styles["walkthrough-badge"]}>WALK-THRU</span>}
             </div>
             <div className={styles["lightbox-head"]}>
               <div className={styles["lightbox-head-main"]}>
