@@ -51,7 +51,10 @@ export interface VoiceMapNodeRow {
 // token isn't configured on the server (the routes then report 503) so we can
 // distinguish "not set up" from "wrong token".
 export function voicemapAuth(req: NextRequest): { ok: boolean; configured: boolean } {
-  const expected = process.env.VOICEMAP_SYNC_TOKEN;
+  // Trim the stored value too: a trailing space/newline is easy to paste into
+  // the env var by accident (same guard the password gate uses in login/route),
+  // which would otherwise reject the correct token forever.
+  const expected = process.env.VOICEMAP_SYNC_TOKEN?.trim();
   if (!expected) return { ok: false, configured: false };
   const header = req.headers.get("authorization") ?? "";
   const provided = header.replace(/^Bearer\s+/i, "").trim();
