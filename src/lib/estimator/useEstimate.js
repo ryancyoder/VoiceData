@@ -196,6 +196,14 @@ function itemLineTotal(item) {
   return item.quantity * item.unitPrice;
 }
 
+// Live subtotal of a take-off group's line items (excludes delivery). Reuses the
+// same per-item pricing as the estimate so a plan tile can show a group's price
+// that updates as its shape's take-off changes.
+export function groupSubtotal(group) {
+  if (!group || !Array.isArray(group.items)) return 0;
+  return group.items.reduce((sum, item) => sum + itemLineTotal(item), 0);
+}
+
 function buildItem(catalogItem, groupId = null) {
   return {
     type: 'item',

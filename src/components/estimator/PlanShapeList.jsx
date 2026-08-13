@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { PLANT_TYPES, ITEM_TYPES } from './PlanCanvas';
+import { groupSubtotal } from '@/lib/estimator/useEstimate';
 
 const PLANT_SYMBOL_MAP = Object.fromEntries(PLANT_TYPES.map(pt => [pt.key, pt]));
 const ITEM_SYMBOL_MAP = Object.fromEntries(ITEM_TYPES.map(it => [it.key, it]));
@@ -33,6 +34,11 @@ function ShapeItem({ shape, availableGroups, kits, onUpdate, onRemove, onAddGrou
     setKitPicking(false);
   }
 
+  // The group this shape drives (kit- or hand-built). Its price recomputes as
+  // the shape's take-off changes, so we show it live on the tile.
+  const linkedGroup = shape.groupId ? availableGroups.find(g => g.id === shape.groupId) : null;
+  const groupPrice = linkedGroup ? groupSubtotal(linkedGroup) : 0;
+
   const header = (
     <div className="flex items-center gap-2">
       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: shape.color }} />
@@ -44,6 +50,14 @@ function ShapeItem({ shape, availableGroups, kits, onUpdate, onRemove, onAddGrou
         </p>
         <p className="text-[10px] text-gray-400">{shape.type === 'area' ? 'Area' : 'Linear'}</p>
       </div>
+      {groupPrice > 0 && (
+        <div className="shrink-0 text-right">
+          <p className="text-xs font-bold text-green-600 tabular-nums">
+            ${Math.round(groupPrice).toLocaleString()}
+          </p>
+          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Kit</p>
+        </div>
+      )}
       <button
         onClick={() => onRemove(shape.id)}
         className="shrink-0 p-0.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
