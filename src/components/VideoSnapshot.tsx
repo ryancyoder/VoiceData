@@ -842,6 +842,9 @@ export default function VideoSnapshot() {
           onClose={() => setAnnotating(null)}
           onSaved={(updated) => {
             commitUploaded(uploadedRef.current.map((p) => (p.id === updated.id ? updated : p)));
+            // If the caption was dictated inside the annotator, adopt it so the
+            // cycle's draft doesn't overwrite it on the next step.
+            if (uploadedRef.current[cycleIndexRef.current]?.id === updated.id) setDraft(updated.caption ?? "");
             setAnnotating(null);
           }}
         />

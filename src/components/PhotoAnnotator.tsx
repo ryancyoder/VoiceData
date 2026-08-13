@@ -123,6 +123,45 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+// ── Minimal Web Speech typings (not in the DOM lib) ────────────────────
+interface SR_Result {
+  isFinal: boolean;
+  0: { transcript: string };
+}
+interface SR_Event extends Event {
+  results: ArrayLike<SR_Result>;
+  resultIndex: number;
+}
+interface SR_Like extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((e: SR_Event) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+type SR_Ctor = new () => SR_Like;
+function getSRCtor(): SR_Ctor | null {
+  const w = window as unknown as { SpeechRecognition?: SR_Ctor; webkitSpeechRecognition?: SR_Ctor };
+  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+}
+
+// True when the annotation layer has no drawn pixels — used to avoid creating a
+// needless "annotated" copy when the user only dictated/typed a caption.
+function canvasIsBlank(c: HTMLCanvasElement): boolean {
+  const ctx = c.getContext("2d");
+  if (!ctx) return true;
+  try {
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return false;
+    return true;
+  } catch {
+    return false; // unreadable → assume there may be content, keep old behavior
+  }
+}
+
 export default function PhotoAnnotator({
   photo,
   onClose,
@@ -143,6 +182,11 @@ export default function PhotoAnnotator({
   // toolbar. The pen always uses the curve window regardless.
   const [fillCurveMode, setFillCurveMode] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [caption, setCaption] = useState(photo.caption ?? "");
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SR_Like | null>(null);
+  const captionBaseRef = useRef("");
+  const captionFinalRef = useRef("");
   const [textItems, setTextItems] = useState<TextData[]>([]);
   const [stickerItems, setStickerItems] = useState<StickerData[]>([]);
   // Transient "vertex dropped" pulses (DOM overlay, not drawn on the canvas, so
@@ -1451,13 +1495,97 @@ export default function PhotoAnnotator({
   }
 
   // ── Save (composite + upload) ─────────────────────────────────────────────
+  // ── Dictate the caption (mic is free here — nothing is recording) ──────
+  function stopCaptionDictation() {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
+    }
+    setListening(false);
+  }
+  function toggleCaptionDictation() {
+    if (listening) {
+      stopCaptionDictation();
+      return;
+    }
+    const Ctor = getSRCtor();
+    if (!Ctor) {
+      alert("Voice dictation isn't supported in this browser — type the caption instead.");
+      return;
+    }
+    const recognition = new Ctor();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    captionBaseRef.current = (caption || "").trimEnd();
+    captionFinalRef.current = "";
+    recognition.onresult = (e) => {
+      let finalChunk = "";
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalChunk += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      if (finalChunk) captionFinalRef.current += finalChunk;
+      const spoken = (captionFinalRef.current + " " + interim).trim();
+      setCaption([captionBaseRef.current, spoken].filter(Boolean).join(" "));
+    };
+    recognition.onend = () => {
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
+        setListening(false);
+      }
+    };
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+      setListening(true);
+    } catch {
+      recognitionRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort();
+    };
+  }, []);
+
   async function save() {
     const full = fullImgRef.current;
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!full || !canvas || !container) return;
+    stopCaptionDictation();
     setSaving(true);
     try {
+      const nextCaption = caption.trim() || null;
+      const captionChanged = nextCaption !== (photo.caption ?? null);
+
+      // Caption-only save (nothing drawn) — just update the caption, don't
+      // create an annotated copy (which would add a spurious "revert" state).
+      const hasMarkup = textItems.length > 0 || stickerItems.length > 0 || !canvasIsBlank(canvas);
+      if (!hasMarkup) {
+        if (captionChanged) {
+          const capRes = await fetch(`/api/photos/${photo.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ caption: nextCaption }),
+          });
+          const capData = await capRes.json();
+          if (!capRes.ok) throw new Error(capData.error || "Failed to save caption");
+          onSaved(capData.photo as DealPhoto);
+        }
+        onClose();
+        return;
+      }
+
       // Composite at the ORIGINAL full resolution: the display background was a
       // downscaled copy, but the saved output uses the full-res source so no
       // quality is lost.
@@ -1510,7 +1638,20 @@ export default function PhotoAnnotator({
       const res = await fetch(`/api/photos/${photo.id}/annotate`, { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save annotation");
-      onSaved(data.photo as DealPhoto);
+      let finalPhoto = data.photo as DealPhoto;
+
+      // Persist the (possibly dictated) caption alongside the annotation.
+      if (captionChanged) {
+        const capRes = await fetch(`/api/photos/${photo.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ caption: nextCaption }),
+        });
+        const capData = await capRes.json();
+        if (capRes.ok && capData.photo) finalPhoto = capData.photo as DealPhoto;
+      }
+
+      onSaved(finalPhoto);
       onClose();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to save annotation");
@@ -1824,6 +1965,47 @@ export default function PhotoAnnotator({
         {/* Finish controls live in the toolbar so they're always visible beside
             the tools (the top header can sit under iPad Safari's own toolbar). */}
         <div className={styles.sep} />
+        {/* Caption + dictation. */}
+        <button
+          type="button"
+          onClick={toggleCaptionDictation}
+          aria-label={listening ? "Stop dictation" : "Dictate caption"}
+          title={listening ? "Stop dictation" : "Dictate caption"}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 38,
+            height: 38,
+            flexShrink: 0,
+            borderRadius: 999,
+            border: "none",
+            color: "#fff",
+            background: listening ? "#dc2626" : "rgba(255,255,255,0.16)",
+          }}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" />
+            <path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.93V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.07A7 7 0 0 0 19 11Z" />
+          </svg>
+        </button>
+        <input
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          placeholder={listening ? "Listening…" : "Caption…"}
+          style={{
+            flexShrink: 0,
+            width: 180,
+            height: 38,
+            padding: "0 10px",
+            borderRadius: 8,
+            border: "1px solid rgba(255,255,255,0.25)",
+            background: "rgba(255,255,255,0.1)",
+            color: "#fff",
+            fontSize: "0.95rem",
+            outline: "none",
+          }}
+        />
         <button type="button" className={styles.panelSave} onClick={save} disabled={saving || !ready}>
           {saving ? "Saving…" : "✓ Save & Close"}
         </button>
