@@ -109,6 +109,8 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
   const [deletedAssemblyIds, setDeletedAssemblyIds] = useState<string[]>([]);
   // Ids created this session (never sent as deletes if removed before saving).
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  // Materials display: the grouped/expandable editor, or a flat materials-only table.
+  const [materialsLayout, setMaterialsLayout] = useState<"grouped" | "table">("grouped");
 
   const load = useCallback(() => {
     return fetch("/api/estimator/master")
@@ -158,6 +160,17 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [materials]);
+
+  // Flat materials list (by category, then name) for the materials-only table.
+  const materialsFlat = useMemo(
+    () =>
+      [...materials].sort(
+        (a, b) =>
+          (a.category || "").localeCompare(b.category || "") ||
+          (a.material_name || "").localeCompare(b.material_name || ""),
+      ),
+    [materials],
+  );
 
   // ── Material edits ──────────────────────────────────────────────────────
   function updateMaterial(id: string, field: keyof Material, value: unknown) {
@@ -422,7 +435,154 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
       )}
 
       {/* ── Materials ──────────────────────────────────────────────────── */}
+      {!loading && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Materials</span>
+          <div className="flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
+            {(["grouped", "table"] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setMaterialsLayout(l)}
+                aria-pressed={materialsLayout === l}
+                className={`rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                  materialsLayout === l
+                    ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50"
+                    : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Flat materials-only table */}
+      {!loading && materialsLayout === "table" && (
+        <section className="mb-8">
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+            <table className="w-full min-w-[760px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                  <th className="px-3 py-2 font-semibold">Material</th>
+                  <th className="px-3 py-2 font-semibold">Category</th>
+                  <th className="px-3 py-2 font-semibold">Estimator category</th>
+                  <th className="px-3 py-2 font-semibold">Unit</th>
+                  <th className="px-3 py-2 text-right font-semibold">Cost/unit</th>
+                  <th className="px-3 py-2 text-center font-semibold">Delivery</th>
+                  <th className="px-3 py-2 text-center font-semibold">Apps</th>
+                  {!locked && <th className="px-2 py-2" />}
+                </tr>
+              </thead>
+              <tbody>
+                {materialsFlat.map((m) => (
+                  <tr key={m.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/70">
+                    <td className="px-3 py-1.5">
+                      {locked ? (
+                        <span className="font-medium text-zinc-800 dark:text-zinc-100">{m.material_name}</span>
+                      ) : (
+                        <input className={`${textInput} min-w-44`} value={m.material_name ?? ""} onChange={(e) => updateMaterial(m.id, "material_name", e.target.value)} />
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {locked ? (
+                        <span className="text-zinc-600 dark:text-zinc-300">{m.category}</span>
+                      ) : (
+                        <select className={selectInput} value={m.category ?? ""} onChange={(e) => updateMaterial(m.id, "category", e.target.value)}>
+                          {MATERIAL_CATEGORIES.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                          {m.category && !MATERIAL_CATEGORIES.includes(m.category) && <option value={m.category}>{m.category}</option>}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {locked ? (
+                        <span className="text-zinc-600 dark:text-zinc-300">{m.catalog_category ?? "—"}</span>
+                      ) : (
+                        <select className={selectInput} value={m.catalog_category ?? ""} onChange={(e) => updateMaterial(m.id, "catalog_category", e.target.value || null)}>
+                          <option value="">— none —</option>
+                          {CATALOG_CATEGORIES.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                          {m.catalog_category && !CATALOG_CATEGORIES.includes(m.catalog_category) && <option value={m.catalog_category}>{m.catalog_category}</option>}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {locked ? (
+                        <span className="text-zinc-600 dark:text-zinc-300">{m.unit}</span>
+                      ) : (
+                        <select className={selectInput} value={m.unit ?? ""} onChange={(e) => updateMaterial(m.id, "unit", e.target.value)}>
+                          {MATERIAL_UNITS.map((u) => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                          {m.unit && !MATERIAL_UNITS.includes(m.unit) && <option value={m.unit}>{m.unit}</option>}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-right">
+                      {locked ? (
+                        <span className="tabular-nums text-zinc-800 dark:text-zinc-100">{money(toNum(m.cost_per_unit))}</span>
+                      ) : (
+                        <input
+                          type="number"
+                          step="0.01"
+                          className={`${numInput} max-w-28`}
+                          value={m.cost_per_unit ?? 0}
+                          onChange={(e) => updateMaterial(m.id, "cost_per_unit", e.target.value === "" ? 0 : Number(e.target.value))}
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={!!m.delivery_fee}
+                        disabled={locked}
+                        onChange={(e) => updateMaterial(m.id, "delivery_fee", e.target.checked)}
+                        className="h-4 w-4 accent-green-600 disabled:opacity-50"
+                        aria-label="Delivery fee applies"
+                      />
+                    </td>
+                    <td className="px-3 py-1.5 text-center text-xs text-zinc-500 dark:text-zinc-400">{m.applications.length}</td>
+                    {!locked && (
+                      <td className="px-2 py-1.5 text-right">
+                        <button
+                          onClick={() => removeMaterial(m)}
+                          className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
+                          title="Remove material"
+                          aria-label="Remove material"
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {materialsFlat.length === 0 && (
+                  <tr>
+                    <td colSpan={locked ? 7 : 8} className="px-3 py-6 text-center text-sm text-zinc-400">
+                      No materials yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {!locked && (
+            <button
+              onClick={() => addMaterial("standard_materials")}
+              className="mt-2 rounded-lg px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 dark:text-green-500 dark:hover:bg-green-950"
+            >
+              + Add material
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* Grouped, expandable materials editor */}
       {!loading &&
+        materialsLayout === "grouped" &&
         byCategory.map(([cat, catMats]) => (
           <section key={cat} className="mb-8">
             <div className="mb-2 flex items-center justify-between">
