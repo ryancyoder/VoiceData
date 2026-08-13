@@ -22,6 +22,7 @@ import ImportModal from './ImportModal';
 import AssemblyKitModal from './AssemblyKitModal';
 import QuickPicker from './QuickPicker';
 import EstimatePanel from './EstimatePanel';
+import PhotoLinksModal from './PhotoLinksModal';
 import PlanView from './PlanView';
 import PrintView from './PrintView';
 import { CATEGORY_COLORS } from '@/lib/estimator/catalog';
@@ -87,7 +88,24 @@ export default function App({ estimateId }) {
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printTemplate, setPrintTemplate] = useState('detailed');
   const [savingKitGroupId, setSavingKitGroupId] = useState(null);
+  const [linkModalGroupId, setLinkModalGroupId] = useState(null);
+  const [photoLinks, setPhotoLinks] = useState([]);
   const loadInputRef = useRef(null);
+
+  const refetchPhotoLinks = useCallback(() => {
+    if (!estimateId) return;
+    fetch(`/api/estimator/estimates/${estimateId}/photo-links`)
+      .then((r) => r.json())
+      .then((d) => setPhotoLinks(Array.isArray(d.links) ? d.links : []))
+      .catch(() => {});
+  }, [estimateId]);
+  useEffect(() => { refetchPhotoLinks(); }, [refetchPhotoLinks]);
+
+  // group_id -> number of linked photos, for the take-off group row badge.
+  const photoLinkCounts = photoLinks.reduce((m, l) => {
+    m[l.group_id] = (m[l.group_id] || 0) + 1;
+    return m;
+  }, {});
 
   const activeGroup = estimate ? (estimate.rows.find(r => r.type === 'group' && r.id === activeGroupId) ?? null) : null;
 
@@ -455,6 +473,8 @@ export default function App({ estimateId }) {
               onUpdateWallDimensions={updateWallDimensions}
               onRemoveRow={removeRow}
               onSaveAsKit={(groupId) => setSavingKitGroupId(groupId)}
+              onLinkPhotos={(groupId) => setLinkModalGroupId(groupId)}
+              photoLinkCounts={photoLinkCounts}
               activeGroupId={activeGroupId}
               onSetActiveGroup={setActiveGroupId}
               subtotal={subtotal}
@@ -524,6 +544,20 @@ export default function App({ estimateId }) {
               setSavingKitGroupId(null);
             }}
             onClose={() => setSavingKitGroupId(null)}
+          />
+        );
+      })()}
+
+      {/* Photo links modal */}
+      {linkModalGroupId != null && (() => {
+        const group = estimate.rows.find(r => r.type === 'group' && r.id === linkModalGroupId);
+        if (!group) return null;
+        return (
+          <PhotoLinksModal
+            estimateId={estimateId}
+            group={group}
+            onClose={() => setLinkModalGroupId(null)}
+            onChanged={refetchPhotoLinks}
           />
         );
       })()}

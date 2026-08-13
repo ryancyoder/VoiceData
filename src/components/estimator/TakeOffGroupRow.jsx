@@ -42,7 +42,7 @@ function DimInput({ label, value, onChange, step = 'any', readOnly = false }) {
   );
 }
 
-export default function TakeOffGroupRow({ group, onUpdate, onToggleCollapse, onRemove, onSaveAsKit, isActive, onSetActive, hasMapLink, stageOptions = [], children }) {
+export default function TakeOffGroupRow({ group, onUpdate, onToggleCollapse, onRemove, onSaveAsKit, onLinkPhotos, linkedPhotoCount = 0, isActive, onSetActive, hasMapLink, stageOptions = [], children }) {
   const stageLabelOf = (name) => stageOptions.find(s => s.name === name)?.label ?? name;
   const [notesOpen, setNotesOpen] = useState(!!group.notes);
   const hasNotes = !!group.notes;
@@ -227,6 +227,23 @@ export default function TakeOffGroupRow({ group, onUpdate, onToggleCollapse, onR
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
             </svg>
+          </button>
+        )}
+
+        {/* Link photos to this take-off group */}
+        {!group.isPlantsGroup && !group.isItemsGroup && onLinkPhotos && (
+          <button
+            onClick={() => onLinkPhotos(group.id)}
+            className={`shrink-0 flex items-center gap-0.5 p-1 rounded transition-colors print:hidden
+              ${linkedPhotoCount > 0 ? 'text-indigo-600 hover:bg-indigo-100' : 'text-indigo-300 hover:text-indigo-500 hover:bg-indigo-100'}`}
+            title={linkedPhotoCount > 0 ? `${linkedPhotoCount} linked photo${linkedPhotoCount === 1 ? '' : 's'}` : 'Link a photo'}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 6h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z" />
+              <circle cx="9" cy="9" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+            {linkedPhotoCount > 0 && <span className="text-xs font-semibold">{linkedPhotoCount}</span>}
           </button>
         )}
 
