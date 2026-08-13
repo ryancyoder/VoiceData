@@ -92,10 +92,21 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
       return next;
     });
   }
+  // APPOINTMENTS: narrow to properties with a deal whose appointment date is
+  // today or later. Compared against the browser's local day.
+  const [apptOnly, setApptOnly] = useState(false);
+  const todayKey = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
   const visibleProperties = useMemo(() => {
-    if (selectedStages.size === STAGES.length) return properties;
-    return properties.filter((p) => p.dealStages.some((s) => selectedStages.has(s)));
-  }, [properties, selectedStages]);
+    let list =
+      selectedStages.size === STAGES.length
+        ? properties
+        : properties.filter((p) => p.dealStages.some((s) => selectedStages.has(s)));
+    if (apptOnly) list = list.filter((p) => p.maxAppointmentDate != null && p.maxAppointmentDate >= todayKey);
+    return list;
+  }, [properties, selectedStages, apptOnly, todayKey]);
 
   // Reacts to the URL's ?property= param (the command palette navigates
   // here this way) rather than only reading it once on mount, so it also
@@ -164,7 +175,7 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
       if (!res.ok) throw new Error(data.error || "Failed to add property");
       const created = data.property as PropertyRow;
       setProperties((ps) =>
-        [...ps, { ...created, dealCount: 0, eventCount: 0, dealStages: [] }].sort(comparePropertiesByLastName)
+        [...ps, { ...created, dealCount: 0, eventCount: 0, dealStages: [], maxAppointmentDate: null }].sort(comparePropertiesByLastName)
       );
       closeForm();
     } catch (err) {
@@ -209,6 +220,17 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
       </div>
 
       <div className={styles["stage-filter-bar"]}>
+        <button
+          type="button"
+          className={`${styles["stage-filter-chip"]} ${apptOnly ? styles["is-active"] : ""}`}
+          style={{ ["--chip-color" as string]: "#1F6F6D" }}
+          onClick={() => setApptOnly((v) => !v)}
+          aria-pressed={apptOnly}
+          title="Only properties with an appointment today or in the future"
+        >
+          📅 APPOINTMENTS
+        </button>
+        <span className={styles["stage-filter-divider"]} aria-hidden />
         {STAGES.map((stage) => {
           const active = selectedStages.has(stage);
           return (

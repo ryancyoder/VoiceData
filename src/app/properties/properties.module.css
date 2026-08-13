@@ -137,6 +137,7 @@
   border-color: var(--chip-color);
   color: #fff;
 }
+.stage-filter-divider { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
 .stage-filter-actions { display: flex; gap: 8px; margin-left: auto; }
 .stage-filter-link {
   background: none;

@@ -11,6 +11,10 @@ export interface PropertyRow extends Property {
   // can have more than one deal (a return client, a second project), so
   // this is a set of stages, not a single one. Used by the stage filter bar.
   dealStages: Stage[];
+  // The latest appointment date across this property's deals (ISO YYYY-MM-DD),
+  // or null. The APPOINTMENTS filter treats max >= today as "has an upcoming
+  // appointment" — the client compares against the browser's local day.
+  maxAppointmentDate: string | null;
 }
 
 type RawProperty = Omit<Property, "contact"> & { contacts: Contact | null };
@@ -22,7 +26,7 @@ export default async function PropertiesPage() {
       .select("*, contacts(*)")
       .order("last_name", { ascending: true, foreignTable: "contacts" })
       .order("address", { ascending: true }),
-    supabase.from("Sales Board").select("property_id, stage").not("property_id", "is", null),
+    supabase.from("Sales Board").select("property_id, stage, appointment_date").not("property_id", "is", null),
     supabase.from("events").select("property_id").not("property_id", "is", null),
   ]);
 
@@ -38,11 +42,17 @@ export default async function PropertiesPage() {
 
   const dealCounts = new Map<number, number>();
   const dealStagesByProperty = new Map<number, Set<Stage>>();
-  for (const row of (dealsRes.data ?? []) as { property_id: number; stage: Stage }[]) {
+  const maxApptByProperty = new Map<number, string>();
+  for (const row of (dealsRes.data ?? []) as { property_id: number; stage: Stage; appointment_date: string | null }[]) {
     dealCounts.set(row.property_id, (dealCounts.get(row.property_id) ?? 0) + 1);
     const stages = dealStagesByProperty.get(row.property_id) ?? new Set<Stage>();
     stages.add(row.stage);
     dealStagesByProperty.set(row.property_id, stages);
+    if (row.appointment_date) {
+      const cur = maxApptByProperty.get(row.property_id);
+      // ISO YYYY-MM-DD sorts lexicographically, so string max = latest date.
+      if (!cur || row.appointment_date > cur) maxApptByProperty.set(row.property_id, row.appointment_date);
+    }
   }
   const eventCounts = new Map<number, number>();
   for (const row of (eventsRes.data ?? []) as { property_id: number }[]) {
@@ -58,6 +68,7 @@ export default async function PropertiesPage() {
       dealCount: dealCounts.get(p.id) ?? 0,
       eventCount: eventCounts.get(p.id) ?? 0,
       dealStages: Array.from(dealStagesByProperty.get(p.id) ?? []),
+      maxAppointmentDate: maxApptByProperty.get(p.id) ?? null,
     };
   });
 
