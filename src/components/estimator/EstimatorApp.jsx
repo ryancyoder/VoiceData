@@ -12,7 +12,7 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core';
-import { useEstimate, SHAPE_COLORS } from '@/lib/estimator/useEstimate';
+import { useEstimate, SHAPE_COLORS, crewDayRate } from '@/lib/estimator/useEstimate';
 import { useCatalog } from '@/lib/estimator/useCatalog';
 import { useAssemblyKits } from '@/lib/estimator/useAssemblyKits';
 import { usePhases } from '@/lib/estimator/usePhases';
@@ -65,6 +65,9 @@ export default function App({ estimateId }) {
     setPlanImage,
     setPlanScale,
     setSupplierDelivery,
+    updatePlanMeta,
+    syncCrewLaborRow,
+    productionDays,
     addShape,
     updateShape,
     removeShape,
@@ -110,6 +113,17 @@ export default function App({ estimateId }) {
     if (searchParams.get('plan') === '1') setPlanOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Crew labor: plan mobilization days → an auto-managed labor line ─────────
+  // Crew size and labor-day override live on the plan; labor days default to the
+  // mobilization (production) day count. The rate comes from the catalog.
+  const crewSize = estimate?.plan?.crewSize ?? 3;
+  const laborDaysOverride = estimate?.plan?.laborDays ?? null;
+  const effectiveLaborDays = laborDaysOverride != null ? laborDaysOverride : productionDays;
+  const crewDayRateVal = crewDayRate(catalogItems, crewSize);
+  useEffect(() => {
+    syncCrewLaborRow({ crewSize, laborDays: effectiveLaborDays, dayRate: crewDayRateVal });
+  }, [crewSize, effectiveLaborDays, crewDayRateVal, syncCrewLaborRow]);
 
   // group_id -> number of linked photos, for the take-off group row badge.
   const photoLinkCounts = photoLinks.reduce((m, l) => {
@@ -510,6 +524,14 @@ export default function App({ estimateId }) {
             loadBreakdown={loadBreakdown}
             supplierDeliveries={estimate?.plan?.supplierDeliveries ?? {}}
             onSetSupplierDelivery={setSupplierDelivery}
+            trucksPerRow={estimate?.plan?.trucksPerRow ?? 2}
+            onSetTrucksPerRow={(n) => updatePlanMeta({ trucksPerRow: n })}
+            crewSize={crewSize}
+            onSetCrewSize={(n) => updatePlanMeta({ crewSize: n })}
+            laborDaysOverride={laborDaysOverride}
+            onSetLaborDays={(n) => updatePlanMeta({ laborDays: n })}
+            productionDays={productionDays}
+            crewDayRateValue={crewDayRateVal}
             photoPins={photoPins}
             placingPhoto={!!placingPinLink}
             onPlacePhotoPin={placePhotoPin}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import PlanCanvas, { PLANT_TYPES, ITEM_TYPES } from './PlanCanvas';
 import PlanShapeList from './PlanShapeList';
-import { genId, SHAPE_COLORS } from '@/lib/estimator/useEstimate';
+import { genId, SHAPE_COLORS, SUPPLIER_DELIVERY_CAPACITY } from '@/lib/estimator/useEstimate';
 
 const PLANT_SYMBOL_MAP = Object.fromEntries(PLANT_TYPES.map(pt => [pt.key, pt]));
 const ITEM_TYPE_MAP = Object.fromEntries(ITEM_TYPES.map(it => [it.key, it]));
@@ -18,11 +18,12 @@ const LOAD_ICON_BY_CATEGORY = {
   lawn: '🌱',
 };
 
-// A supplier delivery is a single bulk drop from the supplier that covers this
-// many standard (our-truck) loads. Its icon is a semi/lorry, distinct from the
-// box-truck / material glyphs used for standard deliveries.
-const SUPPLIER_DELIVERY_CAPACITY = 4;
+// A supplier delivery is a single bulk drop from the supplier that covers
+// SUPPLIER_DELIVERY_CAPACITY standard (our-truck) loads. Its icon is a
+// semi/lorry, distinct from the box-truck / material glyphs used for standard
+// deliveries.
 const SUPPLIER_ICON = '🚛';
+const CREW_SIZES = [3, 4, 5];
 
 // Distinct glyphs per bulk material, matched on the material name so mulch,
 // topsoil, stone, sand, etc. each read differently in the loads column.
@@ -71,6 +72,14 @@ export default function PlanView({
   loadBreakdown = [],
   supplierDeliveries = {},
   onSetSupplierDelivery,
+  trucksPerRow = 2,
+  onSetTrucksPerRow,
+  crewSize = 3,
+  onSetCrewSize,
+  laborDaysOverride = null,
+  onSetLaborDays,
+  productionDays = 0,
+  crewDayRateValue = 0,
   photoPins = [],
   placingPhoto = false,
   onPlacePhotoPin,
@@ -297,7 +306,19 @@ export default function PlanView({
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Delivery-loads column: trucks stacked into production days. */}
-        <LoadsColumn loadBreakdown={loadBreakdown} supplierDeliveries={supplierDeliveries} onSetSupplierDelivery={onSetSupplierDelivery} />
+        <LoadsColumn
+          loadBreakdown={loadBreakdown}
+          supplierDeliveries={supplierDeliveries}
+          onSetSupplierDelivery={onSetSupplierDelivery}
+          trucksPerRow={trucksPerRow}
+          onSetTrucksPerRow={onSetTrucksPerRow}
+          crewSize={crewSize}
+          onSetCrewSize={onSetCrewSize}
+          laborDaysOverride={laborDaysOverride}
+          onSetLaborDays={onSetLaborDays}
+          productionDays={productionDays}
+          crewDayRateValue={crewDayRateValue}
+        />
         <PlanCanvas
           plan={estimate.plan}
           groups={groups}
@@ -346,25 +367,26 @@ export default function PlanView({
   );
 }
 
-const TRUCKS_PER_DAY_STORE = 'plan_trucks_per_day';
-
 // Delivery loads laid out as a production schedule: every truckload the take-off
 // needs becomes one truck icon, packed N-per-row where N is the daily
 // mobilization (1/2/3 trucks going to site per day). Each row is one production
-// day, so the row count is the number of production days. Trucks stay grouped by
-// material and keep the material's icon. Everything recomputes live as take-off
-// quantities change.
-function LoadsColumn({ loadBreakdown, supplierDeliveries = {}, onSetSupplierDelivery }) {
-  const [trucksPerRow, setTrucksPerRow] = useState(() => {
-    if (typeof window === 'undefined') return 2;
-    const v = parseInt(localStorage.getItem(TRUCKS_PER_DAY_STORE), 10);
-    return v === 1 || v === 2 || v === 3 ? v : 2;
-  });
-  function pick(n) {
-    setTrucksPerRow(n);
-    if (typeof window !== 'undefined') localStorage.setItem(TRUCKS_PER_DAY_STORE, String(n));
-  }
-
+// day, so the row count is the number of production days. A crew-size selector
+// turns each production day into a crew day at the catalog's crew-day rate,
+// which syncs to the estimate as an auto-managed labor line. Everything
+// recomputes live as take-off quantities change.
+function LoadsColumn({
+  loadBreakdown,
+  supplierDeliveries = {},
+  onSetSupplierDelivery,
+  trucksPerRow = 2,
+  onSetTrucksPerRow,
+  crewSize = 3,
+  onSetCrewSize,
+  laborDaysOverride = null,
+  onSetLaborDays,
+  productionDays = 0,
+  crewDayRateValue = 0,
+}) {
   // Per material: how many supplier deliveries are set, how many standard loads
   // remain after each supplier delivery offsets SUPPLIER_DELIVERY_CAPACITY loads.
   const materials = loadBreakdown.map((g) => {
@@ -379,15 +401,21 @@ function LoadsColumn({ loadBreakdown, supplierDeliveries = {}, onSetSupplierDeli
   for (const m of materials) for (let i = 0; i < m.remaining; i++) trucks.push({ icon: m.icon, name: m.name });
   const rows = [];
   for (let i = 0; i < trucks.length; i += trucksPerRow) rows.push(trucks.slice(i, i + trucksPerRow));
-  const productionDays = rows.length;
 
   const totalLoads = loadBreakdown.reduce((s, g) => s + g.loads, 0);
   const totalSupplier = materials.reduce((s, m) => s + m.supplier, 0);
   const hasAny = totalLoads > 0;
 
+  // Labor days default to the mobilization (production) day count; the user can
+  // override them. Labor total = labor days × the crew-day rate.
+  const laborDays = laborDaysOverride != null ? laborDaysOverride : productionDays;
+  const laborOverridden = laborDaysOverride != null;
+  const laborTotal = laborDays * crewDayRateValue;
+  const fmtMoney = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+
   return (
     <div className="flex w-48 shrink-0 flex-col border-r border-gray-700 bg-gray-900">
-      {/* Header + trucks-per-day (mobilization) selector */}
+      {/* Header + trucks-per-day (mobilization) + crew selectors */}
       <div className="shrink-0 border-b border-gray-700 px-3 py-2">
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Loads</span>
@@ -398,7 +426,7 @@ function LoadsColumn({ loadBreakdown, supplierDeliveries = {}, onSetSupplierDeli
           {[1, 2, 3].map((n) => (
             <button
               key={n}
-              onClick={() => pick(n)}
+              onClick={() => onSetTrucksPerRow?.(n)}
               className={`flex-1 rounded py-1 text-xs font-semibold transition-colors ${
                 trucksPerRow === n ? 'bg-white text-gray-900' : 'text-gray-400 hover:bg-gray-700 hover:text-white'
               }`}
@@ -407,11 +435,74 @@ function LoadsColumn({ loadBreakdown, supplierDeliveries = {}, onSetSupplierDeli
             </button>
           ))}
         </div>
+
+        {/* Crew size → each production day becomes a crew day. */}
+        <div className="mt-2 text-[10px] uppercase tracking-wide text-gray-500">Crew / day</div>
+        <div className="mt-1 flex gap-1">
+          {CREW_SIZES.map((n) => (
+            <button
+              key={n}
+              onClick={() => onSetCrewSize?.(n)}
+              className={`flex-1 rounded py-1 text-xs font-semibold transition-colors ${
+                crewSize === n ? 'bg-white text-gray-900' : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+              }`}
+              title={`${n}-man crew day`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+
         {hasAny && (
           <div className="mt-2 text-[10px] leading-tight text-gray-500">
             {productionDays} production day{productionDays === 1 ? '' : 's'} · {trucksPerRow}/day
             {totalSupplier > 0 && <> · {totalSupplier} supplier {SUPPLIER_ICON}</>}
           </div>
+        )}
+
+        {/* Labor days (default = mobilization days) + live labor total. */}
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-[10px] uppercase tracking-wide text-gray-500">Labor days</span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onSetLaborDays?.(Math.max(0, laborDays - 1))}
+              className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-gray-200 hover:bg-gray-600"
+              aria-label="Fewer labor days"
+            >
+              −
+            </button>
+            <span className="w-5 text-center text-xs font-semibold text-gray-100">{laborDays}</span>
+            <button
+              onClick={() => onSetLaborDays?.(laborDays + 1)}
+              className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-gray-200 hover:bg-gray-600"
+              aria-label="More labor days"
+            >
+              +
+            </button>
+            <button
+              onClick={() => onSetLaborDays?.(null)}
+              disabled={!laborOverridden}
+              className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-30"
+              title="Reset to mobilization days"
+              aria-label="Reset labor days to mobilization days"
+            >
+              ↺
+            </button>
+          </div>
+        </div>
+        <div className="mt-1 flex items-baseline justify-between">
+          <span className="text-[10px] text-gray-500">
+            {crewSize}-man × {laborDays}d
+            {laborOverridden && <span className="ml-1 text-amber-500/80">(manual)</span>}
+          </span>
+          <span className="text-xs font-bold text-green-400 tabular-nums">
+            {crewDayRateValue > 0 ? fmtMoney(laborTotal) : '—'}
+          </span>
+        </div>
+        {crewDayRateValue <= 0 && (
+          <p className="mt-1 text-[9px] leading-tight text-amber-500/80">
+            No “{crewSize}-Man Crew Day” labor rate found in the catalog.
+          </p>
         )}
       </div>
 

@@ -204,6 +204,33 @@ export function groupSubtotal(group) {
   return group.items.reduce((sum, item) => sum + itemLineTotal(item), 0);
 }
 
+// One supplier delivery covers this many standard (our-truck) loads.
+export const SUPPLIER_DELIVERY_CAPACITY = 4;
+
+// The auto-managed crew-labor line that the plan view keeps in sync.
+const CREW_LABOR_ROW_ID = 'crew-labor-auto';
+
+// Crew-day labor rate for a crew size, derived from the catalog's "N-Man Crew
+// Day" labor items. Uses an exact match when present, otherwise scales the
+// per-man/day rate inferred from whatever crew-day items exist (e.g. a 3-Man
+// Crew Day at $2640 → $880/man-day → a 5-man day = $4400).
+export function crewDayRate(catalogItems, crewSize) {
+  const rx = /(\d+)\s*-?\s*man\s+crew\s+day/i;
+  let exact = null, perMan = null;
+  for (const c of catalogItems || []) {
+    if (c.category !== 'labor') continue;
+    const m = (c.name || '').match(rx);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    if (!(n > 0) || !(c.unitPrice > 0)) continue;
+    if (n === crewSize) exact = c.unitPrice;
+    perMan = c.unitPrice / n;
+  }
+  if (exact != null) return exact;
+  if (perMan != null) return Math.round(perMan * crewSize);
+  return 0;
+}
+
 function buildItem(catalogItem, groupId = null) {
   return {
     type: 'item',
@@ -518,6 +545,38 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
     });
   }, []);
 
+  // Merge scalar planning fields (trucksPerRow, crewSize, laborDays) onto the
+  // plan blob so they persist with the estimate and drive the labor sync.
+  const updatePlanMeta = useCallback((patch) => {
+    setEstimate(prev => (prev ? { ...prev, plan: { ...prev.plan, ...patch } } : prev));
+  }, []);
+
+  // Keep the auto-managed "Crew Labor" line in sync with the plan's crew size
+  // and (mobilization-derived) labor days. Idempotent so it never loops.
+  const syncCrewLaborRow = useCallback(({ crewSize, laborDays, dayRate }) => {
+    setEstimate(prev => {
+      if (!prev) return prev;
+      const existing = prev.rows.find(r => r.id === CREW_LABOR_ROW_ID);
+      const shouldExist = laborDays > 0 && dayRate > 0;
+      if (!shouldExist) {
+        return existing ? { ...prev, rows: prev.rows.filter(r => r.id !== CREW_LABOR_ROW_ID) } : prev;
+      }
+      const name = `Crew Labor — ${crewSize}-Man Crew Day`;
+      if (existing && existing.unitPrice === dayRate && existing.quantity === laborDays && existing.name === name) {
+        return prev;
+      }
+      const desired = {
+        type: 'item', id: CREW_LABOR_ROW_ID, isCrewLabor: true, groupId: null, catalogId: null,
+        name, category: 'labor', unit: 'day', unitPrice: dayRate, quantity: laborDays,
+        notes: 'Auto-calculated from plan mobilization days',
+      };
+      const rows = existing
+        ? prev.rows.map(r => (r.id === CREW_LABOR_ROW_ID ? desired : r))
+        : [...prev.rows, desired];
+      return { ...prev, rows };
+    });
+  }, []);
+
   const addShape = useCallback((shape) => {
     setEstimate(prev => {
       const pixelsPerFoot = prev.plan.scale?.pixelsPerFoot ?? 0;
@@ -764,6 +823,18 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
     }
     return Array.from(map.values()).sort((a, b) => b.loads - a.loads);
   })();
+
+  // Delivery loads remaining after supplier drops, and the production/
+  // mobilization days that implies at the chosen trucks/day. Kept here (not
+  // just in the plan UI) so crew labor can be derived and synced to the estimate.
+  const _supplierDeliveries = estimate?.plan?.supplierDeliveries ?? {};
+  const _trucksPerDay = estimate?.plan?.trucksPerRow ?? 2;
+  const _remainingLoads = loadBreakdown.reduce((sum, g) => {
+    const maxSup = Math.ceil(g.loads / SUPPLIER_DELIVERY_CAPACITY);
+    const sup = Math.min(_supplierDeliveries[g.key] || 0, maxSup);
+    return sum + Math.max(0, g.loads - sup * SUPPLIER_DELIVERY_CAPACITY);
+  }, 0);
+  const productionDays = _trucksPerDay > 0 ? Math.ceil(_remainingLoads / _trucksPerDay) : 0;
   // subtotal includes delivery (delivery is a logistics cost, not a separate line)
   const subtotal = allItems.reduce((sum, item) => sum + itemLineTotal(item), 0) + totalDelivery;
   const metacategoryTotals = METACATEGORIES.reduce((acc, meta) => {
@@ -832,6 +903,9 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
     setPlanImage,
     setPlanScale,
     setSupplierDelivery,
+    updatePlanMeta,
+    syncCrewLaborRow,
+    productionDays,
     addShape,
     updateShape,
     removeShape,
