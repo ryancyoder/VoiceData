@@ -24,6 +24,9 @@ const LOAD_ICON_BY_CATEGORY = {
 // deliveries.
 const SUPPLIER_ICON = '🚛';
 const CREW_SIZES = [3, 4, 5];
+// A crew day is drawn as one hard-hat per crew member, so a 3/4/5-man crew reads
+// as a distinct little cluster next to that day's trucks.
+const CREW_MEMBER_ICON = '👷';
 
 // Distinct glyphs per bulk material, matched on the material name so mulch,
 // topsoil, stone, sand, etc. each read differently in the loads column.
@@ -518,9 +521,15 @@ function LoadsColumn({
               <div
                 key={idx}
                 className="flex items-center gap-1.5 rounded bg-gray-800/60 px-1.5 py-1"
-                title={`Production day ${idx + 1}: ${row.map((t) => t.name).join(', ')}`}
+                title={`Production day ${idx + 1}: ${crewSize}-man crew · ${row.map((t) => t.name).join(', ')}`}
               >
                 <span className="w-5 shrink-0 text-right text-[10px] font-semibold text-gray-500">{idx + 1}</span>
+                <div className="flex shrink-0 items-center" title={`${crewSize}-man crew`}>
+                  {Array.from({ length: crewSize }).map((_, i) => (
+                    <span key={i} className="text-sm leading-none">{CREW_MEMBER_ICON}</span>
+                  ))}
+                </div>
+                <span className="shrink-0 text-gray-600">·</span>
                 <div className="flex flex-wrap items-center gap-0.5">
                   {row.map((t, i) => (
                     <span key={i} className="text-xl leading-none">{t.icon}</span>
