@@ -223,6 +223,14 @@
 .map-popup-title { font-weight: 650; margin-bottom: 2px; }
 .map-popup-detail { font-size: 0.8rem; color: #444; }
 
+/* Colored stage pin — strip Leaflet's default divIcon white box. Doubled class
+   raises specificity over .leaflet-div-icon. */
+.map-pin.map-pin {
+  background: transparent;
+  border: 0;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+}
+
 /* Always-on contact-last-name label next to each map pin. The doubled class
    raises specificity so it beats Leaflet's default .leaflet-tooltip styles. */
 .map-pin-label.map-pin-label {
