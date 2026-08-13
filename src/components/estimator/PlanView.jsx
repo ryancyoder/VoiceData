@@ -9,7 +9,7 @@ const ITEM_TYPE_MAP = Object.fromEntries(ITEM_TYPES.map(it => [it.key, it]));
 // Delivery-load icon per material category (the fallback when the material name
 // doesn't match a specific bulk material below). Each icon = one truckload.
 const LOAD_ICON_BY_CATEGORY = {
-  bulk_materials: '🚛',
+  bulk_materials: '🚚',
   standard_materials: '🚚',
   hardscape: '🧱',
   edging: '🚚',
@@ -17,6 +17,12 @@ const LOAD_ICON_BY_CATEGORY = {
   plants: '🌳',
   lawn: '🌱',
 };
+
+// A supplier delivery is a single bulk drop from the supplier that covers this
+// many standard (our-truck) loads. Its icon is a semi/lorry, distinct from the
+// box-truck / material glyphs used for standard deliveries.
+const SUPPLIER_DELIVERY_CAPACITY = 4;
+const SUPPLIER_ICON = '🚛';
 
 // Distinct glyphs per bulk material, matched on the material name so mulch,
 // topsoil, stone, sand, etc. each read differently in the loads column.
@@ -63,6 +69,8 @@ export default function PlanView({
   kits,
   onApplyKit,
   loadBreakdown = [],
+  supplierDeliveries = {},
+  onSetSupplierDelivery,
   photoPins = [],
   placingPhoto = false,
   onPlacePhotoPin,
@@ -289,7 +297,7 @@ export default function PlanView({
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Delivery-loads column: trucks stacked into production days. */}
-        <LoadsColumn loadBreakdown={loadBreakdown} />
+        <LoadsColumn loadBreakdown={loadBreakdown} supplierDeliveries={supplierDeliveries} onSetSupplierDelivery={onSetSupplierDelivery} />
         <PlanCanvas
           plan={estimate.plan}
           groups={groups}
@@ -346,7 +354,7 @@ const TRUCKS_PER_DAY_STORE = 'plan_trucks_per_day';
 // day, so the row count is the number of production days. Trucks stay grouped by
 // material and keep the material's icon. Everything recomputes live as take-off
 // quantities change.
-function LoadsColumn({ loadBreakdown }) {
+function LoadsColumn({ loadBreakdown, supplierDeliveries = {}, onSetSupplierDelivery }) {
   const [trucksPerRow, setTrucksPerRow] = useState(() => {
     if (typeof window === 'undefined') return 2;
     const v = parseInt(localStorage.getItem(TRUCKS_PER_DAY_STORE), 10);
@@ -357,19 +365,28 @@ function LoadsColumn({ loadBreakdown }) {
     if (typeof window !== 'undefined') localStorage.setItem(TRUCKS_PER_DAY_STORE, String(n));
   }
 
-  // Flatten to one entry per truckload, preserving material identity/order.
+  // Per material: how many supplier deliveries are set, how many standard loads
+  // remain after each supplier delivery offsets SUPPLIER_DELIVERY_CAPACITY loads.
+  const materials = loadBreakdown.map((g) => {
+    const maxSupplier = Math.ceil(g.loads / SUPPLIER_DELIVERY_CAPACITY);
+    const supplier = Math.min(supplierDeliveries[g.key] || 0, maxSupplier);
+    const remaining = Math.max(0, g.loads - supplier * SUPPLIER_DELIVERY_CAPACITY);
+    return { ...g, icon: loadIcon(g.category, g.name), maxSupplier, supplier, remaining };
+  });
+
+  // Standard-delivery trucks (reduced by supplier offsets) → production-day rows.
   const trucks = [];
-  for (const g of loadBreakdown) {
-    const icon = loadIcon(g.category, g.name);
-    for (let i = 0; i < g.loads; i++) trucks.push({ icon, name: g.name });
-  }
-  const totalLoads = trucks.length;
+  for (const m of materials) for (let i = 0; i < m.remaining; i++) trucks.push({ icon: m.icon, name: m.name });
   const rows = [];
   for (let i = 0; i < trucks.length; i += trucksPerRow) rows.push(trucks.slice(i, i + trucksPerRow));
   const productionDays = rows.length;
 
+  const totalLoads = loadBreakdown.reduce((s, g) => s + g.loads, 0);
+  const totalSupplier = materials.reduce((s, m) => s + m.supplier, 0);
+  const hasAny = totalLoads > 0;
+
   return (
-    <div className="flex w-40 shrink-0 flex-col border-r border-gray-700 bg-gray-900">
+    <div className="flex w-48 shrink-0 flex-col border-r border-gray-700 bg-gray-900">
       {/* Header + trucks-per-day (mobilization) selector */}
       <div className="shrink-0 border-b border-gray-700 px-3 py-2">
         <div className="flex items-baseline justify-between">
@@ -390,16 +407,17 @@ function LoadsColumn({ loadBreakdown }) {
             </button>
           ))}
         </div>
-        {totalLoads > 0 && (
+        {hasAny && (
           <div className="mt-2 text-[10px] leading-tight text-gray-500">
             {productionDays} production day{productionDays === 1 ? '' : 's'} · {trucksPerRow}/day
+            {totalSupplier > 0 && <> · {totalSupplier} supplier {SUPPLIER_ICON}</>}
           </div>
         )}
       </div>
 
       {/* Production-day rows */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
-        {totalLoads === 0 ? (
+        {!hasAny ? (
           <p className="px-1 text-[11px] leading-snug text-gray-500">
             No delivery loads yet — plot take-off areas for bulk materials to see loads here.
           </p>
@@ -419,22 +437,56 @@ function LoadsColumn({ loadBreakdown }) {
                 </div>
               </div>
             ))}
+            {rows.length === 0 && (
+              <p className="px-1 text-[11px] leading-snug text-gray-500">
+                All loads covered by supplier deliveries — no crew mobilization days.
+              </p>
+            )}
           </div>
         )}
       </div>
 
-      {/* Legend: which glyph is which material, with load counts. */}
-      {totalLoads > 0 && (
+      {/* Materials: per-material supplier-delivery control. Each supplier
+          delivery ({SUPPLIER_ICON}) offsets {SUPPLIER_DELIVERY_CAPACITY} standard loads. */}
+      {hasAny && (
         <div className="shrink-0 border-t border-gray-700 px-2 py-2">
-          <div className="flex flex-col gap-1">
-            {loadBreakdown.map((g) => (
-              <div key={g.key} className="flex items-center gap-1.5 text-[11px] text-gray-300" title={g.name}>
-                <span className="shrink-0 text-base leading-none">{loadIcon(g.category, g.name)}</span>
-                <span className="min-w-0 flex-1 truncate">{g.name}</span>
-                <span className="shrink-0 font-semibold text-gray-400">{g.loads}</span>
+          <div className="mb-1 flex items-center justify-between px-1">
+            <span className="text-[10px] uppercase tracking-wide text-gray-500">Material</span>
+            <span className="text-[10px] uppercase tracking-wide text-gray-500">Supplier {SUPPLIER_ICON}</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {materials.map((m) => (
+              <div key={m.key} className="flex items-center gap-1.5 text-[11px] text-gray-300">
+                <span className="shrink-0 text-base leading-none">{m.icon}</span>
+                <span className="min-w-0 flex-1 truncate" title={m.name}>
+                  {m.name}
+                  <span className="ml-1 text-gray-500">{m.remaining}/{m.loads}</span>
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    onClick={() => onSetSupplierDelivery?.(m.key, Math.max(0, m.supplier - 1))}
+                    disabled={m.supplier <= 0}
+                    className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-gray-200 disabled:opacity-30 hover:bg-gray-600"
+                    aria-label={`Remove a supplier delivery of ${m.name}`}
+                  >
+                    −
+                  </button>
+                  <span className="w-4 text-center font-semibold text-gray-100">{m.supplier}</span>
+                  <button
+                    onClick={() => onSetSupplierDelivery?.(m.key, Math.min(m.maxSupplier, m.supplier + 1))}
+                    disabled={m.supplier >= m.maxSupplier}
+                    className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-gray-200 disabled:opacity-30 hover:bg-gray-600"
+                    aria-label={`Add a supplier delivery of ${m.name}`}
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             ))}
           </div>
+          <p className="mt-2 px-1 text-[9px] leading-tight text-gray-600">
+            Each {SUPPLIER_ICON} supplier delivery covers {SUPPLIER_DELIVERY_CAPACITY} standard loads.
+          </p>
         </div>
       )}
     </div>

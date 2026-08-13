@@ -498,6 +498,18 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
     setEstimate(prev => ({ ...prev, plan: { ...prev.plan, scale: scaleData } }));
   }, []);
 
+  // Supplier deliveries per material (bulk drops that offset standard loads in
+  // the plan-view loads column). Stored on the plan blob so they persist with
+  // the estimate. `count` of 0 clears the entry.
+  const setSupplierDelivery = useCallback((key, count) => {
+    setEstimate(prev => {
+      if (!prev) return prev;
+      const next = { ...(prev.plan?.supplierDeliveries ?? {}) };
+      if (count > 0) next[key] = count; else delete next[key];
+      return { ...prev, plan: { ...prev.plan, supplierDeliveries: next } };
+    });
+  }, []);
+
   const addShape = useCallback((shape) => {
     setEstimate(prev => {
       const pixelsPerFoot = prev.plan.scale?.pixelsPerFoot ?? 0;
@@ -811,6 +823,7 @@ export function useEstimate(deliveryRate = 0, estimateId = null) {
     resetEstimate,
     setPlanImage,
     setPlanScale,
+    setSupplierDelivery,
     addShape,
     updateShape,
     removeShape,

@@ -64,6 +64,7 @@ export default function App({ estimateId }) {
     importEstimate,
     setPlanImage,
     setPlanScale,
+    setSupplierDelivery,
     addShape,
     updateShape,
     removeShape,
@@ -507,6 +508,8 @@ export default function App({ estimateId }) {
             kits={kits}
             onApplyKit={(kit) => addKitToGroup(kit, null)}
             loadBreakdown={loadBreakdown}
+            supplierDeliveries={estimate?.plan?.supplierDeliveries ?? {}}
+            onSetSupplierDelivery={setSupplierDelivery}
             photoPins={photoPins}
             placingPhoto={!!placingPinLink}
             onPlacePhotoPin={placePhotoPin}
