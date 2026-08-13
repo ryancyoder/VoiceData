@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AspireNamePicker } from "./AspireNamePicker";
+import { parseAspireCsv } from "@/lib/aspireCsv";
 
 // ── The richer, normalized catalog editor ────────────────────────────────
 // A native editor for the master model (materials → their applications,
@@ -112,6 +114,27 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   // Materials display: the grouped/expandable editor, or a flat materials-only table.
   const [materialsLayout, setMaterialsLayout] = useState<"grouped" | "table">("grouped");
+  // Aspire catalog CSV import (loads the aspire_catalog reference table).
+  const aspireFileRef = useRef<HTMLInputElement>(null);
+  const [aspireImport, setAspireImport] = useState<{ state: "idle" | "importing" | "done" | "error"; msg?: string }>({ state: "idle" });
+
+  async function handleAspireImport(file: File) {
+    setAspireImport({ state: "importing" });
+    try {
+      const rows = parseAspireCsv(await file.text());
+      if (rows.length === 0) throw new Error("No rows found in that CSV.");
+      const res = await fetch("/api/aspire-catalog/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      setAspireImport({ state: "done", msg: `Imported ${data.imported} Aspire items` });
+    } catch (e) {
+      setAspireImport({ state: "error", msg: e instanceof Error ? e.message : "Import failed" });
+    }
+  }
 
   const load = useCallback(() => {
     return fetch("/api/estimator/master")
@@ -390,6 +413,23 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
         </div>
         <div className="flex items-center gap-2">
           {viewToggle}
+          <button
+            onClick={() => aspireFileRef.current?.click()}
+            disabled={aspireImport.state === "importing"}
+            className="rounded-full border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            title="Import / update the Aspire catalog from a CSV export"
+          >
+            {aspireImport.state === "importing" ? "Importing…" : "⬆ Import Aspire"}
+          </button>
+          <input
+            ref={aspireFileRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAspireImport(f); e.target.value = ""; }}
+          />
+          {aspireImport.state === "done" && <span className="text-xs font-medium text-green-600 dark:text-green-500">{aspireImport.msg}</span>}
+          {aspireImport.state === "error" && <span className="text-xs font-medium text-red-600 dark:text-red-500">{aspireImport.msg}</span>}
           {!locked && dirty && <span className="text-xs font-medium text-amber-600 dark:text-amber-500">Unsaved changes</span>}
           {saveState === "saved" && <span className="text-xs font-medium text-green-600 dark:text-green-500">Saved</span>}
           {saveState === "error" && <span className="text-xs font-medium text-red-600 dark:text-red-500">Save failed</span>}
@@ -490,12 +530,7 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
                       {locked ? (
                         <span className="text-zinc-600 dark:text-zinc-300">{m.aspire_name || "—"}</span>
                       ) : (
-                        <input
-                          className={`${textInput} min-w-44`}
-                          value={m.aspire_name ?? ""}
-                          placeholder="Aspire catalog name"
-                          onChange={(e) => updateMaterial(m.id, "aspire_name", e.target.value)}
-                        />
+                        <AspireNamePicker value={m.aspire_name ?? ""} onChange={(v) => updateMaterial(m.id, "aspire_name", v)} compact />
                       )}
                     </td>
                     <td className="px-3 py-1.5">
@@ -685,12 +720,7 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
                             {locked ? (
                               <span className="text-sm text-zinc-700 dark:text-zinc-200">{m.aspire_name || "—"}</span>
                             ) : (
-                              <input
-                                className={textInput}
-                                value={m.aspire_name ?? ""}
-                                placeholder="Exact Aspire catalog item name"
-                                onChange={(e) => updateMaterial(m.id, "aspire_name", e.target.value)}
-                              />
+                              <AspireNamePicker value={m.aspire_name ?? ""} onChange={(v) => updateMaterial(m.id, "aspire_name", v)} />
                             )}
                           </label>
                           <label className="flex flex-col gap-0.5 text-xs text-zinc-500 dark:text-zinc-400">
