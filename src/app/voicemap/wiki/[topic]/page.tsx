@@ -104,6 +104,19 @@ export default async function WikiArticlePage({
     }
   }
 
+  // Semantically related pages (pgvector). Only when this page has an embedding
+  // and there are other embedded pages in the session; empty otherwise.
+  let related: { topic_node_id: string; title: string }[] = [];
+  if (page) {
+    const relRes = await supabase.rpc("voicemap_related_pages", { p_page_id: page.id, p_limit: 5 });
+    if (!relRes.error && Array.isArray(relRes.data)) {
+      related = (relRes.data as { topic_node_id: string; title: string }[]).map((r) => ({
+        topic_node_id: r.topic_node_id,
+        title: r.title,
+      }));
+    }
+  }
+
   const isCurrent = !page || displayVersion === page.version;
   const stale = page ? page.source_hash !== hashCards(cards) : false;
   const newCount = page ? newCardsSince(cards, page.built_at) : cards.length;
@@ -160,6 +173,26 @@ export default async function WikiArticlePage({
           <p className="mb-3">This topic hasn&apos;t been synthesized yet. Build it to generate a wiki page from its {cards.length} card{cards.length === 1 ? "" : "s"}.</p>
           <WikiRebuild sessionId={sessionId} topicNodeId={topicNodeId} label="Build page" />
         </div>
+      )}
+
+      {page && related.length > 0 && (
+        <section className="mt-8 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+          <h2 className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+            Related topics
+          </h2>
+          <ul className="flex flex-wrap gap-2">
+            {related.map((r) => (
+              <li key={r.topic_node_id}>
+                <Link
+                  href={`/voicemap/wiki/${encodeURIComponent(r.topic_node_id)}`}
+                  className="rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:border-zinc-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+                >
+                  {r.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {versions.length > 1 && (

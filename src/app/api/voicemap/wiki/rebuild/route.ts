@@ -7,6 +7,7 @@ import {
   synthesizeWikiPage,
   type WikiNode,
 } from "@/lib/voicemapWiki";
+import { embedText, toVectorLiteral } from "@/lib/embeddings";
 
 // Rebuild one wiki page (or all pages in a session) by re-synthesizing the
 // current cards. Same-origin, so it rides the app's password-gate cookie — no
@@ -63,6 +64,17 @@ export async function POST(req: NextRequest) {
     const source_hash = hashCards(cards);
     const now = new Date().toISOString();
 
+    // Best-effort embedding of the synthesized page for semantic "related
+    // topics". Never fail the rebuild over this — if it errors (e.g. no OpenAI
+    // key), the page just won't participate in related-topic matching.
+    let embedding: string | null = null;
+    try {
+      const vec = await embedText(`${synth.title}\n\n${synth.markdown}`);
+      embedding = toVectorLiteral(vec);
+    } catch {
+      embedding = null;
+    }
+
     // Next version number for this page.
     const existing = await supabase
       .from("voicemap_wiki_pages")
@@ -86,6 +98,8 @@ export async function POST(req: NextRequest) {
           version,
           built_at: now,
           updated_at: now,
+          // Omit when embedding failed so we don't null out a prior vector.
+          ...(embedding ? { embedding } : {}),
         },
         { onConflict: "session_id,topic_node_id" }
       )
