@@ -556,6 +556,29 @@
   width: max-content;
 }
 
+/* Per-milestone sort button in the Timeline column header — sized like a
+   timeline node (34px) so it lines up above the icon in each row. */
+.timeline-header-cell { padding: 8px 12px; }
+.timeline-sort-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 34px;
+  flex-shrink: 0;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.timeline-sort-btn:hover { background: var(--surface-2); color: var(--text); }
+.timeline-sort-btn.is-active { color: var(--accent); }
+.timeline-sort-icon { font-size: 1rem; line-height: 1; opacity: 0.85; }
+.timeline-sort-btn.is-active .timeline-sort-icon { opacity: 1; }
+.timeline-sort-caret { font-size: 0.6rem; line-height: 1; }
+
 .timeline-line {
   position: absolute;
   top: 17px;

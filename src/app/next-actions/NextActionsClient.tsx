@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { STAGES, type Stage } from "@/lib/salesBoard";
 import { type TaskPhoto, taskPhotoUrl } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
-import DealTimeline, { type TimelineDates } from "./DealTimeline";
+import DealTimeline, { TimelineSortHeader, type TimelineDates, type MilestoneKey } from "./DealTimeline";
 import TextTemplateMenu from "../sales-board/TextTemplateMenu";
 import styles from "./next-actions.module.css";
 
@@ -118,6 +118,16 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   const [actionList, setActionList] = useState("");
   // Row order: grouped by pipeline stage, or a flat alphabetical list.
   const [orderMode, setOrderMode] = useState<"stage" | "alpha">("stage");
+  // Sort the whole list by a timeline milestone's date (overrides stage/alpha
+  // grouping into a single flat list). Cycles: off → earliest-first → latest-first.
+  const [milestoneSort, setMilestoneSort] = useState<{ key: MilestoneKey; dir: "asc" | "desc" } | null>(null);
+  function cycleMilestoneSort(key: MilestoneKey) {
+    setMilestoneSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
+  }
   // Which stage groups are collapsed (stage order only).
   const [collapsedStages, setCollapsedStages] = useState<Set<Stage>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
@@ -203,10 +213,20 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     return true;
   });
 
-  // Alphabetical order sorts the whole list by deal name; stage order keeps
-  // the page's pipeline ordering (rows for a stage are already contiguous).
-  const orderedRows =
-    orderMode === "alpha" ? [...visibleRows].sort((a, b) => a.dealName.localeCompare(b.dealName)) : visibleRows;
+  // A milestone sort takes over ordering (flat list by that date); otherwise
+  // alphabetical sorts by deal name and stage keeps the pipeline ordering.
+  const orderedRows = milestoneSort
+    ? [...visibleRows].sort((a, b) => {
+        const da = a.milestoneDates[milestoneSort.key];
+        const db = b.milestoneDates[milestoneSort.key];
+        if (!da && !db) return 0;
+        if (!da) return 1; // deals without this milestone sink to the bottom
+        if (!db) return -1;
+        return milestoneSort.dir === "asc" ? da.localeCompare(db) : db.localeCompare(da);
+      })
+    : orderMode === "alpha"
+      ? [...visibleRows].sort((a, b) => a.dealName.localeCompare(b.dealName))
+      : visibleRows;
 
   const groups: { stage: Stage; rows: NextActionRow[] }[] = [];
   for (const row of orderedRows) {
@@ -219,16 +239,16 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   // so their rows aren't navigable. Keyboard nav (focusRow/handleKeyDown) walks
   // this list; indexByRowId maps a row to its position in it.
   const renderedRows =
-    orderMode === "stage" ? orderedRows.filter((r) => !collapsedStages.has(r.stage)) : orderedRows;
+    orderMode === "stage" && !milestoneSort ? orderedRows.filter((r) => !collapsedStages.has(r.stage)) : orderedRows;
   const indexByRowId = new Map<number, number>(renderedRows.map((row, i) => [row.id, i]));
 
   const stagesInView = groups.map((g) => g.stage);
   const allCollapsed = stagesInView.length > 0 && stagesInView.every((s) => collapsedStages.has(s));
 
-  // Stage order renders one collapsible group per stage; alphabetical order is
-  // a single headerless list.
+  // Stage order renders one collapsible group per stage; alphabetical order and
+  // a milestone sort are a single headerless flat list.
   const displayGroups: { stage: Stage | null; rows: NextActionRow[] }[] =
-    orderMode === "alpha" ? [{ stage: null, rows: orderedRows }] : groups;
+    orderMode === "alpha" || milestoneSort ? [{ stage: null, rows: orderedRows }] : groups;
 
   function toggleStage(stage: Stage) {
     setStageFilter((prev) => {
@@ -586,15 +606,15 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
         <div className={styles["order-toggle"]}>
           <button
             type="button"
-            className={`${styles["order-btn"]} ${orderMode === "stage" ? styles["is-active"] : ""}`}
-            onClick={() => setOrderMode("stage")}
+            className={`${styles["order-btn"]} ${orderMode === "stage" && !milestoneSort ? styles["is-active"] : ""}`}
+            onClick={() => { setOrderMode("stage"); setMilestoneSort(null); }}
           >
             Stage
           </button>
           <button
             type="button"
-            className={`${styles["order-btn"]} ${orderMode === "alpha" ? styles["is-active"] : ""}`}
-            onClick={() => setOrderMode("alpha")}
+            className={`${styles["order-btn"]} ${orderMode === "alpha" && !milestoneSort ? styles["is-active"] : ""}`}
+            onClick={() => { setOrderMode("alpha"); setMilestoneSort(null); }}
           >
             A–Z
           </button>
@@ -611,7 +631,13 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
           <tr>
             <th>Deal</th>
             <th>Next Action</th>
-            <th>Timeline</th>
+            <th className={styles["timeline-header-cell"]}>
+              <TimelineSortHeader
+                sortKey={milestoneSort?.key ?? null}
+                sortDir={milestoneSort?.dir ?? "asc"}
+                onSort={cycleMilestoneSort}
+              />
+            </th>
             <th>Photos</th>
             <th>Contact</th>
           </tr>

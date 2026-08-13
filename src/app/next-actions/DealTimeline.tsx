@@ -15,7 +15,9 @@ export interface TimelineDates {
   paid: string | null; // Paid in Full date
 }
 
-const MILESTONES: { key: keyof TimelineDates; label: string; icon: string }[] = [
+export type MilestoneKey = keyof TimelineDates;
+
+export const MILESTONES: { key: MilestoneKey; label: string; icon: string }[] = [
   { key: "appointment", label: "Appointment", icon: "🏠" },
   { key: "proposal", label: "Proposal Sent", icon: "📤" },
   { key: "won", label: "Sold", icon: "🤝" },
@@ -32,6 +34,40 @@ const ICON_CENTER = 17;
 function formatDate(key: string): string {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// A header row of per-milestone sort buttons, laid out with the same fixed
+// slots as the timeline so each button sits directly above its milestone icon.
+export function TimelineSortHeader({
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  sortKey: MilestoneKey | null;
+  sortDir: "asc" | "desc";
+  onSort: (key: MilestoneKey) => void;
+}) {
+  return (
+    <div className={styles.timeline}>
+      {MILESTONES.map((m) => {
+        const active = sortKey === m.key;
+        return (
+          <div key={m.key} className={styles["timeline-msSlot"]}>
+            <button
+              type="button"
+              className={`${styles["timeline-sort-btn"]} ${active ? styles["is-active"] : ""}`}
+              onClick={() => onSort(m.key)}
+              title={`Sort by ${m.label}${active ? (sortDir === "asc" ? " (earliest first)" : " (latest first)") : ""}`}
+              aria-label={`Sort by ${m.label}`}
+            >
+              <span className={styles["timeline-sort-icon"]}>{m.icon}</span>
+              <span className={styles["timeline-sort-caret"]}>{active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function DealTimeline({ dates }: { dates: TimelineDates }) {
