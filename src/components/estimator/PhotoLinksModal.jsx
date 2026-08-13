@@ -8,7 +8,7 @@ function fmt(n) {
 }
 
 // The live take-off dimensions of the group, overlaid on a linked photo.
-function DimsOverlay({ group }) {
+export function DimsOverlay({ group }) {
   const parts = [];
   if (group.sqFt) parts.push(`${fmt(group.sqFt)} sq ft`);
   if (group.linearFt) parts.push(`${fmt(group.linearFt)} ln ft`);
@@ -25,7 +25,7 @@ function DimsOverlay({ group }) {
   );
 }
 
-export default function PhotoLinksModal({ estimateId, group, onClose, onChanged }) {
+export default function PhotoLinksModal({ estimateId, group, onClose, onChanged, onPlaceOnPlan }) {
   const [links, setLinks] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +129,17 @@ export default function PhotoLinksModal({ estimateId, group, onClose, onChanged 
                         >
                           ×
                         </button>
+                        {onPlaceOnPlan && (
+                          <button
+                            onClick={() => onPlaceOnPlan(link)}
+                            className={`absolute left-1 top-1 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold text-white ${
+                              link.plan_x != null ? 'bg-indigo-600' : 'bg-black/60 hover:bg-indigo-600'
+                            }`}
+                            title="Place a pin on the plan"
+                          >
+                            📍 {link.plan_x != null ? 'On plan' : 'Plan'}
+                          </button>
+                        )}
                       </div>
                     );
                   })}

@@ -22,6 +22,30 @@ export const ITEM_TYPES = [
 ];
 
 const ITEM_HIT_RADIUS = 16;
+const PIN_HIT_RADIUS = 16;
+
+// A linked-photo pin (photo icon in a circle).
+function drawPhotoPin(ctx, x, y) {
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.arc(x, y, 11, 0, Math.PI * 2);
+  ctx.fillStyle = '#4f46e5';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  // tiny photo glyph
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x - 5, y - 3.5, 10, 7);
+  ctx.fillStyle = '#4f46e5';
+  ctx.fillRect(x - 4, y - 2.5, 8, 5);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x - 1.5, y - 0.3, 1.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
 
 // ── Plant drawing ─────────────────────────────────────────────────────────────
 
@@ -244,6 +268,7 @@ export default function PlanCanvas({
   catalogPlants, selectedPlantId, onPlantIdChange, onAddPlant, onRemovePlant,
   catalogItems, selectedItemCatalogId, onItemCatalogIdChange, onAddItemPlacement, onRemoveItemPlacement,
   onCalibrationPointsSet, onShapeComplete, onUpdateShape, onRemoveShape,
+  photoPins = [], placingPhoto = false, onPlacePhotoPin, onOpenPhotoPin,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -416,8 +441,15 @@ export default function PlanCanvas({
         drawItem(ctx, selectedCat.itemSymbol, cursor.x, cursor.y, true);
       }
     }
+
+    // Linked-photo pins (drawn on top of everything).
+    for (const pin of photoPins) {
+      if (pin.x == null || pin.y == null) continue;
+      const pt = toCanvas(pin, t);
+      drawPhotoPin(ctx, pt.x, pt.y);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan, groups, canvasSize, inProgressVertices, cursorPos, calPoints, selectedShapeId, selectedPlantInstanceId, selectedItemInstanceId, imageReady, activeTool, catalogPlants, catalogItems, showCalLine, showMeasurements]);
+  }, [plan, groups, canvasSize, inProgressVertices, cursorPos, calPoints, selectedShapeId, selectedPlantInstanceId, selectedItemInstanceId, imageReady, activeTool, catalogPlants, catalogItems, showCalLine, showMeasurements, photoPins]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function getCanvasPoint(e) {
@@ -438,6 +470,14 @@ export default function PlanCanvas({
 
   function handleClick(e) {
     if (!plan.imageDataUrl) return;
+
+    // Placing a photo pin: the next click sets its location, regardless of tool.
+    if (placingPhoto) {
+      const imgPt = fromCanvas(getCanvasPoint(e), getTransformNow());
+      onPlacePhotoPin?.(imgPt);
+      return;
+    }
+
     const now = Date.now();
     const timeSinceLast = now - lastClickTimeRef.current;
     lastClickTimeRef.current = now;
@@ -479,6 +519,15 @@ export default function PlanCanvas({
       }
 
     } else if (activeTool === 'select') {
+      // Hit-test photo pins first (small, drawn on top) — click opens the photo.
+      for (let i = photoPins.length - 1; i >= 0; i--) {
+        const pin = photoPins[i];
+        if (pin.x == null || pin.y == null) continue;
+        if (dist(cp, toCanvas(pin, t)) < PIN_HIT_RADIUS) {
+          onOpenPhotoPin?.(pin);
+          return;
+        }
+      }
       // Hit-test shapes
       let foundShape = null;
       for (let i = plan.shapes.length - 1; i >= 0; i--) {

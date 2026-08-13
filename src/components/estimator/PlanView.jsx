@@ -30,6 +30,11 @@ export default function PlanView({
   onClose,
   kits,
   onApplyKit,
+  photoPins = [],
+  placingPhoto = false,
+  onPlacePhotoPin,
+  onOpenPhotoPin,
+  onCancelPlacePhoto,
 }) {
   const [activeTool, setActiveTool] = useState('select');
   const [selectedPlantId, setSelectedPlantId] = useState(null);
@@ -237,6 +242,17 @@ export default function PlanView({
         </div>
       )}
 
+      {placingPhoto && (
+        <div className="flex items-center justify-center gap-3 bg-indigo-600 px-4 py-2 text-sm font-medium text-white">
+          <span>📍 Tap the plan to place the photo pin</span>
+          {onCancelPlacePhoto && (
+            <button onClick={onCancelPlacePhoto} className="rounded bg-white/20 px-2 py-0.5 text-xs hover:bg-white/30">
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         <PlanCanvas
@@ -259,6 +275,10 @@ export default function PlanView({
           onShapeComplete={handleShapeComplete}
           onUpdateShape={onUpdateShape}
           onRemoveShape={onRemoveShape}
+          photoPins={photoPins}
+          placingPhoto={placingPhoto}
+          onPlacePhotoPin={onPlacePhotoPin}
+          onOpenPhotoPin={onOpenPhotoPin}
         />
         <PlanShapeList
           plan={estimate.plan}

@@ -22,7 +22,8 @@ import ImportModal from './ImportModal';
 import AssemblyKitModal from './AssemblyKitModal';
 import QuickPicker from './QuickPicker';
 import EstimatePanel from './EstimatePanel';
-import PhotoLinksModal from './PhotoLinksModal';
+import PhotoLinksModal, { DimsOverlay } from './PhotoLinksModal';
+import { dealPhotoUrl } from '@/lib/salesBoard';
 import PlanView from './PlanView';
 import PrintView from './PrintView';
 import { CATEGORY_COLORS } from '@/lib/estimator/catalog';
@@ -106,6 +107,45 @@ export default function App({ estimateId }) {
     m[l.group_id] = (m[l.group_id] || 0) + 1;
     return m;
   }, {});
+
+  // Plan pins: links that have been placed on the plan image.
+  const [placingPinLink, setPlacingPinLink] = useState(null);
+  const [pinPhotoView, setPinPhotoView] = useState(null); // { photo, group, linkId }
+  const photoPins = photoLinks
+    .filter((l) => l.plan_x != null && l.plan_y != null)
+    .map((l) => ({ id: l.id, x: l.plan_x, y: l.plan_y, groupId: l.group_id, photoId: l.photo_id, photo: l.deal_photos }));
+
+  const placePhotoPin = useCallback(async (imgPt) => {
+    const link = placingPinLink;
+    setPlacingPinLink(null);
+    if (!link || !estimateId) return;
+    try {
+      await fetch(`/api/estimator/estimates/${estimateId}/photo-links`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkId: link.id, planX: imgPt.x, planY: imgPt.y }),
+      });
+      refetchPhotoLinks();
+    } catch { /* ignore */ }
+  }, [placingPinLink, estimateId, refetchPhotoLinks]);
+
+  const openPinPhoto = useCallback((pin) => {
+    const group = estimate?.rows.find(r => r.type === 'group' && r.id === pin.groupId) ?? null;
+    setPinPhotoView({ photo: pin.photo, group, linkId: pin.id });
+  }, [estimate]);
+
+  const removePinFromPlan = useCallback(async (linkId) => {
+    setPinPhotoView(null);
+    if (!estimateId) return;
+    try {
+      await fetch(`/api/estimator/estimates/${estimateId}/photo-links`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkId, planX: null, planY: null }),
+      });
+      refetchPhotoLinks();
+    } catch { /* ignore */ }
+  }, [estimateId, refetchPhotoLinks]);
 
   const activeGroup = estimate ? (estimate.rows.find(r => r.type === 'group' && r.id === activeGroupId) ?? null) : null;
 
@@ -458,6 +498,11 @@ export default function App({ estimateId }) {
             onClose={() => setPlanOpen(false)}
             kits={kits}
             onApplyKit={(kit) => addKitToGroup(kit, null)}
+            photoPins={photoPins}
+            placingPhoto={!!placingPinLink}
+            onPlacePhotoPin={placePhotoPin}
+            onOpenPhotoPin={openPinPhoto}
+            onCancelPlacePhoto={() => setPlacingPinLink(null)}
           />
         ) : (
           <main className="flex flex-1 overflow-hidden">
@@ -558,9 +603,25 @@ export default function App({ estimateId }) {
             group={group}
             onClose={() => setLinkModalGroupId(null)}
             onChanged={refetchPhotoLinks}
+            onPlaceOnPlan={(link) => { setPlacingPinLink(link); setLinkModalGroupId(null); setPlanOpen(true); }}
           />
         );
       })()}
+
+      {/* Pinned-photo lightbox (from a plan pin) */}
+      {pinPhotoView && pinPhotoView.photo && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" onClick={(e) => e.target === e.currentTarget && setPinPhotoView(null)}>
+          <div className="relative max-h-[90vh] max-w-3xl overflow-hidden rounded-lg">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={dealPhotoUrl(pinPhotoView.photo.storage_path)} alt={pinPhotoView.photo.caption || ''} className="max-h-[90vh] max-w-full object-contain" />
+            {pinPhotoView.group && <DimsOverlay group={pinPhotoView.group} />}
+            <button onClick={() => setPinPhotoView(null)} className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white" aria-label="Close">×</button>
+            <button onClick={() => removePinFromPlan(pinPhotoView.linkId)} className="absolute left-2 top-2 rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white hover:bg-black/80">
+              Remove pin
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Print template picker */}
       {printModalOpen && (
