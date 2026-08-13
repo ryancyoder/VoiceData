@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AspireNamePicker } from "./AspireNamePicker";
+import { AspireSuggestModal } from "./AspireSuggestModal";
 import { parseAspireCsv } from "@/lib/aspireCsv";
 
 // ── The richer, normalized catalog editor ────────────────────────────────
@@ -117,6 +118,7 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
   // Aspire catalog CSV import (loads the aspire_catalog reference table).
   const aspireFileRef = useRef<HTMLInputElement>(null);
   const [aspireImport, setAspireImport] = useState<{ state: "idle" | "importing" | "done" | "error"; msg?: string }>({ state: "idle" });
+  const [suggestOpen, setSuggestOpen] = useState(false);
 
   async function handleAspireImport(file: File) {
     setAspireImport({ state: "importing" });
@@ -430,6 +432,15 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
           />
           {aspireImport.state === "done" && <span className="text-xs font-medium text-green-600 dark:text-green-500">{aspireImport.msg}</span>}
           {aspireImport.state === "error" && <span className="text-xs font-medium text-red-600 dark:text-red-500">{aspireImport.msg}</span>}
+          {!locked && (
+            <button
+              onClick={() => setSuggestOpen(true)}
+              className="rounded-full border border-emerald-500 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+              title="Auto-suggest Aspire matches for your materials"
+            >
+              ✨ Suggest matches
+            </button>
+          )}
           {!locked && dirty && <span className="text-xs font-medium text-amber-600 dark:text-amber-500">Unsaved changes</span>}
           {saveState === "saved" && <span className="text-xs font-medium text-green-600 dark:text-green-500">Saved</span>}
           {saveState === "error" && <span className="text-xs font-medium text-red-600 dark:text-red-500">Save failed</span>}
@@ -1308,6 +1319,14 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
             {assemblies.length === 0 && <p className="text-sm text-zinc-400">No assemblies yet.</p>}
           </div>
         </section>
+      )}
+
+      {suggestOpen && (
+        <AspireSuggestModal
+          materials={materials.map((m) => ({ id: m.id, material_name: m.material_name, aspire_name: m.aspire_name }))}
+          onAccept={(id, name) => updateMaterial(id, "aspire_name", name)}
+          onClose={() => setSuggestOpen(false)}
+        />
       )}
     </main>
   );
