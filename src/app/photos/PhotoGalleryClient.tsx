@@ -291,7 +291,9 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   }
 
   async function handleRevert(photo: DealPhoto) {
-    if (!confirm("Revert to the original photo? The annotated version will be discarded.")) return;
+    // No native confirm() here — it's unreliable in an iOS standalone PWA
+    // (returns false without showing a dialog), which silently blocked revert.
+    // The original is preserved server-side, so the annotation can be redone.
     setRevertingId(photo.id);
     try {
       const res = await fetch(`/api/photos/${photo.id}/annotate`, { method: "DELETE" });
