@@ -10,6 +10,7 @@ import { fetchWithTimeout } from "@/lib/withTimeout";
 import { readClientExif } from "@/lib/clientExif";
 import { compressImage } from "@/lib/compressImage";
 import PhotoAnnotator from "@/components/PhotoAnnotator";
+import EstimateGroupLinker from "./EstimateGroupLinker";
 import { refEventId } from "./refEventId";
 
 const UPLOAD_TIMEOUT_MS = 60000;
@@ -80,6 +81,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [annotating, setAnnotating] = useState<DealPhoto | null>(null);
+  const [linkingPhoto, setLinkingPhoto] = useState<DealPhoto | null>(null);
   const [revertingId, setRevertingId] = useState<number | null>(null);
   // Overlay captions on the fronts of the images — a viewing preference,
   // persisted per browser.
@@ -928,6 +930,9 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                     ✏ Annotate
                   </button>
                 )}
+                <button type="button" className={styles["lightbox-annotate"]} onClick={() => setLinkingPhoto(activePhoto)}>
+                  🔗 Link to take-off
+                </button>
                 {activePhoto.original_storage_path && (
                   <button
                     type="button"
@@ -958,6 +963,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       {annotating && (
         <PhotoAnnotator photo={annotating} onClose={() => setAnnotating(null)} onSaved={(updated) => applyPhotoUpdate(updated)} />
       )}
+      {linkingPhoto && <EstimateGroupLinker photo={linkingPhoto} onClose={() => setLinkingPhoto(null)} />}
     </div>
   );
 }
