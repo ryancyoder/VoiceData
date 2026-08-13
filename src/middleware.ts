@@ -34,8 +34,10 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   // Gate everything except Next internals, static asset files, the login page,
-  // and the auth endpoints (which must be reachable while logged out).
+  // the auth endpoints (which must be reachable while logged out), and the
+  // VoiceMap sync API (cross-origin PWA; guarded by its own bearer token
+  // instead of the session cookie — see src/lib/voicemap.ts).
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|login|api/auth|.*\\.(?:png|jpe?g|gif|svg|ico|webp|avif|json|txt|xml|woff2?|ttf|map)).*)",
+    "/((?!_next/static|_next/image|favicon.ico|login|api/auth|api/voicemap|.*\\.(?:png|jpe?g|gif|svg|ico|webp|avif|json|txt|xml|woff2?|ttf|map)).*)",
   ],
 };
