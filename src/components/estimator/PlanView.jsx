@@ -114,7 +114,7 @@ export default function PlanView({
     area: 'Click to add vertices · Click first vertex or Enter to close',
     linear: 'Click to add vertices · Double-click or Enter to finish',
     calibrate: 'Click two points on a known distance',
-    select: 'Click a shape, plant, or item to select · Delete to remove',
+    select: 'Select a shape, then drag its nodes to reshape · midpoint + adds a node · double-click a node to remove · Delete removes the shape',
     plant: plantable.length > 0
       ? 'Click to place · 1–' + plantable.length + ' or Tab to switch plant'
       : 'Assign plan symbols to plants in Catalog Settings first',

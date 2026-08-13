@@ -23,6 +23,9 @@ export const ITEM_TYPES = [
 
 const ITEM_HIT_RADIUS = 16;
 const PIN_HIT_RADIUS = 16;
+// Grab radii (canvas px) for editing a plotted shape's nodes in select mode.
+const VERTEX_GRAB_RADIUS = 13;
+const MIDPOINT_GRAB_RADIUS = 11;
 
 // A linked-photo pin (photo icon in a circle).
 function drawPhotoPin(ctx, x, y) {
@@ -284,6 +287,10 @@ export default function PlanCanvas({
   const [selectedPlantInstanceId, setSelectedPlantInstanceId] = useState(null);
   const [selectedItemInstanceId, setSelectedItemInstanceId] = useState(null);
   const [imageReady, setImageReady] = useState(false);
+  // Active node edit in select mode: { kind:'vertex'|'shape', shapeId, index, origVertices, startImg }
+  const dragRef = useRef(null);
+  // A drag ends with a synthetic click; swallow it so it doesn't re-select.
+  const suppressClickRef = useRef(false);
 
   useEffect(() => { inProgressRef.current = []; setInProgressVertices([]); setCursorPos(null); }, [activeTool]);
   useEffect(() => { if (plan.scale) setCalPoints([]); }, [plan.scale]);
@@ -384,7 +391,24 @@ export default function PlanCanvas({
         if (showMeasurements) drawLabel(ctx, `${Math.round(shape.measurement).toLocaleString()} ln ft`, mid.x, mid.y - 10, shape.color);
         if (shape.groupId) { const g = groups.find(gr => gr.id === shape.groupId); if (g) drawLabel(ctx, g.label, mid.x, mid.y + (showMeasurements ? 6 : -10), shape.color); }
       }
-      pts.forEach(p => { ctx.fillStyle = shape.color; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill(); });
+      if (isSelected) {
+        // Midpoint "add a node" handles (hollow with a + glyph)…
+        const segCount = shape.type === 'area' ? pts.length : pts.length - 1;
+        for (let j = 0; j < segCount; j++) {
+          const a = pts[j], b = pts[(j + 1) % pts.length];
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.strokeStyle = shape.color; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(mx, my, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(mx - 2, my); ctx.lineTo(mx + 2, my); ctx.moveTo(mx, my - 2); ctx.lineTo(mx, my + 2); ctx.stroke();
+        }
+        // …and the draggable vertex handles on top (solid white, colored ring).
+        pts.forEach(p => {
+          ctx.fillStyle = '#ffffff'; ctx.strokeStyle = shape.color; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        });
+      } else {
+        pts.forEach(p => { ctx.fillStyle = shape.color; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill(); });
+      }
     }
 
     // In-progress drawing
@@ -470,6 +494,8 @@ export default function PlanCanvas({
 
   function handleClick(e) {
     if (!plan.imageDataUrl) return;
+    // A node drag just finished; ignore the click it synthesizes.
+    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
 
     // Placing a photo pin: the next click sets its location, regardless of tool.
     if (placingPhoto) {
@@ -563,10 +589,112 @@ export default function PlanCanvas({
   }
 
   function handleDoubleClick(e) {
+    // In select mode, double-clicking a vertex deletes that node.
+    if (activeTool === 'select') {
+      if (!plan.imageDataUrl) return;
+      const cp = getCanvasPoint(e);
+      const t = getTransformNow();
+      for (let i = plan.shapes.length - 1; i >= 0; i--) {
+        const shape = plan.shapes[i];
+        const min = shape.type === 'area' ? 3 : 2;
+        if (shape.vertices.length <= min) continue;
+        const pts = shape.vertices.map(v => toCanvas(v, t));
+        for (let j = 0; j < pts.length; j++) {
+          if (dist(cp, pts[j]) <= VERTEX_GRAB_RADIUS) {
+            onUpdateShape(shape.id, { vertices: shape.vertices.filter((_, k) => k !== j) });
+            suppressClickRef.current = true;
+            return;
+          }
+        }
+      }
+      return;
+    }
     if (activeTool !== 'linear') return;
     const verts = inProgressRef.current.slice(0, -1);
     inProgressRef.current = []; setInProgressVertices([]);
     if (verts.length >= 2) onShapeComplete('linear', verts);
+  }
+
+  // ── Node editing (select mode): drag a vertex, insert one on a midpoint, or
+  //    drag the whole shape. Updates cascade to the take-off + loads instantly.
+  function handlePointerDown(e) {
+    if (activeTool !== 'select' || placingPhoto || !plan.imageDataUrl) return;
+    const cp = getCanvasPoint(e);
+    const t = getTransformNow();
+
+    // 1) Grab an existing vertex of any shape (topmost first) and drag it.
+    for (let i = plan.shapes.length - 1; i >= 0; i--) {
+      const shape = plan.shapes[i];
+      const pts = shape.vertices.map(v => toCanvas(v, t));
+      for (let j = 0; j < pts.length; j++) {
+        if (dist(cp, pts[j]) <= VERTEX_GRAB_RADIUS) {
+          setSelectedShapeId(shape.id);
+          dragRef.current = { kind: 'vertex', shapeId: shape.id, index: j, origVertices: shape.vertices };
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          return;
+        }
+      }
+    }
+
+    // 2) Insert a new vertex on a midpoint handle of the selected shape.
+    if (selectedShapeId) {
+      const shape = plan.shapes.find(s => s.id === selectedShapeId);
+      if (shape) {
+        const pts = shape.vertices.map(v => toCanvas(v, t));
+        const segCount = shape.type === 'area' ? pts.length : pts.length - 1;
+        for (let j = 0; j < segCount; j++) {
+          const a = pts[j], b = pts[(j + 1) % pts.length];
+          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          if (dist(cp, mid) <= MIDPOINT_GRAB_RADIUS) {
+            const insertAt = j + 1;
+            const newVerts = [...shape.vertices.slice(0, insertAt), fromCanvas(mid, t), ...shape.vertices.slice(insertAt)];
+            onUpdateShape(shape.id, { vertices: newVerts });
+            dragRef.current = { kind: 'vertex', shapeId: shape.id, index: insertAt, origVertices: newVerts };
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+            return;
+          }
+        }
+      }
+    }
+
+    // 3) Grab the body of the selected shape to move the whole thing.
+    if (selectedShapeId) {
+      const shape = plan.shapes.find(s => s.id === selectedShapeId);
+      if (shape) {
+        const imgPt = fromCanvas(cp, t);
+        const cPts = shape.vertices.map(v => toCanvas(v, t));
+        const onBody = shape.type === 'area'
+          ? pointInPolygon(imgPt, shape.vertices)
+          : cPts.some((p, j) => j > 0 && distToSegment(cp, cPts[j - 1], p) < 8);
+        if (onBody) {
+          dragRef.current = { kind: 'shape', shapeId: shape.id, origVertices: shape.vertices, startImg: imgPt };
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          return;
+        }
+      }
+    }
+  }
+
+  function handlePointerMove(e) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const imgPt = fromCanvas(getCanvasPoint(e), getTransformNow());
+    if (drag.kind === 'vertex') {
+      const newVerts = drag.origVertices.map((v, k) => (k === drag.index ? imgPt : v));
+      onUpdateShape(drag.shapeId, { vertices: newVerts });
+    } else if (drag.kind === 'shape') {
+      const dx = imgPt.x - drag.startImg.x, dy = imgPt.y - drag.startImg.y;
+      const newVerts = drag.origVertices.map(v => ({ x: v.x + dx, y: v.y + dy }));
+      onUpdateShape(drag.shapeId, { vertices: newVerts });
+    }
+  }
+
+  function handlePointerUp(e) {
+    if (dragRef.current) {
+      dragRef.current = null;
+      suppressClickRef.current = true;
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    }
   }
 
   // ── Keyboard handler ────────────────────────────────────────────────────────
@@ -632,7 +760,12 @@ export default function PlanCanvas({
         onMouseLeave={handleMouseLeave}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         className="block w-full h-full"
+        style={{ touchAction: activeTool === 'select' ? 'none' : undefined }}
       />
     </div>
   );
