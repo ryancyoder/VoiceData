@@ -140,22 +140,28 @@ export async function POST(req: NextRequest) {
     .neq("updated_at", syncedAt);
   if (delNodes.error) return json({ error: delNodes.error.message }, 500);
 
-  // 3) Images — same upsert-then-prune-by-timestamp strategy.
-  const images = payload.images && typeof payload.images === "object" ? payload.images : {};
-  const imageRows = Object.entries(images)
-    .filter(([, url]) => typeof url === "string" && url.length > 0)
-    .map(([image_key, data_url]) => ({ image_key, session_id: sessionId, data_url, updated_at: syncedAt }));
+  // 3) Images — ONLY when the payload explicitly carries an `images` object.
+  // Base64 images make the body large and can blow past Vercel's ~4.5 MB
+  // request limit, so the client uploads them separately in chunks via
+  // /api/voicemap/images and omits `images` here. When omitted, we leave the
+  // session's existing images untouched (rather than treating "absent" as
+  // "delete all"). A present object is still an authoritative replace.
+  if (payload.images && typeof payload.images === "object") {
+    const imageRows = Object.entries(payload.images)
+      .filter(([, url]) => typeof url === "string" && url.length > 0)
+      .map(([image_key, data_url]) => ({ image_key, session_id: sessionId, data_url, updated_at: syncedAt }));
 
-  if (imageRows.length) {
-    const upImages = await supabase.from("voicemap_images").upsert(imageRows, { onConflict: "image_key" });
-    if (upImages.error) return json({ error: upImages.error.message }, 500);
+    if (imageRows.length) {
+      const upImages = await supabase.from("voicemap_images").upsert(imageRows, { onConflict: "image_key" });
+      if (upImages.error) return json({ error: upImages.error.message }, 500);
+    }
+    const delImages = await supabase
+      .from("voicemap_images")
+      .delete()
+      .eq("session_id", sessionId)
+      .neq("updated_at", syncedAt);
+    if (delImages.error) return json({ error: delImages.error.message }, 500);
   }
-  const delImages = await supabase
-    .from("voicemap_images")
-    .delete()
-    .eq("session_id", sessionId)
-    .neq("updated_at", syncedAt);
-  if (delImages.error) return json({ error: delImages.error.message }, 500);
 
   return json({ ok: true, session_id: sessionId, synced: syncedAt });
 }
