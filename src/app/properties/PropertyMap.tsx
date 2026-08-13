@@ -21,11 +21,11 @@ const STAGE_HEX: Record<Stage, string> = {
 };
 const NO_DEAL_COLOR = "#6B7280";
 
-// A property's representative stage is its most-advanced deal stage (furthest
-// along the pipeline), so the pin shows where the relationship has reached.
+// A property's representative stage is its least-advanced deal stage (earliest
+// in the pipeline), so the pin flags the work still to be moved forward.
 function propertyStage(p: PropertyRow): Stage | null {
   if (!p.dealStages || p.dealStages.length === 0) return null;
-  return p.dealStages.reduce((best, s) => (STAGES.indexOf(s) > STAGES.indexOf(best) ? s : best));
+  return p.dealStages.reduce((best, s) => (STAGES.indexOf(s) < STAGES.indexOf(best) ? s : best));
 }
 
 // Colored teardrop pin as a divIcon (Leaflet's default icon is a fixed blue PNG).
