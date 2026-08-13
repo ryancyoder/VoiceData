@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { href: "/forecast", label: "Forecast" },
   { href: "/planner", label: "Planner" },
   { href: "/photos", label: "Photos" },
+  { href: "/voicemap", label: "VoiceMap" },
   { href: "/settings", label: "Settings" },
 ];
 
