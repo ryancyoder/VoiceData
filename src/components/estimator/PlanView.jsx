@@ -6,8 +6,8 @@ import { genId, SHAPE_COLORS } from '@/lib/estimator/useEstimate';
 const PLANT_SYMBOL_MAP = Object.fromEntries(PLANT_TYPES.map(pt => [pt.key, pt]));
 const ITEM_TYPE_MAP = Object.fromEntries(ITEM_TYPES.map(it => [it.key, it]));
 
-// Delivery-load icon per material category. Each icon = one truckload; a truck
-// is the semantic for a delivery, with a couple of material-specific glyphs.
+// Delivery-load icon per material category (the fallback when the material name
+// doesn't match a specific bulk material below). Each icon = one truckload.
 const LOAD_ICON_BY_CATEGORY = {
   bulk_materials: '🚛',
   standard_materials: '🚚',
@@ -17,7 +17,24 @@ const LOAD_ICON_BY_CATEGORY = {
   plants: '🌳',
   lawn: '🌱',
 };
-function loadIcon(category) {
+
+// Distinct glyphs per bulk material, matched on the material name so mulch,
+// topsoil, stone, sand, etc. each read differently in the loads column.
+const BULK_ICON_KEYWORDS = [
+  [['mulch'], '🪵'],
+  [['compost'], '🍂'],
+  [['manure'], '🐴'],
+  [['sand'], '🟨'],
+  [['salt'], '🧂'],
+  [['gravel', 'stone', 'rock', 'limestone', 'boulder', 'aggregate', 'crushed', 'slag', 'pea '], '🪨'],
+  [['topsoil', 'top soil', 'soil', 'dirt', 'fill'], '🟫'],
+  [['sod', 'turf'], '🟩'],
+];
+function loadIcon(category, name = '') {
+  const n = name.toLowerCase();
+  for (const [keys, icon] of BULK_ICON_KEYWORDS) {
+    if (keys.some((k) => n.includes(k))) return icon;
+  }
   return LOAD_ICON_BY_CATEGORY[category] || '🚛';
 }
 
@@ -343,7 +360,8 @@ function LoadsColumn({ loadBreakdown }) {
   // Flatten to one entry per truckload, preserving material identity/order.
   const trucks = [];
   for (const g of loadBreakdown) {
-    for (let i = 0; i < g.loads; i++) trucks.push({ icon: loadIcon(g.category), name: g.name });
+    const icon = loadIcon(g.category, g.name);
+    for (let i = 0; i < g.loads; i++) trucks.push({ icon, name: g.name });
   }
   const totalLoads = trucks.length;
   const rows = [];
@@ -404,6 +422,21 @@ function LoadsColumn({ loadBreakdown }) {
           </div>
         )}
       </div>
+
+      {/* Legend: which glyph is which material, with load counts. */}
+      {totalLoads > 0 && (
+        <div className="shrink-0 border-t border-gray-700 px-2 py-2">
+          <div className="flex flex-col gap-1">
+            {loadBreakdown.map((g) => (
+              <div key={g.key} className="flex items-center gap-1.5 text-[11px] text-gray-300" title={g.name}>
+                <span className="shrink-0 text-base leading-none">{loadIcon(g.category, g.name)}</span>
+                <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                <span className="shrink-0 font-semibold text-gray-400">{g.loads}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
