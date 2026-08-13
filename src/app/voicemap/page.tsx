@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 // Read-only viewer for VoiceMap data synced into Supabase. VoiceMap (the PWA)
@@ -108,11 +109,19 @@ export default async function VoiceMapPage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">VoiceMap</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Read-only view of ideas captured in the VoiceMap app.
-        </p>
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">VoiceMap</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Read-only view of ideas captured in the VoiceMap app.
+          </p>
+        </div>
+        <Link
+          href="/voicemap/wiki"
+          className="shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        >
+          Wiki view →
+        </Link>
       </header>
 
       {sessions.length === 0 ? (
