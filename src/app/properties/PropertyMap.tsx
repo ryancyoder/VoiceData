@@ -17,7 +17,7 @@ const STAGE_HEX: Record<Stage, string> = {
   Sold: "#9333EA",
   "Project Management": "#16A34A",
   Invoiced: "#DC2626",
-  "Paid in Full": "#16A34A",
+  "Paid in Full": "#D4AF37",
 };
 const NO_DEAL_COLOR = "#6B7280";
 

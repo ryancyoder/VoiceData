@@ -26,7 +26,7 @@
   --c-pm: #16A34A;
   --c-jobcosting: #CA8A04;
   --c-invoiced: #DC2626;
-  --c-paid: #16A34A;
+  --c-paid: #D4AF37;
 
   display: flex;
   flex-direction: column;
@@ -79,7 +79,7 @@
     --c-pm: #4ADE80;
     --c-jobcosting: #FACC15;
     --c-invoiced: #F87171;
-    --c-paid: #4ADE80;
+    --c-paid: #E8C34A;
   }
 }
 

@@ -16,7 +16,7 @@
   --c-pm: #16A34A;
   --c-jobcosting: #ca8a04;
   --c-invoiced: #DC2626;
-  --c-paid: #16a34a;
+  --c-paid: #D4AF37;
 
   min-height: 100dvh;
   background: var(--bg);
@@ -44,7 +44,7 @@
     --c-pm: #4ADE80;
     --c-jobcosting: #facc15;
     --c-invoiced: #F87171;
-    --c-paid: #4ade80;
+    --c-paid: #E8C34A;
   }
 }
 
