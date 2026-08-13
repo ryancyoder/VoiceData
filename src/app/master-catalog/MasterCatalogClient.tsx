@@ -26,6 +26,7 @@ interface Application {
 interface Material {
   id: string;
   material_name?: string;
+  aspire_name?: string | null;
   category?: string;
   catalog_category?: string | null;
   unit?: string;
@@ -465,6 +466,7 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
               <thead>
                 <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
                   <th className="px-3 py-2 font-semibold">Material</th>
+                  <th className="px-3 py-2 font-semibold">Aspire name</th>
                   <th className="px-3 py-2 font-semibold">Category</th>
                   <th className="px-3 py-2 font-semibold">Estimator category</th>
                   <th className="px-3 py-2 font-semibold">Unit</th>
@@ -482,6 +484,18 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
                         <span className="font-medium text-zinc-800 dark:text-zinc-100">{m.material_name}</span>
                       ) : (
                         <input className={`${textInput} min-w-44`} value={m.material_name ?? ""} onChange={(e) => updateMaterial(m.id, "material_name", e.target.value)} />
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {locked ? (
+                        <span className="text-zinc-600 dark:text-zinc-300">{m.aspire_name || "—"}</span>
+                      ) : (
+                        <input
+                          className={`${textInput} min-w-44`}
+                          value={m.aspire_name ?? ""}
+                          placeholder="Aspire catalog name"
+                          onChange={(e) => updateMaterial(m.id, "aspire_name", e.target.value)}
+                        />
                       )}
                     </td>
                     <td className="px-3 py-1.5">
@@ -561,7 +575,7 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
                 ))}
                 {materialsFlat.length === 0 && (
                   <tr>
-                    <td colSpan={locked ? 7 : 8} className="px-3 py-6 text-center text-sm text-zinc-400">
+                    <td colSpan={locked ? 8 : 9} className="px-3 py-6 text-center text-sm text-zinc-400">
                       No materials yet.
                     </td>
                   </tr>
@@ -666,6 +680,19 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
                       <div className="border-t border-zinc-100 px-3 py-3 dark:border-zinc-800">
                         {/* Material property grid */}
                         <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                          <label className="col-span-2 flex flex-col gap-0.5 text-xs text-zinc-500 dark:text-zinc-400 sm:col-span-3">
+                            Aspire name <span className="text-zinc-400">(exact name in the Aspire catalog)</span>
+                            {locked ? (
+                              <span className="text-sm text-zinc-700 dark:text-zinc-200">{m.aspire_name || "—"}</span>
+                            ) : (
+                              <input
+                                className={textInput}
+                                value={m.aspire_name ?? ""}
+                                placeholder="Exact Aspire catalog item name"
+                                onChange={(e) => updateMaterial(m.id, "aspire_name", e.target.value)}
+                              />
+                            )}
+                          </label>
                           <label className="flex flex-col gap-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                             Category
                             {locked ? (

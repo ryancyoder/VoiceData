@@ -15,7 +15,7 @@ function num(v: unknown): number | null {
 }
 
 const MATERIAL_COLS =
-  "id, material_name, category, catalog_category, unit, cost_per_unit, delivery_fee, units_per_load, plan_symbol, item_symbol, round_to, is_wall_assembly, price_per_face_ft, price_per_linear_ft, sort_order";
+  "id, material_name, aspire_name, category, catalog_category, unit, cost_per_unit, delivery_fee, units_per_load, plan_symbol, item_symbol, round_to, is_wall_assembly, price_per_face_ft, price_per_linear_ft, sort_order";
 const APPLICATION_COLS =
   "id, material_id, application, coverage_unit, coverage_rate, coverage_method, catalog_category, round_to, display_name, standalone";
 const EQUIPMENT_COLS = "id, equipment_name, category, unit, cost_per_unit, sort_order";
@@ -105,6 +105,7 @@ interface AppInput {
 interface MaterialInput {
   id: string;
   material_name?: string;
+  aspire_name?: string | null;
   category?: string;
   catalog_category?: string | null;
   unit?: string;
@@ -176,6 +177,7 @@ export async function PUT(req: NextRequest) {
   const materialRows = materials.map((m, i) => ({
     id: m.id,
     material_name: String(m.material_name ?? ""),
+    aspire_name: m.aspire_name?.trim() ? m.aspire_name.trim() : null,
     category: String(m.category ?? ""),
     catalog_category: m.catalog_category ?? null,
     unit: String(m.unit ?? ""),
