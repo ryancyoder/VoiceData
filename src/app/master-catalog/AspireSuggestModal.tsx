@@ -41,7 +41,7 @@ export function AspireSuggestModal({
   onClose,
 }: {
   materials: MatMin[];
-  onAccept: (materialId: string, aspireName: string) => void;
+  onAccept: (materialId: string, aspireName: string, itemCost: number | null) => void;
   onClose: () => void;
 }) {
   const [includeMapped, setIncludeMapped] = useState(false);
@@ -78,16 +78,16 @@ export function AspireSuggestModal({
 
   useEffect(() => { load(); }, [load]);
 
-  function accept(id: string, name: string) {
-    onAccept(id, name);
-    setAccepted((prev) => new Map(prev).set(id, name));
+  function accept(id: string, s: Suggestion) {
+    onAccept(id, s.item_name, s.item_cost);
+    setAccepted((prev) => new Map(prev).set(id, s.item_name));
   }
 
   function acceptAllStrong() {
     for (const r of results) {
       if (accepted.has(r.id)) continue;
       const top = r.suggestions[0];
-      if (top && top.score >= STRONG) accept(r.id, top.item_name);
+      if (top && top.score >= STRONG) accept(r.id, top);
     }
   }
 
@@ -165,7 +165,7 @@ export function AspireSuggestModal({
                                 </div>
                               </div>
                               <button
-                                onClick={() => accept(r.id, s.item_name)}
+                                onClick={() => accept(r.id, s)}
                                 className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ${
                                   isChosen ? "bg-emerald-600 text-white" : "border border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
                                 }`}

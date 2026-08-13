@@ -21,11 +21,13 @@ function money(n: number | null): string {
 export function AspireNamePicker({
   value,
   onChange,
+  onSelect,
   disabled,
   compact,
 }: {
   value: string;
   onChange: (name: string) => void;
+  onSelect?: (item: AspireItem) => void;
   disabled?: boolean;
   compact?: boolean;
 }) {
@@ -71,6 +73,7 @@ export function AspireNamePicker({
 
   function pick(it: AspireItem) {
     onChange(it.item_name);
+    onSelect?.(it);
     setQuery(it.item_name);
     setOpen(false);
   }

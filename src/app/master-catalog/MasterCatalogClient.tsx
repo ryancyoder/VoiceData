@@ -203,6 +203,14 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
     setMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, [field]: value } : m)));
     markDirty();
   }
+  // Map a material to an Aspire item: set its exact name and pull the Aspire
+  // unit price over the material's cost (only when Aspire has a cost).
+  function mapMaterialToAspire(id: string, aspireName: string, itemCost: number | null) {
+    setMaterials((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, aspire_name: aspireName, ...(itemCost != null ? { cost_per_unit: itemCost } : {}) } : m)),
+    );
+    markDirty();
+  }
   function addMaterial(category: string) {
     const id = slugId("new_material");
     setMaterials((prev) => [
@@ -541,7 +549,12 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
                       {locked ? (
                         <span className="text-zinc-600 dark:text-zinc-300">{m.aspire_name || "—"}</span>
                       ) : (
-                        <AspireNamePicker value={m.aspire_name ?? ""} onChange={(v) => updateMaterial(m.id, "aspire_name", v)} compact />
+                        <AspireNamePicker
+                          value={m.aspire_name ?? ""}
+                          onChange={(v) => updateMaterial(m.id, "aspire_name", v)}
+                          onSelect={(it) => mapMaterialToAspire(m.id, it.item_name, it.item_cost)}
+                          compact
+                        />
                       )}
                     </td>
                     <td className="px-3 py-1.5">
@@ -731,7 +744,11 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
                             {locked ? (
                               <span className="text-sm text-zinc-700 dark:text-zinc-200">{m.aspire_name || "—"}</span>
                             ) : (
-                              <AspireNamePicker value={m.aspire_name ?? ""} onChange={(v) => updateMaterial(m.id, "aspire_name", v)} />
+                              <AspireNamePicker
+                                value={m.aspire_name ?? ""}
+                                onChange={(v) => updateMaterial(m.id, "aspire_name", v)}
+                                onSelect={(it) => mapMaterialToAspire(m.id, it.item_name, it.item_cost)}
+                              />
                             )}
                           </label>
                           <label className="flex flex-col gap-0.5 text-xs text-zinc-500 dark:text-zinc-400">
@@ -1324,7 +1341,7 @@ export function MasterCatalogClient({ viewToggle }: { viewToggle?: React.ReactNo
       {suggestOpen && (
         <AspireSuggestModal
           materials={materials.map((m) => ({ id: m.id, material_name: m.material_name, aspire_name: m.aspire_name }))}
-          onAccept={(id, name) => updateMaterial(id, "aspire_name", name)}
+          onAccept={(id, name, cost) => mapMaterialToAspire(id, name, cost)}
           onClose={() => setSuggestOpen(false)}
         />
       )}
