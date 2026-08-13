@@ -82,6 +82,11 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [annotating, setAnnotating] = useState<DealPhoto | null>(null);
   const [linkingPhoto, setLinkingPhoto] = useState<DealPhoto | null>(null);
+  // The take-off groups the open photo is linked to, with their live
+  // dimensions — overlaid on the front of the photo in the lightbox.
+  const [activeTakeoff, setActiveTakeoff] = useState<
+    { id: string; label: string; sqFt: number; linearFt: number; height: number }[]
+  >([]);
   const [revertingId, setRevertingId] = useState<number | null>(null);
   // Overlay captions on the fronts of the images — a viewing preference,
   // persisted per browser.
@@ -234,6 +239,36 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // Keep the lightbox caption editor in sync with whichever photo is open.
   useEffect(() => {
     setCaptionDraft(activePhoto?.caption ?? "");
+  }, [activePhoto?.id]);
+
+  // Fetch the linked take-off groups (and their live dimensions) for the open
+  // photo, so we can overlay the measurements on the front of the image.
+  useEffect(() => {
+    const id = activePhoto?.id;
+    if (id == null) {
+      setActiveTakeoff([]);
+      return;
+    }
+    let cancelled = false;
+    setActiveTakeoff([]);
+    (async () => {
+      try {
+        const res = await fetch(`/api/photos/${id}/estimate-groups`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const linked = new Set<string>(Array.isArray(data.linkedGroupIds) ? data.linkedGroupIds : []);
+        const groups = (Array.isArray(data.groups) ? data.groups : []).filter(
+          (g: { id: string }) => linked.has(g.id),
+        );
+        setActiveTakeoff(groups);
+      } catch {
+        /* leave empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [activePhoto?.id]);
 
   function openAlbum(key: string) {
@@ -878,6 +913,22 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                 <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? activeProperty.propertyLabel} />
               )}
               {activePhoto.photo_type === WALKTHROUGH_VIDEO_TYPE && <span className={styles["walkthrough-badge"]}>WALK-THRU</span>}
+              {activeTakeoff.length > 0 && (
+                <div className={styles["lightbox-dims"]}>
+                  {activeTakeoff.map((g) => {
+                    const parts: string[] = [];
+                    if (g.sqFt) parts.push(`${g.sqFt.toLocaleString("en-US", { maximumFractionDigits: 1 })} sq ft`);
+                    if (g.linearFt) parts.push(`${g.linearFt.toLocaleString("en-US", { maximumFractionDigits: 1 })} ln ft`);
+                    if (g.height) parts.push(`${g.height.toLocaleString("en-US", { maximumFractionDigits: 1 })} ft H`);
+                    return (
+                      <span key={g.id} className={styles["lightbox-dims-chip"]}>
+                        <b>{g.label}</b>
+                        {parts.length > 0 && <span>{parts.join(" · ")}</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div className={styles["lightbox-head"]}>
               <div className={styles["lightbox-head-main"]}>
