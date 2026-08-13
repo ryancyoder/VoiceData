@@ -629,8 +629,6 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
       <table className={styles.table}>
         <thead>
           <tr>
-            <th>Deal</th>
-            <th>Next Action</th>
             <th className={styles["timeline-header-cell"]}>
               <TimelineSortHeader
                 sortKey={milestoneSort?.key ?? null}
@@ -638,6 +636,8 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                 onSort={cycleMilestoneSort}
               />
             </th>
+            <th>Deal</th>
+            <th>Next Action</th>
             <th>Photos</th>
             <th>Contact</th>
           </tr>
@@ -661,6 +661,9 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                 const index = indexByRowId.get(row.id)!;
                 return (
                   <tr key={row.id}>
+                    <td className={styles["timeline-cell"]}>
+                      <DealTimeline dates={row.milestoneDates} />
+                    </td>
                     <td className={styles["deal-cell"]}>{row.dealName}</td>
                     <td className={styles["action-cell"]}>
                       <input
@@ -676,9 +679,6 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                         onKeyDown={(e) => handleKeyDown(e, row.id, index)}
                         onBlur={() => commit(row.id)}
                       />
-                    </td>
-                    <td className={styles["timeline-cell"]}>
-                      <DealTimeline dates={row.milestoneDates} />
                     </td>
                     <td className={styles["photos-cell"]}>
                       <div className={styles["photo-strip"]}>

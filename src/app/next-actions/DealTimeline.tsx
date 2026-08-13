@@ -26,7 +26,7 @@ export const MILESTONES: { key: MilestoneKey; label: string; icon: string }[] = 
   { key: "paid", label: "Paid in Full", icon: "💰" },
 ];
 
-const SLOT_WIDTH = 128;
+const SLOT_WIDTH = 64;
 const ICON_CENTER = 17;
 
 // A date-only 'YYYY-MM-DD' formatted without the UTC shift a bare `new

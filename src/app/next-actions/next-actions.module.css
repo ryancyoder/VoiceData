@@ -538,8 +538,8 @@
 }
 
 .timeline-cell {
-  width: 960px;
-  max-width: 960px;
+  width: 480px;
+  max-width: 480px;
   /* Extra top padding reserves room for .timeline-date's hover popup,
      which now anchors above its icon — without it, overflow-x: auto
      (which forces overflow-y to auto too) would clip the popup instead
@@ -624,7 +624,7 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  flex: 0 0 128px;
+  flex: 0 0 64px;
   min-width: 0;
 }
 
