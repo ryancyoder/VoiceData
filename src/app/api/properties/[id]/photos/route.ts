@@ -6,6 +6,24 @@ import { resolvePhotoMetadata } from "@/lib/photoMetadata";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
+// List a property's general-reference photos, newest first. A plain,
+// single-table query on purpose: deal_photos is a junction across
+// events/deals/properties, so any cross-table embed risks PostgREST
+// ambiguity (see the Photos page loader for the same guard).
+export async function GET(_req: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+  const { data, error } = await supabase
+    .from("deal_photos")
+    .select("*")
+    .eq("property_id", Number(id))
+    .eq("photo_type", PROPERTY_REFERENCE_TYPE)
+    .order("created_at", { ascending: false });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ photos: data ?? [] });
+}
+
 // A general-reference photo of the property — event-less and deal-less
 // (property_id set, event_id/deal_id null, photo_type Property_Reference).
 // Mirrors the event photo route but attaches to a property directly.

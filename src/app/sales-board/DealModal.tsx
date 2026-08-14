@@ -13,6 +13,7 @@ import {
   dealThumbUrl,
   type Deal,
   type DealInput,
+  type DealPhoto,
   type PropertyOption,
 } from "@/lib/salesBoard";
 import { TASK_CONTEXTS, type TaskContext } from "@/lib/tasks";
@@ -300,6 +301,10 @@ export default function DealModal({
   const correspondencePasteArmedRef = useRef(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoPasteError, setPhotoPasteError] = useState("");
+  // The deal's property's general-reference photos (where pasted images go).
+  // Fetched client-side, not embedded in the deal, since deal_photos is a
+  // junction table and cross-table embeds risk PostgREST ambiguity.
+  const [referencePhotos, setReferencePhotos] = useState<DealPhoto[]>([]);
   // Hidden target the ambient ⌘V focuses so a native paste event fires (a
   // document-level paste only dispatches when something editable is focused).
   const photoPasteTargetRef = useRef<HTMLTextAreaElement>(null);
@@ -423,9 +428,23 @@ export default function DealModal({
     [deal.id, onUploadPhoto]
   );
 
+  const loadReferencePhotos = useCallback(async () => {
+    const propertyId = deal.property_id;
+    if (propertyId == null) return;
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/photos`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setReferencePhotos(data.photos ?? []);
+    } catch {
+      /* leave the current list as-is on a transient fetch error */
+    }
+  }, [deal.property_id]);
+
   // Pasted images are filed under the deal's property as general-reference
   // photos (no calendar event created), unlike the "+ Photo" button which
-  // adds jobsite/event photos.
+  // adds jobsite/event photos. Re-fetch after upload so the new photo shows
+  // up in the modal's reference section right away.
   const uploadReferencePhotoFile = useCallback(
     async (file: File) => {
       const propertyId = deal.property_id;
@@ -437,12 +456,41 @@ export default function DealModal({
       setPhotoPasteError("");
       try {
         await onUploadReferencePhoto(propertyId, file);
+        await loadReferencePhotos();
       } finally {
         setUploadingPhoto(false);
       }
     },
-    [deal.property_id, onUploadReferencePhoto]
+    [deal.property_id, onUploadReferencePhoto, loadReferencePhotos]
   );
+
+  useEffect(() => {
+    const propertyId = deal.property_id;
+    if (propertyId == null) return;
+    let active = true;
+    fetch(`/api/properties/${propertyId}/photos`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("load failed"))))
+      .then((data) => {
+        if (active) setReferencePhotos(data.photos ?? []);
+      })
+      .catch(() => {
+        /* leave the current list as-is on a transient fetch error */
+      });
+    return () => {
+      active = false;
+    };
+  }, [deal.property_id]);
+
+  async function handleDeleteReferencePhoto(photoId: number) {
+    const propertyId = deal.property_id;
+    if (propertyId == null) return;
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/photos/${photoId}`, { method: "DELETE" });
+      if (res.ok) setReferencePhotos((ps) => ps.filter((p) => p.id !== photoId));
+    } catch {
+      /* ignore — the photo simply stays until the next reload */
+    }
+  }
 
   // Focus the hidden photo catcher (without scrolling to it, so no flicker)
   // so that a native paste event fires and is handled by the shared paste
@@ -1330,6 +1378,42 @@ export default function DealModal({
                   </div>
                 </div>
               ))}
+            {deal.property_id != null && referencePhotos.length > 0 && (
+              <div className={styles["photo-event-group"]}>
+                <div className={styles["photo-event-header"]}>
+                  <span className={styles["event-type-badge"]}>Reference</span>
+                  <span className={styles["photo-event-name"]}>Property reference photos</span>
+                  {deal.property && (
+                    <Link href={`/properties?property=${deal.property.id}`} className={styles["photo-event-link"]}>
+                      View on property →
+                    </Link>
+                  )}
+                </div>
+                <div className={styles["photo-row"]}>
+                  {referencePhotos.map((photo) => {
+                    const thumbUrl = dealThumbUrl(photo);
+                    return (
+                      <div key={photo.id} className={styles["photo-thumb"]}>
+                        {thumbUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumbUrl} alt={photo.caption ?? "Reference photo"} />
+                        ) : (
+                          <span className={styles["photo-thumb-placeholder"]}>🖼</span>
+                        )}
+                        <button
+                          type="button"
+                          className={styles["photo-remove"]}
+                          aria-label="Delete reference photo"
+                          onClick={() => handleDeleteReferencePhoto(photo.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className={styles["photo-add-row"]}>
               <label className={styles["photo-add"]}>
                 + Photo
