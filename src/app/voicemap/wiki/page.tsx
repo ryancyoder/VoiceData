@@ -23,7 +23,24 @@ interface WikiPageRow {
   built_at: string | null;
 }
 
-export default async function WikiIndexPage() {
+export default async function WikiIndexPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string }>;
+}) {
+  const { sort } = await searchParams;
+  // Sort topics by whether their wiki page is built. "default" keeps the
+  // natural topic order; "built" surfaces finished articles first; "unbuilt"
+  // surfaces topics still waiting to be built.
+  const sortMode: "default" | "built" | "unbuilt" =
+    sort === "built" || sort === "unbuilt" ? sort : "default";
+
+  const sortOptions: { key: typeof sortMode; label: string; href: string }[] = [
+    { key: "default", label: "Default", href: "/voicemap/wiki" },
+    { key: "built", label: "Built first", href: "/voicemap/wiki?sort=built" },
+    { key: "unbuilt", label: "Not built first", href: "/voicemap/wiki?sort=unbuilt" },
+  ];
+
   const [sessionsRes, nodesRes, pagesRes] = await Promise.all([
     supabase.from("voicemap_sessions").select("id, name, updated_at").order("updated_at", { ascending: false }),
     supabase.from("voicemap_nodes").select("id, session_id, parent_id, label, summary, status, data, last_modified"),
@@ -89,11 +106,49 @@ export default async function WikiIndexPage() {
       {sessions.length === 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">No VoiceMap data yet.</p>
       ) : (
-        <div className="space-y-8">
+        <>
+          <div className="mb-4 flex items-center gap-2 text-xs">
+            <span className="text-zinc-400 dark:text-zinc-500">Sort</span>
+            <div className="inline-flex overflow-hidden rounded-full border border-zinc-300 dark:border-zinc-700">
+              {sortOptions.map((opt, i) => (
+                <Link
+                  key={opt.key}
+                  href={opt.href}
+                  aria-current={sortMode === opt.key ? "true" : undefined}
+                  className={`px-3 py-1 font-medium transition-colors ${
+                    i > 0 ? "border-l border-zinc-300 dark:border-zinc-700" : ""
+                  } ${
+                    sortMode === opt.key
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  {opt.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-8">
           {sessions.map((session) => {
             const nodes = nodesBySession.get(session.id) ?? [];
             const topics = topicRootNodes(nodes);
             if (!topics.length) return null;
+            // Enrich each topic with its built/stale status, then order per the
+            // selected sort. Array.sort is stable, so topics keep their natural
+            // order within each built/unbuilt group.
+            const enriched = topics.map((topic) => {
+              const cards = gatherTopicCards(nodes, topic.id);
+              const page = pageMap.get(pageKey(session.id, topic.id));
+              const built = !!page;
+              const stale = built && page!.source_hash !== hashCards(cards);
+              const newCount = built ? newCardsSince(cards, page!.built_at) : cards.length;
+              return { topic, cards, page, built, stale, newCount };
+            });
+            if (sortMode === "built") {
+              enriched.sort((a, b) => Number(b.built) - Number(a.built));
+            } else if (sortMode === "unbuilt") {
+              enriched.sort((a, b) => Number(a.built) - Number(b.built));
+            }
             return (
               <section key={session.id}>
                 <div className="mb-3 flex items-baseline justify-between gap-3">
@@ -108,12 +163,7 @@ export default async function WikiIndexPage() {
                   />
                 </div>
                 <ul className="space-y-2">
-                  {topics.map((topic) => {
-                    const cards = gatherTopicCards(nodes, topic.id);
-                    const page = pageMap.get(pageKey(session.id, topic.id));
-                    const built = !!page;
-                    const stale = built && page!.source_hash !== hashCards(cards);
-                    const newCount = built ? newCardsSince(cards, page!.built_at) : cards.length;
+                  {enriched.map(({ topic, cards, page, built, stale, newCount }) => {
                     return (
                       <li
                         key={topic.id}
@@ -157,7 +207,8 @@ export default async function WikiIndexPage() {
               </section>
             );
           })}
-        </div>
+          </div>
+        </>
       )}
     </main>
   );
