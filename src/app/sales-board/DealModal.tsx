@@ -297,6 +297,11 @@ export default function DealModal({
   // section an untargeted ⌘V was meant for without risking a double-upload.
   const correspondencePasteArmedRef = useRef(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Photos are the ambient ⌘V target, but a document-level paste event only
+  // fires when something editable is focused. This hidden catcher gives an
+  // untargeted ⌘V somewhere to land — a keydown interceptor (below) focuses
+  // it just before the browser executes the paste.
+  const photoPasteTargetRef = useRef<HTMLTextAreaElement>(null);
   const [form, setForm] = useState({
     deal_name: deal.deal_name || "",
     company: deal.company || "",
@@ -569,6 +574,33 @@ export default function DealModal({
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
   }, [uploadAttachmentFile, uploadCorrespondenceFile, uploadPhotoFile]);
+
+  // A bare ⌘V / Ctrl+V only dispatches a `paste` event when an editable
+  // element is focused. So the ambient photo target reliably fires, this
+  // catches ⌘V at keydown and — unless the user is typing in a field or a
+  // section is armed (whose own hidden target is already focused) — focuses
+  // the hidden photo catcher a beat before the browser runs the paste, then
+  // releases it once the paste has been handled.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || (e.key !== "v" && e.key !== "V")) return;
+      if (correspondencePasteArmedRef.current || attachmentPasteArmedRef.current) return;
+      const active = document.activeElement as HTMLElement | null;
+      const tag = active?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active?.isContentEditable) return;
+      const target = photoPasteTargetRef.current;
+      if (!target) return;
+      target.focus();
+      // The paste event fires synchronously as the browser processes this
+      // keystroke; a macrotask later it is done, so clear and release focus.
+      setTimeout(() => {
+        target.value = "";
+        target.blur();
+      }, 0);
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, []);
 
   async function handleDeleteAttachmentClick(attachmentId: number) {
     setDeletingAttachmentId(attachmentId);
@@ -1286,6 +1318,14 @@ export default function DealModal({
               <span className={styles["photo-add-hint"]}>
                 {uploadingPhoto ? "Uploading…" : "or press ⌘V / Ctrl+V to paste an image"}
               </span>
+              <textarea
+                ref={photoPasteTargetRef}
+                className={styles["paste-target"]}
+                aria-hidden="true"
+                tabIndex={-1}
+                value=""
+                onChange={() => {}}
+              />
             </div>
           </div>
 
