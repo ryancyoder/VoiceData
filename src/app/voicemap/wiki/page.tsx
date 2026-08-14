@@ -2,6 +2,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { topicRootNodes, gatherTopicCards, hashCards, newCardsSince, type WikiNode } from "@/lib/voicemapWiki";
 import WikiRebuild from "./WikiRebuild";
+import ReindexCards from "../ReindexCards";
 
 // Index of the adaptive wiki: every top-level VoiceMap topic, with whether its
 // page is built, up to date, or has new cards since the last rebuild.
@@ -48,19 +49,35 @@ export default async function WikiIndexPage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
-      <header className="mb-6 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">VoiceMap Wiki</h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Living articles synthesized from your captured ideas. Rebuild a topic to fold in new cards.
+      <header className="mb-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">VoiceMap Wiki</h1>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              Living articles synthesized from your captured ideas. Rebuild a topic to fold in new cards.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/voicemap/search"
+              className="rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Search
+            </Link>
+            <Link
+              href="/voicemap"
+              className="rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cards view
+            </Link>
+          </div>
+        </div>
+        <div className="mt-3">
+          <ReindexCards />
+          <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+            Reindex to make newly-synced cards searchable and power semantic features.
           </p>
         </div>
-        <Link
-          href="/voicemap"
-          className="shrink-0 rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          Cards view
-        </Link>
       </header>
 
       {sessions.length === 0 ? (
