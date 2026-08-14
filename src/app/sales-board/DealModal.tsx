@@ -437,8 +437,20 @@ export default function DealModal({
       if (!type) continue;
       try {
         const blob = await clipboardItem.getType(type);
-        const ext = type.split("/")[1] || "png";
-        files.push(new File([blob], `pasted-${blob.size}-${ext}.${ext}`, { type }));
+        // Re-materialize the clipboard blob into a plain File from raw
+        // bytes. The Blob handed back by getType() is a special clipboard
+        // representation that Safari/WebKit cannot serialize into a
+        // multipart upload — attempting it throws "The string did not match
+        // the expected pattern." A File built from an ArrayBuffer with a
+        // clean name/type uploads exactly like a chosen file.
+        const bytes = await blob.arrayBuffer();
+        const mime = /^image\/[\w.+-]+$/i.test(blob.type)
+          ? blob.type
+          : /^image\/[\w.+-]+$/i.test(type)
+            ? type
+            : "image/png";
+        const ext = (mime.split("/")[1] || "png").replace(/[^a-z0-9]/gi, "").slice(0, 10) || "png";
+        files.push(new File([bytes], `photo-${files.length + 1}.${ext}`, { type: mime }));
       } catch {
         /* item couldn't be read as this type — skip it */
       }
