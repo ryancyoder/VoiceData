@@ -97,6 +97,10 @@ export interface NextActionRow {
   nextActionTaskId: number | null;
   nextActionTitle: string;
   nextActionPhotos: TaskPhoto[];
+  // The property's ⚡ next-action photo, chosen in the photo gallery. Shown
+  // read-only here (managed from the gallery), distinct from the task photos
+  // attached directly to the next-action task.
+  nextActionMarkedPhoto: { id: number; url: string | null } | null;
   milestoneDates: TimelineDates;
 }
 
@@ -682,6 +686,19 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                     </td>
                     <td className={styles["photos-cell"]}>
                       <div className={styles["photo-strip"]}>
+                        {row.nextActionMarkedPhoto?.url && (
+                          <a
+                            className={`${styles["photo-thumb"]} ${styles["photo-marked"]}`}
+                            href={row.nextActionMarkedPhoto.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Next-action photo — set in the photo gallery"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={row.nextActionMarkedPhoto.url} alt="" />
+                            <span className={styles["photo-marked-badge"]}>⚡</span>
+                          </a>
+                        )}
                         {row.nextActionPhotos.map((photo) => (
                           <button
                             key={photo.id}

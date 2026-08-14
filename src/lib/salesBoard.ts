@@ -103,6 +103,9 @@ export interface Property {
   geocoded_at: string | null;
   primary_contact_id: number | null;
   cover_photo_id: number | null;
+  // The one photo (of this property's photos) flagged as its "next action"
+  // photo — surfaced on the Next Actions page. Mirrors cover_photo_id.
+  next_action_photo_id: number | null;
   created_at: string;
   // Present when joined — a property's primary contact, the single point of
   // contact every deal at this property shares.

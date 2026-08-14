@@ -18,6 +18,7 @@ type PropRow = {
   id: number;
   address: string;
   cover_photo_id: number | null;
+  next_action_photo_id: number | null;
   contacts: { last_name: string | null } | null;
 };
 
@@ -50,7 +51,7 @@ async function fetchProperties(ids: number[]): Promise<Map<number, PropRow>> {
   if (unique.length === 0) return map;
   const { data, error } = await supabase
     .from("properties")
-    .select("id, address, cover_photo_id, contacts(last_name)")
+    .select("id, address, cover_photo_id, next_action_photo_id, contacts(last_name)")
     .in("id", unique);
   if (error) throw new Error(`load properties: ${error.message}`);
   for (const p of (data ?? []) as unknown as PropRow[]) map.set(p.id, p);
@@ -133,6 +134,7 @@ async function loadGallery(): Promise<GalleryEvent[]> {
         propertyAddress: prop?.address ?? null,
         propertyContactLastName: prop?.contacts?.last_name ?? null,
         propertyCoverPhotoId: prop?.cover_photo_id ?? null,
+        propertyNextActionPhotoId: prop?.next_action_photo_id ?? null,
       };
     });
 
@@ -163,6 +165,7 @@ async function loadGallery(): Promise<GalleryEvent[]> {
       propertyAddress: prop?.address ?? null,
       propertyContactLastName: prop?.contacts?.last_name ?? null,
       propertyCoverPhotoId: prop?.cover_photo_id ?? null,
+      propertyNextActionPhotoId: prop?.next_action_photo_id ?? null,
     };
   });
 
@@ -192,6 +195,7 @@ async function loadGallery(): Promise<GalleryEvent[]> {
       propertyAddress: prop.address,
       propertyContactLastName: prop.contacts?.last_name ?? null,
       propertyCoverPhotoId: prop.cover_photo_id,
+      propertyNextActionPhotoId: prop.next_action_photo_id,
     };
   });
 
