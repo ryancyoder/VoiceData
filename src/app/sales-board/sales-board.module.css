@@ -590,7 +590,7 @@
   border-radius: 8px;
   background: var(--surface);
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: 1rem;
   font-weight: 600;
   white-space: nowrap;
   text-decoration: none;
@@ -751,24 +751,24 @@
 .card-edit-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-top: 8px; }
 .card-edit-field { display: flex; flex-direction: column; gap: 2px; }
 .card-edit-field.is-full { grid-column: 1 / -1; }
-.card-edit-field label { font-size: 0.64rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.card-edit-field label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .card-edit-field input, .card-edit-field textarea, .card-edit-field select {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 7px;
-  font-size: 0.74rem;
+  font-size: 0.925rem;
   font-family: inherit;
   color: inherit;
   resize: vertical;
 }
 .card-edit-field input:focus, .card-edit-field textarea:focus, .card-edit-field select:focus { border-color: var(--accent); }
-.card-edit-error { grid-column: 1 / -1; font-size: 0.7rem; color: var(--danger); }
+.card-edit-error { grid-column: 1 / -1; font-size: 0.875rem; color: var(--danger); }
 
 /* "Key dates" — the deal's stage-specific dates, grouped and ordered by the
    stage each belongs to. */
 .card-edit-subhead {
-  font-size: 0.66rem;
+  font-size: 0.825rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -785,7 +785,7 @@
   background: var(--surface);
   color: var(--text-faint);
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 1rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -802,19 +802,19 @@
   padding-left: 8px;
   border-left: 2px solid var(--border);
 }
-.date-stage-cell label { font-size: 0.64rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.date-stage-cell label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .date-stage-cell input {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 7px;
-  font-size: 0.74rem;
+  font-size: 0.925rem;
   font-family: inherit;
   color: inherit;
 }
 .date-stage-cell input:focus { border-color: var(--accent); }
 .date-stage-tag {
-  font-size: 0.58rem;
+  font-size: 0.725rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -828,7 +828,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0 12px;
-  font-size: 0.76rem;
+  font-size: 0.95rem;
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
@@ -846,7 +846,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0 12px;
-  font-size: 0.76rem;
+  font-size: 0.95rem;
   color: var(--text);
   text-decoration: none;
   white-space: nowrap;
@@ -854,13 +854,13 @@
 }
 .open-link-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-.geocode-status { margin-top: 3px; font-size: 0.7rem; color: var(--accent); }
+.geocode-status { margin-top: 3px; font-size: 0.875rem; color: var(--accent); }
 .geocode-status.is-warn { color: var(--warn); }
 .geocode-status.is-muted { color: var(--text-faint); }
 .geocode-link { color: inherit; text-decoration: underline; }
 
-.next-action-display { font-size: 0.85rem; padding: 6px 0 2px; }
-.next-action-display-empty { font-size: 0.85rem; color: var(--text-faint); font-style: italic; padding: 6px 0 2px; }
+.next-action-display { font-size: 1.0625rem; padding: 6px 0 2px; }
+.next-action-display-empty { font-size: 1.0625rem; color: var(--text-faint); font-style: italic; padding: 6px 0 2px; }
 .next-action-links { display: flex; gap: 12px; margin-top: 2px; }
 
 .inline-task-form {
@@ -879,18 +879,18 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 8px;
-  font-size: 0.8rem;
+  font-size: 1rem;
   color: inherit;
   font-family: inherit;
 }
 .inline-task-form input:focus,
 .inline-task-form select:focus { border-color: var(--accent); outline: none; }
 .inline-task-form-row { display: grid; grid-template-columns: 1fr 1fr 80px; gap: 8px; }
-.inline-task-next-action { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; }
+.inline-task-next-action { display: flex; align-items: center; gap: 6px; font-size: 0.975rem; }
 .inline-task-next-action input { width: 15px; height: 15px; accent-color: var(--accent); }
 .inline-task-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.inline-task-error { font-size: 0.72rem; color: var(--danger); }
-.inline-task-hint { font-size: 0.72rem; color: var(--text-muted); }
+.inline-task-error { font-size: 0.9rem; color: var(--danger); }
+.inline-task-hint { font-size: 0.9rem; color: var(--text-muted); }
 
 .bulk-match-bar {
   display: flex;
@@ -932,13 +932,13 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 9px;
-  font-size: 0.76rem;
+  font-size: 0.95rem;
   cursor: pointer;
   text-align: left;
 }
 .related-deal:hover { border-color: var(--accent); }
 .related-deal-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.related-deal-stage { color: var(--text-muted); font-size: 0.68rem; flex-shrink: 0; }
+.related-deal-stage { color: var(--text-muted); font-size: 0.85rem; flex-shrink: 0; }
 
 .modal-overlay {
   position: fixed;
@@ -1051,13 +1051,13 @@
   padding: 14px 16px 12px;
   border-bottom: 1px solid var(--border);
 }
-.modal-title { margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
-.modal-stage { display: inline-block; margin-top: 4px; font-size: 0.72rem; color: var(--text-muted); }
+.modal-title { margin: 0; font-size: 1.3125rem; font-weight: 650; letter-spacing: -0.01em; }
+.modal-stage { display: inline-block; margin-top: 4px; font-size: 0.9rem; color: var(--text-muted); }
 .modal-close {
   background: none;
   border: none;
   color: var(--text-faint);
-  font-size: 1.1rem;
+  font-size: 1.375rem;
   line-height: 1;
   cursor: pointer;
   padding: 2px 6px;
@@ -1155,7 +1155,7 @@
 
 .deal-section-title {
   margin: 0;
-  font-size: 0.66rem;
+  font-size: 0.825rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1172,15 +1172,19 @@
   padding: 12px 16px 14px;
 }
 .deal-form-footer .modal-actions { margin-top: 0; padding-top: 0; border-top: none; }
+/* Cancel/Save are shared with other modals — scale them up only inside the
+   deal modal's footer (the deal-modal text is 25% larger throughout). */
+.deal-form-footer .card-edit-cancel,
+.deal-form-footer .card-edit-save { font-size: 0.975rem; }
 
 @media (max-width: 640px) {
   .deal-form-fields { columns: 1; }
 }
-.modal-panel .card-edit-field label { font-size: 0.7rem; }
+.modal-panel .card-edit-field label { font-size: 0.875rem; }
 .modal-panel .card-edit-field input,
 .modal-panel .card-edit-field textarea,
 .modal-panel .card-edit-field select {
-  font-size: 0.85rem;
+  font-size: 1.0625rem;
   padding: 8px 10px;
   background: var(--surface-2);
 }
@@ -1203,7 +1207,7 @@
   color: var(--danger);
   border-radius: 6px;
   padding: 7px 12px;
-  font-size: 0.78rem;
+  font-size: 0.975rem;
   cursor: pointer;
 }
 .modal-delete:hover { background: var(--danger-soft); }
@@ -1213,7 +1217,7 @@
   color: var(--warn);
   border-radius: 6px;
   padding: 7px 12px;
-  font-size: 0.78rem;
+  font-size: 0.975rem;
   cursor: pointer;
 }
 .modal-lost:hover { background: var(--warn-soft); }
@@ -1306,13 +1310,13 @@
 .photo-events { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; grid-column: 1 / -1; }
 .photo-event-group { display: flex; flex-direction: column; gap: 6px; }
 .photo-event-header { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.photo-event-name { font-size: 0.78rem; font-weight: 600; }
-.photo-event-date { font-size: 0.72rem; color: var(--text-muted); }
-.photo-event-link { font-size: 0.72rem; color: var(--accent); text-decoration: none; margin-left: auto; }
+.photo-event-name { font-size: 0.975rem; font-weight: 600; }
+.photo-event-date { font-size: 0.9rem; color: var(--text-muted); }
+.photo-event-link { font-size: 0.9rem; color: var(--accent); text-decoration: none; margin-left: auto; }
 .photo-event-link:hover { text-decoration: underline; }
 .event-type-badge {
   display: inline-block;
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1330,7 +1334,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: 1.5rem;
 }
 .video-badge {
   position: absolute;
@@ -1344,7 +1348,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.5rem;
+  font-size: 0.625rem;
   line-height: 1;
 }
 .outlier-badge {
@@ -1359,7 +1363,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.55rem;
+  font-size: 0.6875rem;
   line-height: 1;
 }
 .photo-remove {
@@ -1371,7 +1375,7 @@
   border: none;
   width: 16px;
   height: 16px;
-  font-size: 10px;
+  font-size: 12.5px;
   line-height: 1;
   cursor: pointer;
   border-radius: 0 0 0 4px;
@@ -1384,7 +1388,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 0.875rem;
   color: var(--text-muted);
   cursor: pointer;
   flex-shrink: 0;
@@ -1393,7 +1397,7 @@
 .photo-add input { display: none; }
 .photo-add-row { display: flex; align-items: center; gap: 10px; }
 .photo-add-hint {
-  font-size: 0.72rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
   background: none;
   border: none;
@@ -1412,7 +1416,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 9px;
-  font-size: 0.76rem;
+  font-size: 0.95rem;
   color: var(--accent);
   text-decoration: none;
 }
@@ -1422,7 +1426,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 0.7rem;
+  font-size: 0.875rem;
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -1434,13 +1438,13 @@
   border: 1px dashed var(--border);
   border-radius: 6px;
   padding: 5px 9px;
-  font-size: 0.76rem;
+  font-size: 0.95rem;
   color: var(--text-muted);
   cursor: pointer;
 }
 .proposal-pdf-add:hover { border-color: var(--text-faint); color: var(--text); }
 .proposal-pdf-add input { display: none; }
-.proposal-pdf-busy { font-size: 0.72rem; color: var(--text-muted); }
+.proposal-pdf-busy { font-size: 0.9rem; color: var(--text-muted); }
 
 /* Estimate controls — deliberately NOT styled like the dashed file-upload
    buttons above them, so "Create estimate" is never mistaken for "Upload PDF".
@@ -1463,7 +1467,7 @@
   width: 100%;
   min-height: 42px;
   border-radius: 8px;
-  font-size: 0.85rem;
+  font-size: 1.0625rem;
   font-weight: 600;
   box-sizing: border-box;
 }
@@ -1502,22 +1506,22 @@
   text-decoration: none;
   color: inherit;
 }
-.attachment-icon { flex-shrink: 0; font-size: 0.9rem; }
+.attachment-icon { flex-shrink: 0; font-size: 1.125rem; }
 .attachment-name {
-  font-size: 0.78rem;
+  font-size: 0.975rem;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .attachment-link:hover .attachment-name { text-decoration: underline; }
-.attachment-date { flex-shrink: 0; font-size: 0.68rem; color: var(--text-faint); margin-left: auto; }
+.attachment-date { flex-shrink: 0; font-size: 0.85rem; color: var(--text-faint); margin-left: auto; }
 .attachment-remove {
   flex-shrink: 0;
   background: none;
   border: none;
   color: var(--text-faint);
-  font-size: 0.9rem;
+  font-size: 1.125rem;
   line-height: 1;
   cursor: pointer;
   padding: 2px 6px;
@@ -1534,7 +1538,7 @@
   border: 1px dashed var(--border);
   border-radius: 6px;
   padding: 5px 9px;
-  font-size: 0.76rem;
+  font-size: 0.95rem;
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -1545,7 +1549,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 9px;
-  font-size: 0.76rem;
+  font-size: 0.95rem;
   color: var(--text);
   cursor: pointer;
 }
