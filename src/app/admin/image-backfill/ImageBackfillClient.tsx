@@ -16,6 +16,8 @@ const BUCKETS = ["deal-photos", "plant-images"];
 const CONCURRENCY = 3;
 const MAX_DIMENSION = 1800;
 const QUALITY = 0.78;
+// Files per downloadable zip — must match the archive-zip route's default limit.
+const DOWNLOAD_BATCH = 40;
 // Only bother with objects meaningfully larger than a compressed target.
 const THRESHOLD = 600_000;
 
@@ -48,6 +50,7 @@ export default function ImageBackfillClient() {
   const [error, setError] = useState<string | null>(null);
   const [archive, setArchive] = useState(true);
   const [archiveInfo, setArchiveInfo] = useState<{ count: number; bytes: number } | null>(null);
+  const [archiveBuckets, setArchiveBuckets] = useState<{ bucket: string; count: number; bytes: number }[]>([]);
   const [archiveBusy, setArchiveBusy] = useState(false);
   const stopRef = useRef(false);
 
@@ -158,15 +161,18 @@ export default function ImageBackfillClient() {
     setArchiveBusy(true);
     setError(null);
     try {
+      const per: { bucket: string; count: number; bytes: number }[] = [];
       let count = 0;
       let bytes = 0;
       for (const bucket of BUCKETS) {
         const res = await fetch(`/api/admin/image-backfill?scope=archive&bucket=${encodeURIComponent(bucket)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Archive check failed");
+        per.push({ bucket, count: data.count as number, bytes: data.totalBytes as number });
         count += data.count as number;
         bytes += data.totalBytes as number;
       }
+      setArchiveBuckets(per);
       setArchiveInfo({ count, bytes });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Archive check failed");
@@ -186,6 +192,7 @@ export default function ImageBackfillClient() {
         if (!res.ok) throw new Error(data.error || "Purge failed");
       }
       setArchiveInfo({ count: 0, bytes: 0 });
+      setArchiveBuckets([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Purge failed");
     } finally {
@@ -342,6 +349,43 @@ export default function ImageBackfillClient() {
           Once you&apos;ve confirmed the compressed images look right, purge the archive to actually reclaim
           the space. Purging is permanent and removes the rollback copies.
         </p>
+
+        {/* Download the archived originals to disk before purging */}
+        {archiveBuckets.some((b) => b.count > 0) && (
+          <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+            <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Download originals to your device first
+            </div>
+            <p className="mt-1 text-xs text-zinc-400">
+              Each link saves a .zip of up to {DOWNLOAD_BATCH} originals (to your Files app on iPad). Download
+              every batch before purging if you want a local copy.
+            </p>
+            {archiveBuckets
+              .filter((b) => b.count > 0)
+              .map((b) => {
+                const batches = Math.ceil(b.count / DOWNLOAD_BATCH);
+                return (
+                  <div key={b.bucket} className="mt-3">
+                    <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      {b.bucket} — {b.count} file{b.count === 1 ? "" : "s"} · {fmtBytes(b.bytes)}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {Array.from({ length: batches }, (_, i) => (
+                        <a
+                          key={i}
+                          href={`/api/admin/image-backfill/archive-zip?bucket=${encodeURIComponent(b.bucket)}&offset=${i * DOWNLOAD_BATCH}&limit=${DOWNLOAD_BATCH}`}
+                          download
+                          className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                        >
+                          {batches === 1 ? "Download zip" : `Batch ${i + 1}/${batches}`}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
 
       {error && (
