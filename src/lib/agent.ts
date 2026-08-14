@@ -122,7 +122,10 @@ const tools: Tool[] = [
   },
 ];
 
-function runTool(name: string, input: Record<string, unknown>): unknown {
+async function runTool(
+  name: string,
+  input: Record<string, unknown>
+): Promise<unknown> {
   switch (name) {
     case "list_tables":
       return db.listTables();
@@ -136,7 +139,7 @@ function runTool(name: string, input: Record<string, unknown>): unknown {
     case "add_column":
       return db.addColumn(input.table as string, input.column as db.ColumnDef);
     case "delete_table":
-      db.deleteTable(input.table as string);
+      await db.deleteTable(input.table as string);
       return { ok: true };
     case "insert_row":
       return db.insertRow(
@@ -150,7 +153,7 @@ function runTool(name: string, input: Record<string, unknown>): unknown {
         input.data as Record<string, unknown>
       );
     case "delete_row":
-      db.deleteRow(input.table as string, input.id as number);
+      await db.deleteRow(input.table as string, input.id as number);
       return { ok: true };
     case "query_rows":
       return db.queryRows(
@@ -203,7 +206,7 @@ export async function runChatTurn(
         .map((b) => (b as { text: string }).text)
         .join(" ")
         .trim();
-      return { reply, schema: db.describeDatabase(), toolCalls, messages };
+      return { reply, schema: await db.describeDatabase(), toolCalls, messages };
     }
 
     const toolResults: ToolResultBlockParam[] = [];
@@ -211,7 +214,7 @@ export async function runChatTurn(
       if (block.type !== "tool_use") continue;
       const input = block.input as Record<string, unknown>;
       try {
-        const result = runTool(block.name, input);
+        const result = await runTool(block.name, input);
         toolCalls.push({ name: block.name, input, result });
         toolResults.push({
           type: "tool_result",
@@ -235,7 +238,7 @@ export async function runChatTurn(
   return {
     reply:
       "I made several changes but ran out of steps to summarize them all — check the database panel for the latest state.",
-    schema: db.describeDatabase(),
+    schema: await db.describeDatabase(),
     toolCalls,
     messages,
   };

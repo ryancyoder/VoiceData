@@ -1,6 +1,4 @@
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
+import { supabase } from "./supabaseClient";
 
 export type ColumnType = "text" | "integer" | "real" | "boolean" | "date";
 
@@ -14,21 +12,36 @@ export interface TableSchema {
   columns: ColumnDef[];
 }
 
-const SQLITE_TYPE: Record<ColumnType, string> = {
-  text: "TEXT",
-  integer: "INTEGER",
-  real: "REAL",
-  boolean: "INTEGER",
-  date: "TEXT",
-};
+// The voice agent creates arbitrary tables and columns at runtime. Rather than
+// run live DDL against Postgres (which needs raw-SQL RPC, per-table RLS, and
+// pollutes the app schema), we model the user's "database" as data inside two
+// fixed, service-role-only tables:
+//
+//   voicedata_tables  — one row per user-defined table: its name + column list
+//   voicedata_rows    — one row per user row: { table_name, data(jsonb) }
+//
+// This persists on the serverless deploy (the old local better-sqlite3 file
+// could not — the filesystem is read-only/ephemeral there) and stays behind the
+// same lockdown as everything else: RLS is enabled with no anon policy, so only
+// our server code, using the service-role key, can touch it.
+const TABLES = "voicedata_tables";
+const ROWS = "voicedata_rows";
+
+const VALID_TYPES: ReadonlySet<ColumnType> = new Set<ColumnType>([
+  "text",
+  "integer",
+  "real",
+  "boolean",
+  "date",
+]);
 
 const IDENTIFIER_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,62}$/;
 const RESERVED_NAMES = new Set([
   "id",
   "created_at",
   "updated_at",
-  "sqlite_sequence",
-  "meta_tables",
+  "table_name",
+  "data",
 ]);
 
 function assertIdentifier(name: string, kind: "table" | "column"): void {
@@ -49,79 +62,59 @@ function assertColumnName(name: string): void {
   }
 }
 
-const dataDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-const dbPath = path.join(dataDir, "voicedata.sqlite3");
-
-let db: Database.Database | null = null;
-
-function getDb(): Database.Database {
-  if (db) return db;
-  db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS meta_tables (
-      name TEXT PRIMARY KEY,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-  return db;
+interface TableRecord {
+  name: string;
+  columns: ColumnDef[];
 }
 
-function assertTableExists(name: string): void {
-  const row = getDb()
-    .prepare(`SELECT name FROM meta_tables WHERE name = ?`)
-    .get(name);
-  if (!row) {
+async function getTableRecord(name: string): Promise<TableRecord | null> {
+  const { data, error } = await supabase
+    .from(TABLES)
+    .select("name, columns")
+    .eq("name", name)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { name: data.name as string, columns: (data.columns ?? []) as ColumnDef[] };
+}
+
+async function requireTableRecord(name: string): Promise<TableRecord> {
+  const rec = await getTableRecord(name);
+  if (!rec) {
     throw new Error(
       `Table "${name}" does not exist. Use create_table first, or check list_tables for available tables.`
     );
   }
+  return rec;
 }
 
-export function listTables(): string[] {
-  const rows = getDb()
-    .prepare(`SELECT name FROM meta_tables ORDER BY name`)
-    .all() as { name: string }[];
-  return rows.map((r) => r.name);
+export async function listTables(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from(TABLES)
+    .select("name")
+    .order("name", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => r.name as string);
 }
 
-export function describeTable(name: string): TableSchema {
-  assertTableExists(name);
-  const cols = getDb().prepare(`PRAGMA table_info("${name}")`).all() as {
-    name: string;
-    type: string;
-  }[];
-  return {
-    name,
-    columns: cols
-      .filter((c) => !RESERVED_NAMES.has(c.name.toLowerCase()))
-      .map((c) => ({
-        name: c.name,
-        type: (c.type.toLowerCase() as ColumnType) || "text",
-      })),
-  };
+export async function describeTable(name: string): Promise<TableSchema> {
+  const rec = await requireTableRecord(name);
+  return { name: rec.name, columns: rec.columns };
 }
 
-export function describeDatabase(): TableSchema[] {
-  return listTables().map(describeTable);
+export async function describeDatabase(): Promise<TableSchema[]> {
+  const { data, error } = await supabase
+    .from(TABLES)
+    .select("name, columns")
+    .order("name", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    name: r.name as string,
+    columns: (r.columns ?? []) as ColumnDef[],
+  }));
 }
 
-export function createTable(name: string, columns: ColumnDef[]): TableSchema {
-  assertIdentifier(name, "table");
-  if (RESERVED_NAMES.has(name.toLowerCase())) {
-    throw new Error(`Table name "${name}" is reserved.`);
-  }
-  const database = getDb();
-  const existing = database
-    .prepare(`SELECT name FROM meta_tables WHERE name = ?`)
-    .get(name);
-  if (existing) {
-    throw new Error(
-      `Table "${name}" already exists. Use add_column to modify it or query_rows to read it.`
-    );
-  }
+function validateColumns(columns: ColumnDef[]): void {
   if (columns.length === 0) {
     throw new Error("At least one column is required.");
   }
@@ -132,70 +125,74 @@ export function createTable(name: string, columns: ColumnDef[]): TableSchema {
       throw new Error(`Duplicate column name "${col.name}".`);
     }
     seen.add(col.name.toLowerCase());
-    if (!SQLITE_TYPE[col.type]) {
+    if (!VALID_TYPES.has(col.type)) {
       throw new Error(`Invalid column type "${col.type}" for "${col.name}".`);
     }
   }
-
-  const columnSql = columns
-    .map((c) => `"${c.name}" ${SQLITE_TYPE[c.type]}`)
-    .join(", ");
-
-  const createTx = database.transaction(() => {
-    database.exec(`
-      CREATE TABLE "${name}" (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ${columnSql},
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
-    database.prepare(`INSERT INTO meta_tables (name) VALUES (?)`).run(name);
-  });
-  createTx();
-
-  return describeTable(name);
 }
 
-export function deleteTable(name: string): void {
-  assertTableExists(name);
-  const database = getDb();
-  const tx = database.transaction(() => {
-    database.exec(`DROP TABLE "${name}"`);
-    database.prepare(`DELETE FROM meta_tables WHERE name = ?`).run(name);
-  });
-  tx();
+export async function createTable(
+  name: string,
+  columns: ColumnDef[]
+): Promise<TableSchema> {
+  assertIdentifier(name, "table");
+  if (RESERVED_NAMES.has(name.toLowerCase())) {
+    throw new Error(`Table name "${name}" is reserved.`);
+  }
+  if (await getTableRecord(name)) {
+    throw new Error(
+      `Table "${name}" already exists. Use add_column to modify it or query_rows to read it.`
+    );
+  }
+  validateColumns(columns);
+
+  const { error } = await supabase.from(TABLES).insert({ name, columns });
+  if (error) throw new Error(error.message);
+  return { name, columns };
 }
 
-export function addColumn(
+export async function deleteTable(name: string): Promise<void> {
+  await requireTableRecord(name);
+  // voicedata_rows has an ON DELETE CASCADE FK to voicedata_tables, so removing
+  // the table record removes all its rows too.
+  const { error } = await supabase.from(TABLES).delete().eq("name", name);
+  if (error) throw new Error(error.message);
+}
+
+export async function addColumn(
   table: string,
   column: ColumnDef
-): TableSchema {
-  assertTableExists(table);
+): Promise<TableSchema> {
+  const rec = await requireTableRecord(table);
   assertColumnName(column.name);
-  if (!SQLITE_TYPE[column.type]) {
+  if (!VALID_TYPES.has(column.type)) {
     throw new Error(`Invalid column type "${column.type}".`);
   }
-  const schema = describeTable(table);
-  if (schema.columns.some((c) => c.name.toLowerCase() === column.name.toLowerCase())) {
+  if (
+    rec.columns.some(
+      (c) => c.name.toLowerCase() === column.name.toLowerCase()
+    )
+  ) {
     throw new Error(`Column "${column.name}" already exists on "${table}".`);
   }
-  getDb().exec(
-    `ALTER TABLE "${table}" ADD COLUMN "${column.name}" ${SQLITE_TYPE[column.type]}`
-  );
-  return describeTable(table);
+  const columns = [...rec.columns, { name: column.name, type: column.type }];
+  const { error } = await supabase
+    .from(TABLES)
+    .update({ columns })
+    .eq("name", table);
+  if (error) throw new Error(error.message);
+  return { name: table, columns };
 }
 
 function validateRowData(
-  table: string,
+  schema: TableSchema,
   data: Record<string, unknown>
 ): void {
-  const schema = describeTable(table);
   const validCols = new Set(schema.columns.map((c) => c.name));
   for (const key of Object.keys(data)) {
     if (!validCols.has(key)) {
       throw new Error(
-        `Column "${key}" does not exist on table "${table}". Existing columns: ${[
+        `Column "${key}" does not exist on table "${schema.name}". Existing columns: ${[
           ...validCols,
         ].join(", ")}`
       );
@@ -203,83 +200,135 @@ function validateRowData(
   }
 }
 
-export function insertRow(
-  table: string,
-  data: Record<string, unknown>
-): Record<string, unknown> {
-  assertTableExists(table);
-  validateRowData(table, data);
-  const keys = Object.keys(data);
-  const database = getDb();
-  const columnsSql = keys.map((k) => `"${k}"`).join(", ");
-  const placeholders = keys.map(() => "?").join(", ");
-  const stmt = database.prepare(
-    `INSERT INTO "${table}" (${columnsSql}) VALUES (${placeholders})`
-  );
-  const info = stmt.run(...keys.map((k) => normalizeValue(data[k])));
-  return database
-    .prepare(`SELECT * FROM "${table}" WHERE id = ?`)
-    .get(info.lastInsertRowid) as Record<string, unknown>;
+// Reconstruct the flat row shape callers expect: { id, ...userColumns,
+// created_at, updated_at } — matching the old SELECT * result.
+function flattenRow(row: {
+  id: number;
+  data: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}): Record<string, unknown> {
+  return {
+    id: row.id,
+    ...(row.data ?? {}),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 }
 
-export function updateRow(
+export async function insertRow(
+  table: string,
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const schema = await describeTable(table);
+  validateRowData(schema, data);
+  const clean = normalizeData(data);
+  const { data: row, error } = await supabase
+    .from(ROWS)
+    .insert({ table_name: table, data: clean })
+    .select("id, data, created_at, updated_at")
+    .single();
+  if (error) throw new Error(error.message);
+  return flattenRow(row);
+}
+
+export async function updateRow(
   table: string,
   id: number,
   data: Record<string, unknown>
-): Record<string, unknown> {
-  assertTableExists(table);
-  validateRowData(table, data);
-  const keys = Object.keys(data);
-  if (keys.length === 0) {
+): Promise<Record<string, unknown>> {
+  const schema = await describeTable(table);
+  validateRowData(schema, data);
+  if (Object.keys(data).length === 0) {
     throw new Error("No fields provided to update.");
   }
-  const database = getDb();
-  const setSql = keys.map((k) => `"${k}" = ?`).join(", ");
-  const stmt = database.prepare(
-    `UPDATE "${table}" SET ${setSql}, updated_at = datetime('now') WHERE id = ?`
-  );
-  const info = stmt.run(...keys.map((k) => normalizeValue(data[k])), id);
-  if (info.changes === 0) {
+  const { data: existing, error: readErr } = await supabase
+    .from(ROWS)
+    .select("id, data, created_at, updated_at")
+    .eq("table_name", table)
+    .eq("id", id)
+    .maybeSingle();
+  if (readErr) throw new Error(readErr.message);
+  if (!existing) {
     throw new Error(`No row with id ${id} found in "${table}".`);
   }
-  return database
-    .prepare(`SELECT * FROM "${table}" WHERE id = ?`)
-    .get(id) as Record<string, unknown>;
+  // Merge onto the existing row so unspecified columns are preserved (the old
+  // UPDATE ... SET only touched the provided columns).
+  const merged = {
+    ...((existing.data ?? {}) as Record<string, unknown>),
+    ...normalizeData(data),
+  };
+  const { data: row, error } = await supabase
+    .from(ROWS)
+    .update({ data: merged, updated_at: new Date().toISOString() })
+    .eq("table_name", table)
+    .eq("id", id)
+    .select("id, data, created_at, updated_at")
+    .single();
+  if (error) throw new Error(error.message);
+  return flattenRow(row);
 }
 
-export function deleteRow(table: string, id: number): void {
-  assertTableExists(table);
-  const database = getDb();
-  const info = database
-    .prepare(`DELETE FROM "${table}" WHERE id = ?`)
-    .run(id);
-  if (info.changes === 0) {
+export async function deleteRow(table: string, id: number): Promise<void> {
+  await requireTableRecord(table);
+  const { data, error } = await supabase
+    .from(ROWS)
+    .delete()
+    .eq("table_name", table)
+    .eq("id", id)
+    .select("id");
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
     throw new Error(`No row with id ${id} found in "${table}".`);
   }
 }
 
-export function queryRows(
+export async function queryRows(
   table: string,
   filters?: Record<string, unknown>,
   limit = 100
-): Record<string, unknown>[] {
-  assertTableExists(table);
-  const database = getDb();
-  let sql = `SELECT * FROM "${table}"`;
-  const params: unknown[] = [];
+): Promise<Record<string, unknown>[]> {
+  const schema = await describeTable(table);
   if (filters && Object.keys(filters).length > 0) {
-    validateRowData(table, filters);
-    const clauses = Object.keys(filters).map((k) => `"${k}" = ?`);
-    sql += ` WHERE ${clauses.join(" AND ")}`;
-    params.push(...Object.keys(filters).map((k) => normalizeValue(filters[k])));
+    validateRowData(schema, filters);
   }
-  sql += ` ORDER BY id DESC LIMIT ?`;
-  params.push(Math.min(Math.max(limit, 1), 500));
-  return database.prepare(sql).all(...params) as Record<string, unknown>[];
+  const { data, error } = await supabase
+    .from(ROWS)
+    .select("id, data, created_at, updated_at")
+    .eq("table_name", table)
+    .order("id", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  let rows = (data ?? []).map(flattenRow);
+  if (filters && Object.keys(filters).length > 0) {
+    const entries = Object.entries(filters).map(
+      ([k, v]) => [k, normalizeValue(v)] as const
+    );
+    rows = rows.filter((row) =>
+      entries.every(([k, v]) => valuesEqual(row[k], v))
+    );
+  }
+  const capped = Math.min(Math.max(limit, 1), 500);
+  return rows.slice(0, capped);
+}
+
+// Loose equality for filter matching, mirroring SQLite's forgiving comparison
+// (e.g. filtering a boolean column by true still matches).
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return a === b;
+  return String(a) === String(b);
 }
 
 function normalizeValue(value: unknown): unknown {
-  if (typeof value === "boolean") return value ? 1 : 0;
   if (value === undefined) return null;
   return value;
+}
+
+function normalizeData(
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) out[k] = normalizeValue(v);
+  return out;
 }

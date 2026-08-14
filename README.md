@@ -3,8 +3,8 @@
 Talk to an AI to build out a database on the fly. Speak (or type) what you
 want to track — "create a contacts table with name, phone, and email", "add
 Dune by Frank Herbert to my reading list" — and the assistant creates tables,
-adds columns, and inserts/updates/deletes rows in a local SQLite database as
-you go.
+adds columns, and inserts/updates/deletes rows in a Supabase Postgres database
+as you go.
 
 ## How it works
 
@@ -13,14 +13,16 @@ you go.
 - **Agent**: `/api/chat` sends the conversation to Claude (Anthropic) with a
   set of tools (`create_table`, `add_column`, `insert_row`, `query_rows`,
   etc.). Claude decides which tools to call based on what you said.
-- **Database**: tool calls run against a local SQLite database
-  (`data/voicedata.sqlite3`, created automatically) via `better-sqlite3`.
-  Table/column names are validated before being used in DDL to avoid SQL
-  injection.
+- **Database**: tool calls run server-side against Supabase Postgres. The
+  user's dynamic tables are modeled as data inside two fixed tables
+  (`voicedata_tables` + `voicedata_rows`), so no live DDL is needed and writes
+  persist on the serverless deploy. Access is server-only via the service-role
+  key; both tables have RLS enabled with no anon policy (deny-all), matching the
+  lockdown in `SECURITY_LOCKDOWN.md`. Table/column names are still validated.
 - **Voice output**: the assistant's reply is spoken back using the browser's
   built-in `speechSynthesis` API — no extra API calls needed.
 - **Sales Board** (`/sales-board`): a Kanban-style deal pipeline backed by a
-  Supabase Postgres table, separate from the voice-driven SQLite database.
+  Supabase Postgres table, separate from the voice-driven tables.
   Deals move through `Lead → Propose → Sent → Sold → Project
   Management → Invoiced → Paid in Full`. Each deal can also
   carry an all-day scheduled work window (`start_date` / `end_date`). Deals sharing the
@@ -51,8 +53,10 @@ Fill in `.env.local`:
 
 - `ANTHROPIC_API_KEY` — powers the conversational agent
 - `OPENAI_API_KEY` — powers Whisper transcription
-- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase
-  project used by the Sales Board
+- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase project
+- `SUPABASE_SERVICE_ROLE_KEY` — server-only key the app uses to read/write
+  Supabase (the voice database and everything else) once RLS is locked down;
+  never prefix with `NEXT_PUBLIC`. See `.env.example` and `SECURITY_LOCKDOWN.md`.
 
 ```bash
 npm run dev
@@ -64,7 +68,7 @@ A text box is also available as a fallback if you'd rather type.
 
 ## Project layout
 
-- `src/lib/db.ts` — dynamic SQLite layer (create/alter tables, CRUD on rows)
+- `src/lib/db.ts` — dynamic table layer over Supabase (create/alter tables, CRUD on rows)
 - `src/lib/agent.ts` — Claude tool definitions and the tool-use loop
 - `src/app/api/chat/route.ts` — conversation endpoint
 - `src/app/api/transcribe/route.ts` — Whisper transcription endpoint
