@@ -1177,6 +1177,66 @@
 .deal-form-footer .card-edit-cancel,
 .deal-form-footer .card-edit-save { font-size: 0.975rem; }
 
+/* Full-width milestone timeline pinned at the modal bottom — the Next Actions
+   first-column timeline, stretched: six evenly-distributed slots (icon +
+   label + date) joined by a line running behind the icons. */
+.deal-timeline {
+  position: relative;
+  display: flex;
+  padding-top: 2px;
+  margin-bottom: 2px;
+}
+.deal-timeline-line {
+  position: absolute;
+  top: 17px;
+  left: 8.333%;
+  right: 8.333%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+.deal-timeline-slot {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.deal-timeline-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+.deal-timeline-icon.is-fulfilled {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.deal-timeline-icon.is-pending {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+.deal-timeline-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.15;
+}
+.deal-timeline-date {
+  font-size: 0.66rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 640px) {
   .deal-form-fields { columns: 1; }
 }

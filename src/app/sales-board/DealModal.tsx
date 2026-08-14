@@ -18,6 +18,7 @@ import {
 } from "@/lib/salesBoard";
 import { TASK_CONTEXTS, type TaskContext } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
+import { MILESTONES, formatMilestoneDate } from "@/app/next-actions/DealTimeline";
 
 const PARSE_ASPIRE_TIMEOUT_MS = 25000;
 const ADD_TASK_TIMEOUT_MS = 15000;
@@ -1546,6 +1547,37 @@ export default function DealModal({
           </div>
 
           <div className={styles["deal-form-footer"]}>
+          {/* Full-width milestone timeline — the same lifecycle shown in the
+              Next Actions page's first column, stretched across the modal. */}
+          <div className={styles["deal-timeline"]}>
+            <div className={styles["deal-timeline-line"]} />
+            {MILESTONES.map((m) => {
+              const date =
+                m.key === "appointment" ? form.appointment_date
+                : m.key === "proposal" ? form.proposal_date
+                : m.key === "won" ? form.won_date
+                : m.key === "production" ? form.start_date
+                : m.key === "invoiced" ? form.invoiced_date
+                : form.paid_date;
+              const fulfilled = !!date;
+              return (
+                <div
+                  key={m.key}
+                  className={styles["deal-timeline-slot"]}
+                  title={`${m.label}${fulfilled ? ` — ${formatMilestoneDate(date)}` : " — not yet reached"}`}
+                >
+                  <span
+                    className={`${styles["deal-timeline-icon"]} ${fulfilled ? styles["is-fulfilled"] : styles["is-pending"]}`}
+                  >
+                    {m.icon}
+                  </span>
+                  <span className={styles["deal-timeline-label"]}>{m.label}</span>
+                  <span className={styles["deal-timeline-date"]}>{fulfilled ? formatMilestoneDate(date) : "—"}</span>
+                </div>
+              );
+            })}
+          </div>
+
           {error && <div className={styles["card-edit-error"]}>{error}</div>}
 
           <div className={styles["modal-actions"]}>

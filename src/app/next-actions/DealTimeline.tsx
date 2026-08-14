@@ -31,7 +31,7 @@ const ICON_CENTER = 17;
 
 // A date-only 'YYYY-MM-DD' formatted without the UTC shift a bare `new
 // Date(iso)` would introduce in a negative-offset timezone.
-function formatDate(key: string): string {
+export function formatMilestoneDate(key: string): string {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
@@ -84,12 +84,12 @@ export default function DealTimeline({ dates }: { dates: TimelineDates }) {
           <div key={m.key} className={styles["timeline-msSlot"]}>
             <div
               className={styles["timeline-node"]}
-              title={`${m.label}${date ? ` — ${formatDate(date)}` : " — not yet reached"}`}
+              title={`${m.label}${date ? ` — ${formatMilestoneDate(date)}` : " — not yet reached"}`}
             >
               <span className={`${styles["timeline-icon"]} ${fulfilled ? styles["is-fulfilled"] : styles["is-pending"]}`}>
                 {m.icon}
               </span>
-              {date && <span className={styles["timeline-date"]}>{formatDate(date)}</span>}
+              {date && <span className={styles["timeline-date"]}>{formatMilestoneDate(date)}</span>}
             </div>
           </div>
         );
