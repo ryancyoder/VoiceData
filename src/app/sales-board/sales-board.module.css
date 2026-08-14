@@ -1196,7 +1196,16 @@
 .photo-add:hover { border-color: var(--text-faint); color: var(--text); }
 .photo-add input { display: none; }
 .photo-add-row { display: flex; align-items: center; gap: 10px; }
-.photo-add-hint { font-size: 0.72rem; color: var(--text-muted); }
+.photo-add-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.photo-add-hint:hover { color: var(--text); text-decoration: underline; }
 
 .proposal-pdf { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .proposal-pdf-link {

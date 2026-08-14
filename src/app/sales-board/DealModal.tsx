@@ -297,11 +297,7 @@ export default function DealModal({
   // section an untargeted ⌘V was meant for without risking a double-upload.
   const correspondencePasteArmedRef = useRef(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  // Photos are the ambient ⌘V target, but a document-level paste event only
-  // fires when something editable is focused. This hidden catcher gives an
-  // untargeted ⌘V somewhere to land — a keydown interceptor (below) focuses
-  // it just before the browser executes the paste.
-  const photoPasteTargetRef = useRef<HTMLTextAreaElement>(null);
+  const [photoPasteError, setPhotoPasteError] = useState("");
   const [form, setForm] = useState({
     deal_name: deal.deal_name || "",
     company: deal.company || "",
@@ -421,6 +417,36 @@ export default function DealModal({
     },
     [deal.id, onUploadPhoto]
   );
+
+  // Read image(s) straight off the clipboard and upload them as photos.
+  // Using the async Clipboard API (rather than focusing a hidden paste
+  // target) means no focus change and so no scroll/flicker. Returns true if
+  // at least one image was found and uploaded. A ⌘V keystroke or the hint
+  // click both provide the transient user activation this needs.
+  const pastePhotoFromClipboard = useCallback(async (): Promise<boolean> => {
+    if (!navigator.clipboard?.read) return false;
+    let clipboardItems: ClipboardItems;
+    try {
+      clipboardItems = await navigator.clipboard.read();
+    } catch {
+      return false;
+    }
+    const files: File[] = [];
+    for (const clipboardItem of clipboardItems) {
+      const type = clipboardItem.types.find((t) => t.startsWith("image/"));
+      if (!type) continue;
+      try {
+        const blob = await clipboardItem.getType(type);
+        const ext = type.split("/")[1] || "png";
+        files.push(new File([blob], `pasted-${blob.size}-${ext}.${ext}`, { type }));
+      } catch {
+        /* item couldn't be read as this type — skip it */
+      }
+    }
+    if (files.length === 0) return false;
+    for (const file of files) await uploadPhotoFile(file);
+    return true;
+  }, [uploadPhotoFile]);
 
   function armAttachmentPasteTarget() {
     attachmentPasteArmedRef.current = true;
@@ -576,11 +602,11 @@ export default function DealModal({
   }, [uploadAttachmentFile, uploadCorrespondenceFile, uploadPhotoFile]);
 
   // A bare ⌘V / Ctrl+V only dispatches a `paste` event when an editable
-  // element is focused. So the ambient photo target reliably fires, this
-  // catches ⌘V at keydown and — unless the user is typing in a field or a
-  // section is armed (whose own hidden target is already focused) — focuses
-  // the hidden photo catcher a beat before the browser runs the paste, then
-  // releases it once the paste has been handled.
+  // element is focused, so with nothing focused the ambient photo target
+  // would never fire. Intercept the keystroke and read the image straight
+  // off the clipboard instead — unless the user is typing in a field, or a
+  // section is armed (its own hidden target handles the paste). No focus
+  // change means no scroll/flicker.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey) || (e.key !== "v" && e.key !== "V")) return;
@@ -588,19 +614,16 @@ export default function DealModal({
       const active = document.activeElement as HTMLElement | null;
       const tag = active?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active?.isContentEditable) return;
-      const target = photoPasteTargetRef.current;
-      if (!target) return;
-      target.focus();
-      // The paste event fires synchronously as the browser processes this
-      // keystroke; a macrotask later it is done, so clear and release focus.
-      setTimeout(() => {
-        target.value = "";
-        target.blur();
-      }, 0);
+      if (!navigator.clipboard?.read) return; // let the paste listener try instead
+      e.preventDefault();
+      setPhotoPasteError("");
+      void pastePhotoFromClipboard().then((ok) => {
+        if (!ok) setPhotoPasteError("No image found on the clipboard to paste");
+      });
     }
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, []);
+  }, [pastePhotoFromClipboard]);
 
   async function handleDeleteAttachmentClick(attachmentId: number) {
     setDeletingAttachmentId(attachmentId);
@@ -1315,18 +1338,21 @@ export default function DealModal({
                   }}
                 />
               </label>
-              <span className={styles["photo-add-hint"]}>
-                {uploadingPhoto ? "Uploading…" : "or press ⌘V / Ctrl+V to paste an image"}
-              </span>
-              <textarea
-                ref={photoPasteTargetRef}
-                className={styles["paste-target"]}
-                aria-hidden="true"
-                tabIndex={-1}
-                value=""
-                onChange={() => {}}
-              />
+              <button
+                type="button"
+                className={styles["photo-add-hint"]}
+                title="Paste an image from the clipboard"
+                onClick={() => {
+                  setPhotoPasteError("");
+                  void pastePhotoFromClipboard().then((ok) => {
+                    if (!ok) setPhotoPasteError("No image found on the clipboard to paste");
+                  });
+                }}
+              >
+                {uploadingPhoto ? "Uploading…" : "or press ⌘V / Ctrl+V — or click here — to paste an image"}
+              </button>
             </div>
+            {photoPasteError && <div className={styles["card-edit-error"]}>{photoPasteError}</div>}
           </div>
 
           {error && <div className={styles["card-edit-error"]}>{error}</div>}
