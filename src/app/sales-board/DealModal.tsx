@@ -289,12 +289,14 @@ export default function DealModal({
   const [deletingCorrespondenceId, setDeletingCorrespondenceId] = useState<number | null>(null);
   const [correspondencePasteError, setCorrespondencePasteError] = useState("");
   const correspondencePasteTargetRef = useRef<HTMLTextAreaElement>(null);
-  // Unlike attachments (which ambiently claim any raw ⌘V as a fallback —
-  // see the shared paste listener below), correspondence only ever claims
-  // a paste when explicitly armed, since a document-level listener can't
-  // otherwise tell which of the two sections an untargeted ⌘V was meant
-  // for without risking double-uploading the same image to both.
+  // Both attachments and correspondence only ever claim a ⌘V when explicitly
+  // armed (their own Paste button was clicked, or their hidden target is
+  // focused). Photos are the ambient default target — an untargeted image
+  // paste anywhere in the modal becomes a photo (see the shared paste
+  // listener below), so a document-level listener can't otherwise tell which
+  // section an untargeted ⌘V was meant for without risking a double-upload.
   const correspondencePasteArmedRef = useRef(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [form, setForm] = useState({
     deal_name: deal.deal_name || "",
     company: deal.company || "",
@@ -403,6 +405,18 @@ export default function DealModal({
     [deal.id, onUploadCorrespondence]
   );
 
+  const uploadPhotoFile = useCallback(
+    async (file: File) => {
+      setUploadingPhoto(true);
+      try {
+        await onUploadPhoto(deal.id, file);
+      } finally {
+        setUploadingPhoto(false);
+      }
+    },
+    [deal.id, onUploadPhoto]
+  );
+
   function armAttachmentPasteTarget() {
     attachmentPasteArmedRef.current = true;
     attachmentPasteTargetRef.current?.focus();
@@ -489,14 +503,14 @@ export default function DealModal({
     }
   }
 
-  // A single shared listener for both sections — two independent listeners
-  // would both try to claim the same raw ⌘V, double-uploading one pasted
-  // image to both attachments and correspondence. Correspondence only ever
-  // claims a paste when explicitly armed (its own Paste button was clicked,
-  // or its hidden target is focused); attachments keeps its original
-  // ambient behavior — claiming any image/PDF on an untargeted ⌘V — as the
-  // fallback when correspondence isn't armed, since that's the older,
-  // heavier-used of the two and changing it would be a real regression.
+  // A single shared listener for all three sections — independent listeners
+  // would each try to claim the same raw ⌘V, double-uploading one pasted
+  // image. Priority: an explicitly armed section wins (correspondence or
+  // attachments, each armed by its own Paste button / focused hidden
+  // target); otherwise an untargeted image paste falls through to photos,
+  // the ambient default target. Text pastes into inputs are never touched —
+  // the photo branch only claims file-kind image items and returns quietly
+  // (no preventDefault) when the clipboard holds no image.
   useEffect(() => {
     function onPaste(e: ClipboardEvent) {
       const items = e.clipboardData?.items;
@@ -521,27 +535,40 @@ export default function DealModal({
         return;
       }
 
+      if (attachmentPasteArmedRef.current) {
+        const files: File[] = [];
+        for (const item of Array.from(items)) {
+          if (item.kind !== "file") continue;
+          if (!item.type.startsWith("image/") && item.type !== "application/pdf") continue;
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+        if (files.length === 0) {
+          const seen = Array.from(items).map((item) => `${item.kind}:${item.type || "(no type)"}`).join(", ");
+          setAttachmentPasteError(`No image or PDF found in what was pasted (found: ${seen})`);
+          return;
+        }
+        e.preventDefault();
+        attachmentPasteArmedRef.current = false;
+        setAttachmentPasteError("");
+        files.forEach((file) => uploadAttachmentFile(file));
+        return;
+      }
+
+      // Ambient default: an untargeted image paste becomes a photo.
       const files: File[] = [];
       for (const item of Array.from(items)) {
-        if (item.kind !== "file") continue;
-        if (!item.type.startsWith("image/") && item.type !== "application/pdf") continue;
+        if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
         const file = item.getAsFile();
         if (file) files.push(file);
       }
-      if (files.length === 0) {
-        if (!attachmentPasteArmedRef.current) return;
-        const seen = Array.from(items).map((item) => `${item.kind}:${item.type || "(no type)"}`).join(", ");
-        setAttachmentPasteError(`No image or PDF found in what was pasted (found: ${seen})`);
-        return;
-      }
+      if (files.length === 0) return;
       e.preventDefault();
-      attachmentPasteArmedRef.current = false;
-      setAttachmentPasteError("");
-      files.forEach((file) => uploadAttachmentFile(file));
+      files.forEach((file) => uploadPhotoFile(file));
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [uploadAttachmentFile, uploadCorrespondenceFile]);
+  }, [uploadAttachmentFile, uploadCorrespondenceFile, uploadPhotoFile]);
 
   async function handleDeleteAttachmentClick(attachmentId: number) {
     setDeletingAttachmentId(attachmentId);
@@ -1240,21 +1267,26 @@ export default function DealModal({
                   </div>
                 </div>
               ))}
-            <label className={styles["photo-add"]}>
-              + Photo
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(e) => {
-                  const files = e.target.files;
-                  if (files) {
-                    Array.from(files).forEach((file) => onUploadPhoto(deal.id, file));
-                  }
-                  e.target.value = "";
-                }}
-              />
-            </label>
+            <div className={styles["photo-add-row"]}>
+              <label className={styles["photo-add"]}>
+                + Photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files) {
+                      Array.from(files).forEach((file) => uploadPhotoFile(file));
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <span className={styles["photo-add-hint"]}>
+                {uploadingPhoto ? "Uploading…" : "or press ⌘V / Ctrl+V to paste an image"}
+              </span>
+            </div>
           </div>
 
           {error && <div className={styles["card-edit-error"]}>{error}</div>}
