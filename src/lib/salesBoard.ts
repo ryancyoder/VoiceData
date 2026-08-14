@@ -24,10 +24,16 @@ export const PROPERTY_REFERENCE_TYPE = "Property_Reference";
 // A video recorded with the Video Snapshot walkthrough tool — a normal event
 // video, but tagged so the gallery can badge it with a distinct walkthrough icon.
 export const WALKTHROUGH_VIDEO_TYPE = "Video_Walkthrough";
+// A deal's "next action" photo, uploaded from the Next Actions list — stored as
+// an event-less deal photo (deal_id set, event_id null) so it lives in the
+// deal's gallery under an "Action" section. One per deal: adding a new one
+// replaces the old, and it becomes the deal's next_action_photo_id.
+export const ACTION_PHOTO_TYPE = "Action_Photo";
 export type PhotoType =
   | typeof SITE_PLAN_IMAGE_TYPE
   | typeof PROPERTY_REFERENCE_TYPE
   | typeof WALKTHROUGH_VIDEO_TYPE
+  | typeof ACTION_PHOTO_TYPE
   | null;
 
 export interface DealPhoto {

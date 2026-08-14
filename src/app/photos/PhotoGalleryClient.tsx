@@ -51,6 +51,9 @@ export interface GalleryEvent {
   // A synthetic group holding a property's event-less general-reference photos.
   // Rendered under a "General reference" section with its own uploader.
   isPropertyReference?: boolean;
+  // A synthetic group holding a deal's event-less next-action photo(s), uploaded
+  // from the Next Actions list. Rendered under an "Action" section.
+  isActionSection?: boolean;
 }
 
 interface DealGroup {
@@ -863,6 +866,12 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                   <span className={styles["event-type-badge"]}>SITE PLAN</span>
                                   <span className={styles["event-group-name"]}>Site Plan</span>
                                   <span className={styles["event-group-date"]}>from the estimator</span>
+                                </>
+                              ) : event.isActionSection ? (
+                                <>
+                                  <span className={styles["event-type-badge"]}>ACTION</span>
+                                  <span className={styles["event-group-name"]}>Next action</span>
+                                  <span className={styles["event-group-date"]}>from the Next Actions list</span>
                                 </>
                               ) : (
                                 <>

@@ -399,8 +399,8 @@
   display: block;
 }
 
-/* The property's ⚡ next-action photo (chosen in the gallery), distinguished
-   from the task photos by a blue ring and a corner bolt badge. */
+/* The deal's ⚡ next-action ("action") photo — a blue ring and corner bolt
+   badge mark it, matching the gallery's next-action marker. */
 .photo-marked {
   position: relative;
   border-color: #4C82F7;
@@ -420,6 +420,35 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Wraps the marked photo so its remove (×) button can sit outside the thumb's
+   own overflow:hidden clip without triggering the thumb's view link. */
+.photo-item {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.photo-remove {
+  position: absolute;
+  bottom: -6px;
+  left: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(10, 12, 16, 0.8);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.photo-remove:hover {
+  background: var(--danger);
 }
 
 .photo-add {
@@ -504,60 +533,6 @@
   color: var(--text);
   font-size: 0.72rem;
   font-family: inherit;
-}
-
-.lightbox {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 60;
-}
-
-.lightbox-content {
-  max-width: min(90vw, 640px);
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: center;
-}
-
-.lightbox-content img {
-  max-width: 100%;
-  max-height: 70vh;
-  border-radius: var(--radius);
-  object-fit: contain;
-}
-
-.lightbox-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.lightbox-delete,
-.lightbox-close {
-  padding: 7px 16px;
-  border-radius: 8px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-}
-
-.lightbox-delete {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
-.lightbox-close {
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--border);
 }
 
 .timeline-cell {
