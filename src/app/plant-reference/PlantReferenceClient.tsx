@@ -33,6 +33,7 @@ import {
 import type { Combination, CombinationPlant } from "@/lib/combinations";
 import type { LibraryItem } from "@/lib/design/library";
 import { ReferencePlantPicker } from "@/app/plants/ReferencePlantPicker";
+import { compressImage } from "@/lib/compressImage";
 
 export function PlantReferenceClient() {
   const [qInput, setQInput] = useState("");
@@ -1048,7 +1049,7 @@ function PlantEditor({
     setError(null);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", await compressImage(file));
       const res = await fetch(`/api/plants/${plant.id}/image`, { method: "POST", body: fd });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -1412,8 +1413,11 @@ function CombinationEditor({
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const onFile = async (f: File) => {
+  const onFile = async (rawFile: File) => {
     setError(null);
+    // Downscale/compress up front so both the deferred-create and
+    // replace-immediately paths store the smaller image.
+    const f = await compressImage(rawFile);
     if (isNew) {
       // Defer upload until create; keep it locally for preview.
       setFile(f);
