@@ -84,6 +84,19 @@
   color: #fff;
 }
 
+.toolLink {
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

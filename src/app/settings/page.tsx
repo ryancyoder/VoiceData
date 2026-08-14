@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import StageDefaultsEditor from "./StageDefaultsEditor";
 import KeyboardShortcuts from "./KeyboardShortcuts";
@@ -20,6 +21,21 @@ export default async function SettingsPage() {
       </div>
       <StageDefaultsEditor initialDefaults={defaults} />
       <KeyboardShortcuts />
+
+      <div className={`${styles.card} ${styles.shortcutsCard}`}>
+        <div className={styles.cardHead}>
+          <div>
+            <h2>Maintenance</h2>
+            <p>
+              Recompress already-stored deal &amp; plant photos to reclaim Supabase Storage space — with dry
+              run, archive originals, download, and purge.
+            </p>
+          </div>
+          <Link href="/admin/image-backfill" className={styles.toolLink}>
+            Image backfill →
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
