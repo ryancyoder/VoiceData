@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
@@ -104,6 +104,9 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // persisted per browser.
   const [showCaptions, setShowCaptions] = useState(false);
   const [bigTiles, setBigTiles] = useState(false);
+  // Deal whose Action section is currently a drag-over drop target (for the
+  // "drag a photo into the Action section to make it the next action" gesture).
+  const [dragOverDealId, setDragOverDealId] = useState<number | null>(null);
   const [savingCaptionId, setSavingCaptionId] = useState<number | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
   // Optimistic overlay on top of the property's stored cover_photo_id —
@@ -461,6 +464,15 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       setNextActionOverrides((m) => new Map(m).set(dealId, previous));
       alert(err instanceof Error ? err.message : "Failed to set next-action photo");
     }
+  }
+
+  // Dropping a photo onto a deal's Action section marks it as the next action.
+  function handleDropOnAction(e: DragEvent, deal: DealGroup) {
+    e.preventDefault();
+    setDragOverDealId(null);
+    if (deal.dealId == null) return;
+    const photoId = Number(e.dataTransfer.getData("text/plain"));
+    if (!Number.isNaN(photoId) && photoId !== deal.nextActionPhotoId) handleMarkNextAction(deal, photoId);
   }
 
   const uploadPhotoToEvent = useCallback(async (eventId: number, file: File) => {
@@ -859,7 +871,27 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                       {deal.events
                         .filter((event) => event.photos.length > 0)
                         .map((event) => (
-                          <div key={event.id} className={styles["event-group"]} data-event-group={event.id}>
+                          <div
+                            key={event.id}
+                            className={`${styles["event-group"]} ${
+                              event.isActionSection && dragOverDealId === deal.dealId ? styles["drag-over"] : ""
+                            }`}
+                            data-event-group={event.id}
+                            onDragOver={
+                              event.isActionSection && deal.dealId != null
+                                ? (e) => {
+                                    e.preventDefault();
+                                    setDragOverDealId(deal.dealId);
+                                  }
+                                : undefined
+                            }
+                            onDragLeave={
+                              event.isActionSection
+                                ? () => setDragOverDealId((d) => (d === deal.dealId ? null : d))
+                                : undefined
+                            }
+                            onDrop={event.isActionSection ? (e) => handleDropOnAction(e, deal) : undefined}
+                          >
                             <div className={styles["event-group-header"]}>
                               {event.isSitePlan ? (
                                 <>
@@ -926,7 +958,15 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                 const i = runningIndex;
                                 const thumbUrl = dealThumbUrl(photo);
                                 return (
-                                  <div key={photo.id} className={styles.thumb}>
+                                  <div
+                                    key={photo.id}
+                                    className={styles.thumb}
+                                    draggable={deal.dealId != null && !event.isActionSection}
+                                    onDragStart={(e) => {
+                                      e.dataTransfer.setData("text/plain", String(photo.id));
+                                      e.dataTransfer.effectAllowed = "move";
+                                    }}
+                                  >
                                     <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
                                       <span className={styles["thumb-image-wrap"]}>
                                         {thumbUrl ? (
@@ -1008,6 +1048,28 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                           </div>
                         ))}
                     </div>
+                    {deal.dealId != null && !deal.events.some((e) => e.isActionSection && e.photos.length > 0) && (
+                      <div
+                        className={`${styles["event-group"]} ${styles["action-dropzone"]} ${
+                          dragOverDealId === deal.dealId ? styles["drag-over"] : ""
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverDealId(deal.dealId);
+                        }}
+                        onDragLeave={() => setDragOverDealId((d) => (d === deal.dealId ? null : d))}
+                        onDrop={(e) => handleDropOnAction(e, deal)}
+                      >
+                        <div className={styles["event-group-header"]}>
+                          <span className={styles["event-type-badge"]}>ACTION</span>
+                          <span className={styles["event-group-name"]}>Next action</span>
+                          <span className={styles["event-group-date"]}>drag a photo here to make it the next action</span>
+                        </div>
+                        <div className={styles["reference-empty"]}>
+                          Drag a photo here to make it this deal&apos;s next action.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

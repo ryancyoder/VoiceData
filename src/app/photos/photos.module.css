@@ -179,6 +179,20 @@
 
 .event-groups { display: flex; flex-direction: column; gap: 28px; }
 .event-group { display: flex; flex-direction: column; gap: 12px; }
+/* Drag a photo onto a deal's Action section to make it the next action. */
+.thumb[draggable="true"] { cursor: grab; }
+.thumb[draggable="true"]:active { cursor: grabbing; }
+.event-group.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+.action-dropzone {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
 .event-group-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .event-group-name { font-size: 0.9rem; font-weight: 650; }
 .event-group-date { font-size: 0.78rem; color: var(--text-muted); }
