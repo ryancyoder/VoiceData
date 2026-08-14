@@ -10,8 +10,12 @@ import { embedTexts, toVectorLiteral } from "@/lib/embeddings";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const PER_CALL_CAP = 96; // cards embedded per request (keeps under the time limit)
-const EDGE_BATCH = 32; // texts per edge-function call
+const PER_CALL_CAP = 60; // cards embedded per request (keeps under the time limit)
+// Texts per edge-function call. gte-small inference is CPU-heavy and the edge
+// runtime kills an invocation over its compute budget (HTTP 546); measured
+// ceiling is ~12, so keep well under it. The client loops this endpoint until
+// the whole corpus is embedded, so a small batch just means more iterations.
+const EDGE_BATCH = 6;
 
 interface NodeRow {
   id: string;
