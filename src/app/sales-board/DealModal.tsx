@@ -311,6 +311,10 @@ export default function DealModal({
   // Hidden target the ambient ⌘V focuses so a native paste event fires (a
   // document-level paste only dispatches when something editable is focused).
   const photoPasteTargetRef = useRef<HTMLTextAreaElement>(null);
+  // Wraps the form fields; the lock toggle flips readOnly on every text
+  // input/textarea inside (buttons and uploads are left alone), so locking is
+  // purely about the data fields — see the effect below.
+  const fieldsRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState({
     deal_name: deal.deal_name || "",
     company: deal.company || "",
@@ -503,6 +507,22 @@ export default function DealModal({
       active = false;
     };
   }, [deal.property_id]);
+
+  // Lock/unlock is purely a field concern: flip readOnly on every text input
+  // and textarea inside the form (skipping file inputs and the hidden paste
+  // catchers). Buttons, uploads, and links are never touched, so they keep
+  // working whether locked or not. readOnly (not disabled) keeps values fully
+  // legible and selectable; the .is-locked styling drops the edit-box chrome.
+  useEffect(() => {
+    const root = fieldsRef.current;
+    if (!root) return;
+    root.querySelectorAll("input, textarea").forEach((el) => {
+      const node = el as HTMLInputElement | HTMLTextAreaElement;
+      if (node instanceof HTMLInputElement && node.type === "file") return;
+      if (node.getAttribute("aria-hidden") === "true") return;
+      if (node.readOnly !== locked) node.readOnly = locked;
+    });
+  });
 
   async function handleDeleteReferencePhoto(photoId: number) {
     const propertyId = deal.property_id;
@@ -820,7 +840,6 @@ export default function DealModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (locked) return;
     const name = form.deal_name.trim();
     if (!name) return;
     setSaving(true);
@@ -894,15 +913,6 @@ export default function DealModal({
       <div className={`${styles["modal-panel"]} ${styles["is-fullscreen"]}`} role="dialog" aria-modal="true">
         <div className={styles["modal-head"]}>
           <div className={styles["modal-head-left"]}>
-            {deal.property_id != null && coverPhoto && dealThumbUrl(coverPhoto) && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                className={styles["modal-cover-thumb"]}
-                src={dealThumbUrl(coverPhoto) ?? undefined}
-                alt="Property cover"
-                title="Property album cover"
-              />
-            )}
             <div>
               <h2 className={styles["modal-title"]}>{deal.deal_name}</h2>
               <span className={styles["modal-stage"]}>
@@ -928,7 +938,13 @@ export default function DealModal({
 
         <form className={styles["card-edit-form"]} onSubmit={handleSubmit}>
           <div className={styles["deal-form-body"]}>
-          <fieldset className={styles["deal-form-fields"]} disabled={locked}>
+          <div className={`${styles["deal-form-fields"]} ${locked ? styles["is-locked"] : ""}`} ref={fieldsRef}>
+          {deal.property_id != null && coverPhoto && dealThumbUrl(coverPhoto) && (
+            <div className={styles["deal-cover-photo"]}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={dealThumbUrl(coverPhoto) ?? undefined} alt="Property album cover" title="Property album cover" />
+            </div>
+          )}
           <section className={styles["deal-section"]}>
             <h3 className={styles["deal-section-title"]}>Deal</h3>
           <div className={styles["card-edit-field"]}>
@@ -1526,7 +1542,7 @@ export default function DealModal({
             {photoPasteError && <div className={styles["card-edit-error"]}>{photoPasteError}</div>}
           </div>
           </section>
-          </fieldset>
+          </div>
           </div>
 
           <div className={styles["deal-form-footer"]}>
@@ -1548,9 +1564,9 @@ export default function DealModal({
             </div>
             <div className={styles["modal-actions-right"]}>
               <button type="button" className={styles["card-edit-cancel"]} onClick={onClose}>
-                {locked ? "Close" : "Cancel"}
+                Cancel
               </button>
-              <button type="submit" className={styles["card-edit-save"]} disabled={saving || locked}>
+              <button type="submit" className={styles["card-edit-save"]} disabled={saving}>
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

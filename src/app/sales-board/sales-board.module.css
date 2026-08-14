@@ -986,15 +986,6 @@
   border-color: var(--accent);
   background: var(--accent-soft);
 }
-.modal-cover-thumb {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-}
 
 /* The deal modal (only — LostModal shares the base classes above and stays a
    centered dialog). A near-maximized panel inset by a thumb-width margin on
@@ -1099,28 +1090,49 @@
   padding: 16px;
 }
 
-/* Fieldset wrapper so a single `disabled` (driven by the header lock toggle)
-   makes every control read-only at once. Reset its native chrome and carry
-   the masonry columns. */
+/* Holds the masonry columns of section cards. */
 .deal-form-fields {
-  border: 0;
-  margin: 0;
-  padding: 0;
   min-width: 0;
-  min-inline-size: 0;
   columns: 340px 3;
   column-gap: 14px;
 }
-/* Keep locked values legible — browsers grey and (in Safari) fade disabled
-   controls; restore full contrast so a locked deal still reads cleanly. */
-.deal-form-fields:disabled input,
-.deal-form-fields:disabled textarea,
-.deal-form-fields:disabled select {
-  opacity: 1;
+/* Locked = read-only view: the header lock toggle sets readOnly on every
+   field and adds .is-locked, which strips the edit-box chrome so each value
+   reads as plain text under its label. Buttons/uploads are untouched. */
+.deal-form-fields.is-locked input,
+.deal-form-fields.is-locked textarea {
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+  cursor: default;
   color: var(--text);
   -webkit-text-fill-color: var(--text);
-  background: var(--surface);
-  cursor: default;
+}
+.deal-form-fields.is-locked input:focus,
+.deal-form-fields.is-locked textarea:focus {
+  outline: none;
+  border-color: transparent;
+}
+.deal-form-fields.is-locked input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+/* The property's album cover, at the top of the first masonry column, full
+   column width. */
+.deal-cover-photo {
+  break-inside: avoid;
+  margin: 0 0 14px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.deal-cover-photo img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
 }
 
 .deal-section {
