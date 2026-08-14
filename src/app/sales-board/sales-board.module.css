@@ -964,6 +964,16 @@
 }
 
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.modal-head-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.modal-cover-thumb {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
 
 /* The deal modal (only — LostModal shares the base classes above and stays a
    centered dialog). A near-maximized panel inset by a thumb-width margin on

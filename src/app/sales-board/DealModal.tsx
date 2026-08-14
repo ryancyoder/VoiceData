@@ -305,6 +305,9 @@ export default function DealModal({
   // Fetched client-side, not embedded in the deal, since deal_photos is a
   // junction table and cross-table embeds risk PostgREST ambiguity.
   const [referencePhotos, setReferencePhotos] = useState<DealPhoto[]>([]);
+  // The property's album cover photo (properties.cover_photo_id), shown as a
+  // thumbnail in the modal header. Fetched by id, like the reference photos.
+  const [coverPhoto, setCoverPhoto] = useState<DealPhoto | null>(null);
   // Hidden target the ambient ⌘V focuses so a native paste event fires (a
   // document-level paste only dispatches when something editable is focused).
   const photoPasteTargetRef = useRef<HTMLTextAreaElement>(null);
@@ -475,6 +478,23 @@ export default function DealModal({
       })
       .catch(() => {
         /* leave the current list as-is on a transient fetch error */
+      });
+    return () => {
+      active = false;
+    };
+  }, [deal.property_id]);
+
+  useEffect(() => {
+    const propertyId = deal.property_id;
+    if (propertyId == null) return;
+    let active = true;
+    fetch(`/api/properties/${propertyId}/cover`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("load failed"))))
+      .then((data) => {
+        if (active) setCoverPhoto(data.photo ?? null);
+      })
+      .catch(() => {
+        /* no cover shown on a transient fetch error */
       });
     return () => {
       active = false;
@@ -869,11 +889,22 @@ export default function DealModal({
     >
       <div className={`${styles["modal-panel"]} ${styles["is-fullscreen"]}`} role="dialog" aria-modal="true">
         <div className={styles["modal-head"]}>
-          <div>
-            <h2 className={styles["modal-title"]}>{deal.deal_name}</h2>
-            <span className={styles["modal-stage"]}>
-              {deal.lost_at ? `${deal.stage} · Lost ${formatDateTime(deal.lost_at)}` : deal.stage}
-            </span>
+          <div className={styles["modal-head-left"]}>
+            {deal.property_id != null && coverPhoto && dealThumbUrl(coverPhoto) && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                className={styles["modal-cover-thumb"]}
+                src={dealThumbUrl(coverPhoto) ?? undefined}
+                alt="Property cover"
+                title="Property album cover"
+              />
+            )}
+            <div>
+              <h2 className={styles["modal-title"]}>{deal.deal_name}</h2>
+              <span className={styles["modal-stage"]}>
+                {deal.lost_at ? `${deal.stage} · Lost ${formatDateTime(deal.lost_at)}` : deal.stage}
+              </span>
+            </div>
           </div>
           <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={onClose}>
             ×
