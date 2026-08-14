@@ -46,6 +46,9 @@ export default function ImageBackfillClient() {
   const [errors, setErrors] = useState(0);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [archive, setArchive] = useState(true);
+  const [archiveInfo, setArchiveInfo] = useState<{ count: number; bytes: number } | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
   const stopRef = useRef(false);
 
   async function scan() {
@@ -101,6 +104,7 @@ export default function ImageBackfillClient() {
         fd.append("bucket", item.bucket);
         fd.append("path", item.path);
         fd.append("file", compressed);
+        if (archive) fd.append("archive", "1");
         const up = await fetch(`/api/admin/image-backfill`, { method: "POST", body: fd });
         const upData = await up.json();
         if (!up.ok) throw new Error(upData.error || `upload ${up.status}`);
@@ -147,6 +151,46 @@ export default function ImageBackfillClient() {
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
     setRunning(false);
+    if (apply && archive) void checkArchive();
+  }
+
+  async function checkArchive() {
+    setArchiveBusy(true);
+    setError(null);
+    try {
+      let count = 0;
+      let bytes = 0;
+      for (const bucket of BUCKETS) {
+        const res = await fetch(`/api/admin/image-backfill?scope=archive&bucket=${encodeURIComponent(bucket)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Archive check failed");
+        count += data.count as number;
+        bytes += data.totalBytes as number;
+      }
+      setArchiveInfo({ count, bytes });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Archive check failed");
+    } finally {
+      setArchiveBusy(false);
+    }
+  }
+
+  async function purgeArchive() {
+    if (!window.confirm("Permanently delete all archived originals? This frees the space but removes the rollback copies.")) return;
+    setArchiveBusy(true);
+    setError(null);
+    try {
+      for (const bucket of BUCKETS) {
+        const res = await fetch(`/api/admin/image-backfill?bucket=${encodeURIComponent(bucket)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Purge failed");
+      }
+      setArchiveInfo({ count: 0, bytes: 0 });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Purge failed");
+    } finally {
+      setArchiveBusy(false);
+    }
   }
 
   const total = items?.length ?? 0;
@@ -200,10 +244,22 @@ export default function ImageBackfillClient() {
             Apply changes (overwrite originals). Leave unchecked for a dry run.
           </label>
           {apply && (
-            <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-              ⚠ Overwrites the stored images in place with smaller re-encoded versions. This is lossy and
-              cannot be undone. Run a dry run first.
-            </p>
+            <>
+              <label className="mt-2 flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={archive}
+                  disabled={running}
+                  onChange={(e) => setArchive(e.target.checked)}
+                />
+                Archive originals first (copy to <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">_backfill-originals/</code> so you can roll back)
+              </label>
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                {archive
+                  ? "⚠ Overwrites each image with a smaller re-encoded version. Originals are archived first, so this is reversible — but the space isn't reclaimed until you purge the archive below. Run a dry run first."
+                  : "⚠ Overwrites the stored images in place with smaller re-encoded versions. Without archiving this is lossy and cannot be undone. Run a dry run first."}
+              </p>
+            </>
           )}
 
           <div className="mt-3 flex items-center justify-between gap-3">
@@ -252,6 +308,41 @@ export default function ImageBackfillClient() {
           Nothing to do — no images over {fmtBytes(THRESHOLD)}.
         </p>
       )}
+
+      {/* Archived originals: verify, then purge to reclaim the space */}
+      <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm text-zinc-700 dark:text-zinc-300">
+            {archiveInfo === null
+              ? "Archived originals (rollback copies)."
+              : archiveInfo.count === 0
+                ? "No archived originals."
+                : `${archiveInfo.count} archived original${archiveInfo.count === 1 ? "" : "s"} · ${fmtBytes(archiveInfo.bytes)}`}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={checkArchive}
+              disabled={archiveBusy || running}
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+            >
+              {archiveBusy ? "Checking…" : "Check archive"}
+            </button>
+            <button
+              type="button"
+              onClick={purgeArchive}
+              disabled={archiveBusy || running || (archiveInfo?.count ?? 0) === 0}
+              className="rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              Purge
+            </button>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-zinc-400">
+          Once you&apos;ve confirmed the compressed images look right, purge the archive to actually reclaim
+          the space. Purging is permanent and removes the rollback copies.
+        </p>
+      </div>
 
       {error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
