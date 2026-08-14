@@ -4,31 +4,32 @@ import { NextActionPhotosClient, type NextActionCard } from "./NextActionPhotosC
 
 export const dynamic = "force-dynamic";
 
-type PropRow = {
+type DealRow = {
   id: number;
-  address: string;
+  deal_name: string;
+  property_id: number | null;
   next_action_photo_id: number | null;
-  contacts: { last_name: string | null } | null;
 };
 
-// An album of every property's chosen "next action" photo (the ⚡ marker set
-// in the photo gallery) — one card per property, sorted by property label.
-// The photo itself lives in deal_photos and is fetched by id (a plain query —
-// deal_photos is a junction across events/deals/properties, so embedding it
-// risks PostgREST ambiguity). The "next action" *text* overlaid on each photo
-// is the title of whichever task is flagged is_next_action for one of the
-// property's deals, reached property → Sales Board deal → tasks.
-export default async function NextActionPhotosPage() {
-  const { data: propsData, error: propsError } = await supabase
-    .from("properties")
-    .select("id, address, next_action_photo_id, contacts(last_name)")
-    .not("next_action_photo_id", "is", null);
-  if (propsError) {
-    throw new Error(`Failed to load properties: ${propsError.message}`);
-  }
-  const props = (propsData ?? []) as unknown as PropRow[];
+type PropRow = { id: number; address: string; contacts: { last_name: string | null } | null };
 
-  const photoIds = props.map((p) => p.next_action_photo_id).filter((v): v is number => v != null);
+// An album of every deal's chosen "next action" photo (the ⚡ marker set in
+// the photo gallery) — one card per deal, sorted by property label. The photo
+// itself lives in deal_photos and is fetched by id (a plain query — deal_photos
+// is a junction across events/deals/properties, so embedding it risks
+// PostgREST ambiguity). The "next action" *text* overlaid on each photo is the
+// title of the deal's is_next_action task.
+export default async function NextActionPhotosPage() {
+  const { data: dealData, error: dealError } = await supabase
+    .from("Sales Board")
+    .select("id, deal_name, property_id, next_action_photo_id")
+    .not("next_action_photo_id", "is", null);
+  if (dealError) {
+    throw new Error(`Failed to load deals: ${dealError.message}`);
+  }
+  const deals = (dealData ?? []) as unknown as DealRow[];
+
+  const photoIds = deals.map((d) => d.next_action_photo_id).filter((v): v is number => v != null);
   const photoById = new Map<number, DealPhoto>();
   if (photoIds.length > 0) {
     const { data: photoRows, error: photoError } = await supabase.from("deal_photos").select("*").in("id", photoIds);
@@ -38,44 +39,60 @@ export default async function NextActionPhotosPage() {
     for (const p of (photoRows ?? []) as unknown as DealPhoto[]) photoById.set(p.id, p);
   }
 
-  // Map each property to its next-action task text (property → deal → task).
-  const propertyIds = props.map((p) => p.id);
-  const nextActionByProperty = new Map<number, string>();
-  if (propertyIds.length > 0) {
-    const [dealsRes, tasksRes] = await Promise.all([
-      supabase.from("Sales Board").select("id, property_id").in("property_id", propertyIds),
-      supabase.from("tasks").select("deal_id, title").eq("is_next_action", true),
-    ]);
-    if (!dealsRes.error && !tasksRes.error) {
-      const titleByDeal = new Map<number, string>();
-      for (const t of (tasksRes.data ?? []) as unknown as { deal_id: number | null; title: string | null }[]) {
-        if (t.deal_id != null && t.title?.trim()) titleByDeal.set(t.deal_id, t.title.trim());
-      }
-      for (const d of (dealsRes.data ?? []) as unknown as { id: number; property_id: number | null }[]) {
-        const title = titleByDeal.get(d.id);
-        // First deal with a next-action title wins for a given property.
-        if (title && d.property_id != null && !nextActionByProperty.has(d.property_id)) {
-          nextActionByProperty.set(d.property_id, title);
-        }
-      }
+  // The deal's next-action task title (one per deal, enforced by is_next_action).
+  const dealIds = deals.map((d) => d.id);
+  const nextActionByDeal = new Map<number, string>();
+  if (dealIds.length > 0) {
+    const { data: taskRows } = await supabase
+      .from("tasks")
+      .select("deal_id, title")
+      .eq("is_next_action", true)
+      .in("deal_id", dealIds);
+    for (const t of (taskRows ?? []) as unknown as { deal_id: number | null; title: string | null }[]) {
+      if (t.deal_id != null && t.title?.trim()) nextActionByDeal.set(t.deal_id, t.title.trim());
     }
   }
 
-  const cards: NextActionCard[] = props
-    .map((p) => {
-      const photo = p.next_action_photo_id != null ? photoById.get(p.next_action_photo_id) ?? null : null;
+  // Property labels (address + contact) for each deal's property.
+  const propertyIds = [...new Set(deals.map((d) => d.property_id).filter((v): v is number => v != null))];
+  const propById = new Map<number, PropRow>();
+  if (propertyIds.length > 0) {
+    const { data: propRows } = await supabase
+      .from("properties")
+      .select("id, address, contacts(last_name)")
+      .in("id", propertyIds);
+    for (const p of (propRows ?? []) as unknown as PropRow[]) propById.set(p.id, p);
+  }
+
+  const cards: NextActionCard[] = deals
+    .map((d) => {
+      const photo = d.next_action_photo_id != null ? photoById.get(d.next_action_photo_id) ?? null : null;
+      const prop = d.property_id != null ? propById.get(d.property_id) ?? null : null;
+      const propertyLabel = prop
+        ? formatPropertyLabel({ address: prop.address, contactLastName: prop.contacts?.last_name ?? null })
+        : d.deal_name;
       return {
-        propertyId: p.id,
-        label: formatPropertyLabel({ address: p.address, contactLastName: p.contacts?.last_name ?? null }),
+        dealId: d.id,
+        propertyId: d.property_id,
+        propertyLabel,
+        dealName: d.deal_name,
         photo,
         url: photo != null ? dealThumbUrl(photo) : null,
         caption: photo?.caption ?? null,
-        nextAction: nextActionByProperty.get(p.id) ?? null,
+        nextAction: nextActionByDeal.get(d.id) ?? null,
       };
     })
     .filter((c) => c.photo != null)
-    .map(({ propertyId, label, url, caption, nextAction }) => ({ propertyId, label, url, caption, nextAction }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .map(({ dealId, propertyId, propertyLabel, dealName, url, caption, nextAction }) => ({
+      dealId,
+      propertyId,
+      propertyLabel,
+      dealName,
+      url,
+      caption,
+      nextAction,
+    }))
+    .sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel));
 
   return <NextActionPhotosClient cards={cards} />;
 }

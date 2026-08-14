@@ -5,6 +5,42 @@ import { upsertPropertyContact } from "@/lib/contacts";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
+// A photo picked as a deal's next-action photo has to actually belong to this
+// deal — either attached to it directly (deal_photos.deal_id) or reached
+// through one of its events (event.deal_id) — otherwise a stray id would
+// silently point a deal at a stranger's photo. Returns an error NextResponse
+// when it doesn't belong, or null when it's valid.
+async function validatePhotoBelongsToDeal(photoId: number, dealId: string): Promise<NextResponse | null> {
+  const { data: photo, error: photoError } = await supabase
+    .from("deal_photos")
+    .select("deal_id, event_id")
+    .eq("id", photoId)
+    .maybeSingle();
+  if (photoError) {
+    return NextResponse.json({ error: photoError.message }, { status: 500 });
+  }
+  if (!photo) {
+    return NextResponse.json({ error: "Photo not found" }, { status: 404 });
+  }
+  if (photo.deal_id != null && String(photo.deal_id) === dealId) {
+    return null;
+  }
+  if (photo.event_id != null) {
+    const { data: event, error: eventError } = await supabase
+      .from("events")
+      .select("deal_id")
+      .eq("id", photo.event_id)
+      .maybeSingle();
+    if (eventError) {
+      return NextResponse.json({ error: eventError.message }, { status: 500 });
+    }
+    if (event && event.deal_id != null && String(event.deal_id) === dealId) {
+      return null;
+    }
+  }
+  return NextResponse.json({ error: "That photo doesn't belong to this deal" }, { status: 400 });
+}
+
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const body = (await req.json()) as Partial<DealInput>;
@@ -37,6 +73,15 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.value !== undefined) updates.value = body.value;
   if (body.stage !== undefined) updates.stage = body.stage;
   if (body.lost_at !== undefined) updates.lost_at = body.lost_at;
+
+  if (body.next_action_photo_id !== undefined) {
+    const nextActionPhotoId = body.next_action_photo_id == null ? null : Number(body.next_action_photo_id);
+    if (nextActionPhotoId != null) {
+      const invalid = await validatePhotoBelongsToDeal(nextActionPhotoId, id);
+      if (invalid) return invalid;
+    }
+    updates.next_action_photo_id = nextActionPhotoId;
+  }
 
   if (Object.keys(updates).length === 0 && !contactProvided) {
     return NextResponse.json({ error: "No fields provided to update" }, { status: 400 });

@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 
-// One property's ⚡ next-action photo, pre-resolved server-side into plain
+// One deal's ⚡ next-action photo, pre-resolved server-side into plain
 // serializable fields (url + the next-action task text) so this client
 // component only handles presentation and the view toggles.
 export type NextActionCard = {
-  propertyId: number;
-  label: string;
+  dealId: number;
+  propertyId: number | null;
+  propertyLabel: string;
+  dealName: string;
   url: string | null;
   caption: string | null;
   nextAction: string | null;
@@ -30,7 +32,7 @@ export function NextActionPhotosClient({ cards }: { cards: NextActionCard[] }) {
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Next Action Photos</h1>
           <span className="text-sm text-zinc-500 dark:text-zinc-400">
-            {cards.length} {cards.length === 1 ? "property" : "properties"}
+            {cards.length} {cards.length === 1 ? "deal" : "deals"}
           </span>
         </div>
         {cards.length > 0 && (
@@ -71,17 +73,17 @@ export function NextActionPhotosClient({ cards }: { cards: NextActionCard[] }) {
         <div className={grid}>
           {cards.map((card) => (
             <Link
-              key={card.propertyId}
-              href={`/photos?property=${card.propertyId}`}
+              key={card.dealId}
+              href={`/photos?deal=${card.dealId}`}
               className="group overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
-              title={`${card.label} — view in gallery`}
+              title={`${card.propertyLabel} — view in gallery`}
             >
               <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800">
                 {card.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={card.url}
-                    alt={card.caption ?? card.label}
+                    alt={card.caption ?? card.propertyLabel}
                     className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
                   />
                 ) : (
@@ -98,8 +100,9 @@ export function NextActionPhotosClient({ cards }: { cards: NextActionCard[] }) {
                   ⚡
                 </span>
               </div>
-              <div className="truncate px-3 py-2 text-sm font-medium text-zinc-800 dark:text-zinc-200" title={card.label}>
-                {card.label}
+              <div className="px-3 py-2" title={`${card.propertyLabel} · ${card.dealName}`}>
+                <div className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">{card.propertyLabel}</div>
+                <div className="truncate text-xs text-zinc-500 dark:text-zinc-400">{card.dealName}</div>
               </div>
             </Link>
           ))}

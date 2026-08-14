@@ -40,7 +40,10 @@ export interface GalleryEvent {
   propertyAddress: string | null;
   propertyContactLastName: string | null;
   propertyCoverPhotoId: number | null;
-  propertyNextActionPhotoId: number | null;
+  // The deal's ⚡ next-action photo (a deal_photos id), or null. Next-action
+  // photos are per-deal now, not per-property — synthetic reference groups
+  // (which have no deal) carry null.
+  dealNextActionPhotoId: number | null;
   // A synthetic group holding a deal's event-less Site_Plan_Image photos
   // (uploaded from the estimator). Rendered with a SITE PLAN badge and no
   // calendar link / add controls, since it isn't a real calendar event.
@@ -54,6 +57,9 @@ interface DealGroup {
   dealId: number | null;
   dealName: string;
   dealStage: string | null;
+  // The deal's ⚡ next-action photo (a deal_photos id), or null. Only real
+  // deals (dealId != null) can carry one.
+  nextActionPhotoId: number | null;
   events: GalleryEvent[];
 }
 
@@ -62,7 +68,6 @@ interface PropertyGroup {
   propertyId: number | null;
   propertyLabel: string;
   coverPhotoId: number | null;
-  nextActionPhotoId: number | null;
   referencePhotos: DealPhoto[];
   deals: DealGroup[];
 }
@@ -102,10 +107,10 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // keyed by property key rather than folded into `events`, since the
   // cover choice lives on the property row, not any individual event.
   const [coverOverrides, setCoverOverrides] = useState<Map<string, number | null>>(new Map());
-  // Same optimistic-overlay treatment for the property's next-action photo —
-  // a second per-property marker that lives on the property row (surfaced on
-  // the Next Actions page), independent of the cover choice.
-  const [nextActionOverrides, setNextActionOverrides] = useState<Map<string, number | null>>(new Map());
+  // Same optimistic-overlay treatment for the deal's ⚡ next-action photo —
+  // keyed by deal id (not property), since a next-action photo now lives on
+  // the deal row (surfaced on the Next Actions page), one per deal.
+  const [nextActionOverrides, setNextActionOverrides] = useState<Map<number, number | null>>(new Map());
   const scrollTargetDealId = useRef<number | null>(null);
   // A ?photo=<id> deep link: pop this photo's lightbox once its album opens.
   const openPhotoTargetId = useRef<number | null>(null);
@@ -122,7 +127,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const propertyGroups = useMemo(() => {
     const propMap = new Map<
       string,
-      { propertyId: number | null; propertyLabel: string; coverPhotoId: number | null; nextActionPhotoId: number | null; referencePhotos: DealPhoto[]; dealMap: Map<string, DealGroup> }
+      { propertyId: number | null; propertyLabel: string; coverPhotoId: number | null; referencePhotos: DealPhoto[]; dealMap: Map<string, DealGroup> }
     >();
     for (const event of events) {
       if (event.photos.length === 0 && !event.isPropertyReference) continue;
@@ -134,7 +139,6 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
             ? formatPropertyLabel({ address: event.propertyAddress, contactLastName: event.propertyContactLastName })
             : "No property",
           coverPhotoId: event.propertyCoverPhotoId,
-          nextActionPhotoId: event.propertyNextActionPhotoId,
           referencePhotos: [],
           dealMap: new Map(),
         });
@@ -154,6 +158,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           dealId: event.dealId,
           dealName: event.dealName ?? "No deal yet",
           dealStage: event.dealStage,
+          nextActionPhotoId: event.dealNextActionPhotoId,
           events: [],
         });
       }
@@ -165,9 +170,14 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
         propertyId: p.propertyId,
         propertyLabel: p.propertyLabel,
         coverPhotoId: coverOverrides.has(key) ? coverOverrides.get(key)! : p.coverPhotoId,
-        nextActionPhotoId: nextActionOverrides.has(key) ? nextActionOverrides.get(key)! : p.nextActionPhotoId,
         referencePhotos: p.referencePhotos,
-        deals: Array.from(p.dealMap.values()),
+        // Apply any optimistic next-action override (keyed by deal id) so the
+        // ⚡ marker updates immediately after a click.
+        deals: Array.from(p.dealMap.values()).map((d) =>
+          d.dealId != null && nextActionOverrides.has(d.dealId)
+            ? { ...d, nextActionPhotoId: nextActionOverrides.get(d.dealId)! }
+            : d
+        ),
       }))
       .sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel));
   }, [events, coverOverrides, nextActionOverrides]);
@@ -239,6 +249,19 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // grid below renders it: deal by deal, then event by event within a deal.
   const activePhotos = useMemo(() => (activeProperty ? flattenPropertyPhotos(activeProperty) : []), [activeProperty]);
   const activePhoto: DealPhoto | null = activeIndex != null ? activePhotos[activeIndex] ?? null : null;
+  // Which deal (if any) each photo in the open album belongs to — so the
+  // lightbox can show a per-deal ⚡ next-action toggle. Reference photos map to
+  // no deal and get no toggle.
+  const dealByPhotoId = useMemo(() => {
+    const map = new Map<number, DealGroup>();
+    if (!activeProperty) return map;
+    for (const deal of activeProperty.deals) {
+      if (deal.dealId == null) continue;
+      for (const event of deal.events) for (const photo of event.photos) map.set(photo.id, deal);
+    }
+    return map;
+  }, [activeProperty]);
+  const activePhotoDeal = activePhoto ? dealByPhotoId.get(activePhoto.id) ?? null : null;
 
   // Once the target album is open, pop the deep-linked photo's lightbox.
   useEffect(() => {
@@ -418,13 +441,13 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     }
   }
 
-  async function handleSetNextAction(property: PropertyGroup, photoId: number | null) {
-    if (property.propertyId == null) return; // no property row to attach a marker to
-    const propertyId = property.propertyId;
-    const previous = nextActionOverrides.get(property.key) ?? null;
-    setNextActionOverrides((m) => new Map(m).set(property.key, photoId));
+  async function handleSetNextAction(deal: DealGroup, photoId: number | null) {
+    if (deal.dealId == null) return; // no deal row to attach a marker to
+    const dealId = deal.dealId;
+    const previous = deal.nextActionPhotoId;
+    setNextActionOverrides((m) => new Map(m).set(dealId, photoId));
     try {
-      const res = await fetch(`/api/properties/${propertyId}`, {
+      const res = await fetch(`/api/sales-board/${dealId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ next_action_photo_id: photoId }),
@@ -432,7 +455,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to set next-action photo");
     } catch (err) {
-      setNextActionOverrides((m) => new Map(m).set(property.key, previous));
+      setNextActionOverrides((m) => new Map(m).set(dealId, previous));
       alert(err instanceof Error ? err.message : "Failed to set next-action photo");
     }
   }
@@ -514,7 +537,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           propertyAddress: null,
           propertyContactLastName: null,
           propertyCoverPhotoId: coverPhotoId,
-          propertyNextActionPhotoId: null,
+          dealNextActionPhotoId: null,
         },
       ];
     });
@@ -800,18 +823,6 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                   </button>
                                   <button
                                     type="button"
-                                    className={`${styles["thumb-next-action"]} ${photo.id === activeProperty.nextActionPhotoId ? styles["is-next-action"] : ""}`}
-                                    aria-label={photo.id === activeProperty.nextActionPhotoId ? "Unset as next-action photo" : "Set as next-action photo"}
-                                    title={photo.id === activeProperty.nextActionPhotoId ? "Next-action photo — click to unset" : "Set as next-action photo"}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleSetNextAction(activeProperty, photo.id === activeProperty.nextActionPhotoId ? null : photo.id);
-                                    }}
-                                  >
-                                    ⚡
-                                  </button>
-                                  <button
-                                    type="button"
                                     className={styles["thumb-delete"]}
                                     aria-label="Delete photo"
                                     disabled={deletingId === photo.id}
@@ -944,15 +955,15 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                         {photo.id === activeProperty.coverPhotoId ? "★" : "☆"}
                                       </button>
                                     )}
-                                    {activeProperty.propertyId != null && (
+                                    {deal.dealId != null && (
                                       <button
                                         type="button"
-                                        className={`${styles["thumb-next-action"]} ${photo.id === activeProperty.nextActionPhotoId ? styles["is-next-action"] : ""}`}
-                                        aria-label={photo.id === activeProperty.nextActionPhotoId ? "Unset as next-action photo" : "Set as next-action photo"}
-                                        title={photo.id === activeProperty.nextActionPhotoId ? "Next-action photo — click to unset" : "Set as next-action photo"}
+                                        className={`${styles["thumb-next-action"]} ${photo.id === deal.nextActionPhotoId ? styles["is-next-action"] : ""}`}
+                                        aria-label={photo.id === deal.nextActionPhotoId ? "Unset as next-action photo" : "Set as next-action photo"}
+                                        title={photo.id === deal.nextActionPhotoId ? "Next-action photo — click to unset" : "Set as next-action photo"}
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleSetNextAction(activeProperty, photo.id === activeProperty.nextActionPhotoId ? null : photo.id);
+                                          handleSetNextAction(deal, photo.id === deal.nextActionPhotoId ? null : photo.id);
                                         }}
                                       >
                                         ⚡
@@ -1071,18 +1082,18 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                     {activePhoto.id === activeProperty.coverPhotoId ? "★ Cover photo" : "☆ Set as cover"}
                   </button>
                 )}
-                {activeProperty.propertyId != null && (
+                {activePhotoDeal != null && (
                   <button
                     type="button"
-                    className={`${styles["lightbox-cover"]} ${activePhoto.id === activeProperty.nextActionPhotoId ? styles["is-next-action"] : ""}`}
+                    className={`${styles["lightbox-cover"]} ${activePhoto.id === activePhotoDeal.nextActionPhotoId ? styles["is-next-action"] : ""}`}
                     onClick={() =>
                       handleSetNextAction(
-                        activeProperty,
-                        activePhoto.id === activeProperty.nextActionPhotoId ? null : activePhoto.id
+                        activePhotoDeal,
+                        activePhoto.id === activePhotoDeal.nextActionPhotoId ? null : activePhoto.id
                       )
                     }
                   >
-                    {activePhoto.id === activeProperty.nextActionPhotoId ? "⚡ Next-action photo" : "⚡ Set as next action"}
+                    {activePhoto.id === activePhotoDeal.nextActionPhotoId ? "⚡ Next-action photo" : "⚡ Set as next action"}
                   </button>
                 )}
                 {activePhoto.media_type !== "video" && (

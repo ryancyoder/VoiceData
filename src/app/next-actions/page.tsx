@@ -18,8 +18,8 @@ type RawDeal = {
   start_date: string | null;
   invoiced_date: string | null;
   paid_date: string | null;
+  next_action_photo_id: number | null;
   properties: {
-    next_action_photo_id: number | null;
     contacts: { first_name: string | null; last_name: string | null; email: string | null; phone: string | null } | null;
   } | null;
 };
@@ -31,7 +31,7 @@ export default async function NextActionsPage() {
     supabase
       .from("Sales Board")
       .select(
-        "id, deal_name, stage, lost_at, proposal_number, proposal_description, appointment_date, proposal_date, won_date, start_date, invoiced_date, paid_date, properties(next_action_photo_id, contacts(first_name, last_name, email, phone))"
+        "id, deal_name, stage, lost_at, proposal_number, proposal_description, appointment_date, proposal_date, won_date, start_date, invoiced_date, paid_date, next_action_photo_id, properties(contacts(first_name, last_name, email, phone))"
       )
       .order("created_at", { ascending: true }),
     supabase
@@ -52,13 +52,13 @@ export default async function NextActionsPage() {
     if (task.deal_id != null) nextActionByDeal.set(task.deal_id, task);
   }
 
-  // A property's chosen next-action photo (deal_photos row). Fetched with a
+  // The deal's chosen next-action photo (deal_photos row). Fetched with a
   // plain by-id query — deal_photos is a junction across events/deals/
   // properties, so embedding it would risk PostgREST ambiguity.
   const rawDeals = (dealsRes.data ?? []) as unknown as RawDeal[];
   const nextActionPhotoIds = [
     ...new Set(
-      rawDeals.map((d) => d.properties?.next_action_photo_id).filter((v): v is number => v != null)
+      rawDeals.map((d) => d.next_action_photo_id).filter((v): v is number => v != null)
     ),
   ];
   const photoById = new Map<number, DealPhoto>();
@@ -70,7 +70,7 @@ export default async function NextActionsPage() {
   const rows: NextActionRow[] = rawDeals
     .map((d) => {
       const task = nextActionByDeal.get(d.id) ?? null;
-      const markedPhotoId = d.properties?.next_action_photo_id ?? null;
+      const markedPhotoId = d.next_action_photo_id ?? null;
       const markedPhoto = markedPhotoId != null ? photoById.get(markedPhotoId) ?? null : null;
       return {
         id: d.id,

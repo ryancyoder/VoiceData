@@ -29,6 +29,7 @@ type DealRow = {
   stage: string | null;
   lost_at: string | null;
   property_id: number | null;
+  next_action_photo_id: number | null;
 };
 
 type RawEvent = {
@@ -64,7 +65,7 @@ async function fetchDeals(ids: number[]): Promise<Map<number, DealRow>> {
   if (unique.length === 0) return map;
   const { data, error } = await supabase
     .from("Sales Board")
-    .select("id, deal_name, company, stage, lost_at, property_id")
+    .select("id, deal_name, company, stage, lost_at, property_id, next_action_photo_id")
     .in("id", unique);
   if (error) throw new Error(`load deals: ${error.message}`);
   for (const d of (data ?? []) as unknown as DealRow[]) map.set(d.id, d);
@@ -134,7 +135,7 @@ async function loadGallery(): Promise<GalleryEvent[]> {
         propertyAddress: prop?.address ?? null,
         propertyContactLastName: prop?.contacts?.last_name ?? null,
         propertyCoverPhotoId: prop?.cover_photo_id ?? null,
-        propertyNextActionPhotoId: prop?.next_action_photo_id ?? null,
+        dealNextActionPhotoId: deal?.next_action_photo_id ?? null,
       };
     });
 
@@ -165,7 +166,7 @@ async function loadGallery(): Promise<GalleryEvent[]> {
       propertyAddress: prop?.address ?? null,
       propertyContactLastName: prop?.contacts?.last_name ?? null,
       propertyCoverPhotoId: prop?.cover_photo_id ?? null,
-      propertyNextActionPhotoId: prop?.next_action_photo_id ?? null,
+      dealNextActionPhotoId: deal.next_action_photo_id ?? null,
     };
   });
 
@@ -195,7 +196,7 @@ async function loadGallery(): Promise<GalleryEvent[]> {
       propertyAddress: prop.address,
       propertyContactLastName: prop.contacts?.last_name ?? null,
       propertyCoverPhotoId: prop.cover_photo_id,
-      propertyNextActionPhotoId: prop.next_action_photo_id,
+      dealNextActionPhotoId: null, // general-reference photos aren't tied to a deal
     };
   });
 
