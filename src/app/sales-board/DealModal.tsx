@@ -862,12 +862,12 @@ export default function DealModal({
 
   return (
     <div
-      className={styles["modal-overlay"]}
+      className={`${styles["modal-overlay"]} ${styles["is-fullscreen"]}`}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className={styles["modal-panel"]} role="dialog" aria-modal="true">
+      <div className={`${styles["modal-panel"]} ${styles["is-fullscreen"]}`} role="dialog" aria-modal="true">
         <div className={styles["modal-head"]}>
           <div>
             <h2 className={styles["modal-title"]}>{deal.deal_name}</h2>
