@@ -382,14 +382,19 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   // below re-subscribing whenever this identity changes is harmless.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   async function attachPhoto(rowId: number, file: File) {
-    // Persist any unsaved next-action text first (rowId is the deal id, so the
-    // photo attaches to the deal regardless of whether a task exists).
-    await commit(rowId);
+    // An action photo belongs to the next-action task — commit() first so the
+    // task exists (creating it from any unsaved text), and attach to its id.
+    const taskId = await commit(rowId);
+    if (taskId == null) {
+      showToast("Add a next action before attaching a photo");
+      return;
+    }
 
     setUploading((u) => ({ ...u, [rowId]: true }));
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("task_id", String(taskId));
       const res = await fetchWithTimeout(
         `/api/sales-board/${rowId}/next-action-photo`,
         { method: "POST", body: formData },
@@ -397,8 +402,8 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to attach photo");
-      // The uploaded photo replaces any prior action photo and becomes the
-      // deal's ⚡ next-action photo.
+      // The uploaded photo replaces the task's prior action photo and becomes
+      // the deal's ⚡ next-action photo.
       setRows((rs) =>
         rs.map((r) => (r.id === rowId ? { ...r, nextActionMarkedPhoto: { id: data.photo.id, url: data.url } } : r))
       );
@@ -494,11 +499,14 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   }, [attachPhoto, armedPasteRowId]);
 
   async function deleteActionPhoto(rowId: number) {
-    const previous = rows.find((r) => r.id === rowId)?.nextActionMarkedPhoto ?? null;
+    const row = rows.find((r) => r.id === rowId);
+    const taskId = row?.nextActionTaskId ?? null;
+    const previous = row?.nextActionMarkedPhoto ?? null;
     setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, nextActionMarkedPhoto: null } : r)));
+    if (taskId == null) return; // no task → no attached action photo to delete
     try {
       const res = await fetchWithTimeout(
-        `/api/sales-board/${rowId}/next-action-photo`,
+        `/api/sales-board/${rowId}/next-action-photo?task_id=${taskId}`,
         { method: "DELETE" },
         SAVE_TIMEOUT_MS
       );

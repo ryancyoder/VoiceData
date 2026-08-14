@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { TASK_CONTEXTS, type TaskInput } from "@/lib/tasks";
+import { syncDealNextActionPhoto } from "@/lib/nextActionPhoto";
 
 const TASK_SELECT =
   '*, deal:"Sales Board"(id, deal_name, company, stage, lost_at), photos:task_photos(id, task_id, storage_path, file_name, created_at)';
@@ -70,16 +71,29 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  // The next-action photo follows the marked task — re-derive it whenever the
+  // is_next_action flag changed.
+  if (body.is_next_action !== undefined && data?.deal_id != null) {
+    await syncDealNextActionPhoto(data.deal_id);
+  }
   return NextResponse.json({ task: data });
 }
 
 export async function DELETE(_req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
+  // Capture the deal before deleting, so we can re-derive its next-action photo
+  // (deal_photos.task_id is ON DELETE SET NULL, so any action photo survives but
+  // is no longer the deal's next action).
+  const { data: task } = await supabase.from("tasks").select("deal_id, is_next_action").eq("id", id).maybeSingle();
+
   const { error } = await supabase.from("tasks").delete().eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (task?.is_next_action && task.deal_id != null) {
+    await syncDealNextActionPhoto(task.deal_id);
   }
   return NextResponse.json({ ok: true });
 }

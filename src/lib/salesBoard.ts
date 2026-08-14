@@ -269,8 +269,4 @@ export interface DealInput {
   lost_at?: string | null;
   aspire_link?: string | null;
   opportunity_link?: string | null;
-  // The deal's ⚡ next-action photo — one of the deal's photos, chosen in the
-  // photo gallery. FK to deal_photos; cleared to null to unset. Mirrors the
-  // one-next-action-task-per-deal model.
-  next_action_photo_id?: number | null;
 }
