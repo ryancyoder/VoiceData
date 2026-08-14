@@ -42,6 +42,7 @@ interface DealModalProps {
   onDelete: (deal: Deal) => void;
   onToggleLost: (deal: Deal) => Promise<void>;
   onUploadPhoto: (dealId: number, file: File) => Promise<void>;
+  onUploadReferencePhoto: (propertyId: number, file: File) => Promise<void>;
   onDeletePhoto: (dealId: number, photoId: number) => Promise<void>;
   onUploadProposalPdf: (dealId: number, file: File) => Promise<void>;
   onDeleteProposalPdf: (dealId: number) => Promise<void>;
@@ -258,6 +259,7 @@ export default function DealModal({
   onDelete,
   onToggleLost,
   onUploadPhoto,
+  onUploadReferencePhoto,
   onDeletePhoto,
   onUploadProposalPdf,
   onDeleteProposalPdf,
@@ -419,6 +421,27 @@ export default function DealModal({
       }
     },
     [deal.id, onUploadPhoto]
+  );
+
+  // Pasted images are filed under the deal's property as general-reference
+  // photos (no calendar event created), unlike the "+ Photo" button which
+  // adds jobsite/event photos.
+  const uploadReferencePhotoFile = useCallback(
+    async (file: File) => {
+      const propertyId = deal.property_id;
+      if (propertyId == null) {
+        setPhotoPasteError("This deal has no linked property to attach reference photos to.");
+        return;
+      }
+      setUploadingPhoto(true);
+      setPhotoPasteError("");
+      try {
+        await onUploadReferencePhoto(propertyId, file);
+      } finally {
+        setUploadingPhoto(false);
+      }
+    },
+    [deal.property_id, onUploadReferencePhoto]
   );
 
   // Focus the hidden photo catcher (without scrolling to it, so no flicker)
@@ -583,11 +606,11 @@ export default function DealModal({
       if (files.length === 0) return;
       e.preventDefault();
       setPhotoPasteError("");
-      files.forEach((file) => uploadPhotoFile(file));
+      files.forEach((file) => uploadReferencePhotoFile(file));
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [uploadAttachmentFile, uploadCorrespondenceFile, uploadPhotoFile]);
+  }, [uploadAttachmentFile, uploadCorrespondenceFile, uploadReferencePhotoFile]);
 
   // A bare ⌘V / Ctrl+V only dispatches a `paste` event when an editable
   // element is focused, so with nothing focused the ambient photo target
@@ -1332,7 +1355,9 @@ export default function DealModal({
                   armPhotoPasteTarget();
                 }}
               >
-                {uploadingPhoto ? "Uploading…" : "or just press ⌘V / Ctrl+V to paste an image"}
+                {uploadingPhoto
+                  ? "Uploading…"
+                  : "or press ⌘V / Ctrl+V to paste an image into the property's reference photos"}
               </button>
               <textarea
                 ref={photoPasteTargetRef}

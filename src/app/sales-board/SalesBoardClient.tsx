@@ -479,6 +479,32 @@ export default function SalesBoardClient({
     }
   }
 
+  // A pasted image is filed under the deal's property as a general-reference
+  // photo (event-less, deal-less) — not a jobsite/calendar photo. Routes to
+  // the property photos endpoint rather than the event-linking deal route.
+  async function handleUploadReferencePhoto(propertyId: number, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetchWithTimeout(
+        `/api/properties/${propertyId}/photos`,
+        { method: "POST", body: formData },
+        PHOTO_UPLOAD_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload reference photo");
+      router.refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Upload timed out — try again"
+          : err instanceof Error
+            ? err.message
+            : "Failed to upload reference photo";
+      showToast(message);
+    }
+  }
+
   async function handleUploadProposalPdf(dealId: number, file: File) {
     const formData = new FormData();
     formData.append("file", file);
@@ -1140,6 +1166,7 @@ export default function SalesBoardClient({
           onDelete={handleDeleteDeal}
           onToggleLost={handleToggleLost}
           onUploadPhoto={handleUploadPhoto}
+          onUploadReferencePhoto={handleUploadReferencePhoto}
           onDeletePhoto={handleDeletePhoto}
           onUploadProposalPdf={handleUploadProposalPdf}
           onDeleteProposalPdf={handleDeleteProposalPdf}
