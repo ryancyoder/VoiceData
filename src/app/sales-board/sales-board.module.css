@@ -1099,21 +1099,26 @@
 /* Locked = read-only view: the header lock toggle sets readOnly on every
    field and adds .is-locked, which strips the edit-box chrome so each value
    reads as plain text under its label. Buttons/uploads are untouched. */
-.deal-form-fields.is-locked input,
-.deal-form-fields.is-locked textarea {
-  border-color: transparent;
-  background: transparent;
-  padding-left: 0;
+.modal-panel .deal-form-fields.is-locked input,
+.modal-panel .deal-form-fields.is-locked textarea,
+.modal-panel .deal-form-fields.is-locked select {
+  border-color: transparent !important;
+  background: transparent !important;
+  padding: 2px 0 !important;
   cursor: default;
   color: var(--text);
   -webkit-text-fill-color: var(--text);
+  -webkit-appearance: none;
+  appearance: none;
+  resize: none;
 }
-.deal-form-fields.is-locked input:focus,
-.deal-form-fields.is-locked textarea:focus {
+.modal-panel .deal-form-fields.is-locked input:focus,
+.modal-panel .deal-form-fields.is-locked textarea:focus,
+.modal-panel .deal-form-fields.is-locked select:focus {
   outline: none;
-  border-color: transparent;
+  border-color: transparent !important;
 }
-.deal-form-fields.is-locked input[type="date"]::-webkit-calendar-picker-indicator {
+.modal-panel .deal-form-fields.is-locked input[type="date"]::-webkit-calendar-picker-indicator {
   display: none;
 }
 
