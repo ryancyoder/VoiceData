@@ -95,6 +95,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // Overlay captions on the fronts of the images — a viewing preference,
   // persisted per browser.
   const [showCaptions, setShowCaptions] = useState(false);
+  const [bigTiles, setBigTiles] = useState(false);
   const [savingCaptionId, setSavingCaptionId] = useState<number | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
   // Optimistic overlay on top of the property's stored cover_photo_id —
@@ -631,15 +632,28 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           </p>
         </div>
         {propertyGroups.length > 0 && (
-          <button
-            type="button"
-            className={`${styles["caption-toggle"]} ${showCaptions ? styles["is-active"] : ""}`}
-            onClick={toggleCaptions}
-            aria-pressed={showCaptions}
-            title="Overlay captions on the images"
-          >
-            {showCaptions ? "🏷️ Captions on" : "🏷️ Captions off"}
-          </button>
+          <div className={styles["topbar-actions"]}>
+            {!activeProperty && (
+              <button
+                type="button"
+                className={styles["caption-toggle"]}
+                onClick={() => setBigTiles((v) => !v)}
+                aria-pressed={bigTiles}
+                title={bigTiles ? "Smaller tiles" : "Larger tiles"}
+              >
+                {bigTiles ? "⊟ Smaller" : "⊞ Larger"}
+              </button>
+            )}
+            <button
+              type="button"
+              className={`${styles["caption-toggle"]} ${showCaptions ? styles["is-active"] : ""}`}
+              onClick={toggleCaptions}
+              aria-pressed={showCaptions}
+              title="Overlay captions on the images"
+            >
+              {showCaptions ? "🏷️ Captions on" : "🏷️ Captions off"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -679,7 +693,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
         ) : !activeProperty && visiblePropertyGroups.length === 0 ? (
           <div className={styles.empty}>No albums match the selected pipeline stages.</div>
         ) : !activeProperty ? (
-          <div className={styles.grid}>
+          <div className={`${styles.grid} ${bigTiles ? styles["grid-large"] : ""}`}>
             {visiblePropertyGroups.map((property) => {
               const photos = flattenPropertyPhotos(property);
               const cover = photos.find((p) => p.id === property.coverPhotoId) ?? photos[0];
