@@ -71,12 +71,6 @@ export default async function WikiIndexPage() {
               Search
             </Link>
             <Link
-              href="/voicemap/organize"
-              className="rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Organize
-            </Link>
-            <Link
               href="/voicemap"
               className="rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
