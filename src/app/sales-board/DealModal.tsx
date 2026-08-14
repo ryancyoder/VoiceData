@@ -881,6 +881,9 @@ export default function DealModal({
         </div>
 
         <form className={styles["card-edit-form"]} onSubmit={handleSubmit}>
+          <div className={styles["deal-form-body"]}>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Deal</h3>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-name">Deal name</label>
             <input
@@ -904,6 +907,9 @@ export default function DealModal({
             <label htmlFor="dm-value">Value ($)</label>
             <input id="dm-value" type="number" min="0" step="1" value={form.value} onChange={(e) => set("value", e.target.value)} />
           </div>
+          </section>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Contact</h3>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-first">Contact first name</label>
             <input id="dm-first" autoComplete="off" value={form.contact_first_name} onChange={(e) => set("contact_first_name", e.target.value)} />
@@ -968,6 +974,9 @@ export default function DealModal({
               )}
             </div>
           </div>
+          </section>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Proposal &amp; dates</h3>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-proposal-number">Proposal #</label>
             <input id="dm-proposal-number" autoComplete="off" value={form.proposal_number} onChange={(e) => set("proposal_number", e.target.value)} />
@@ -987,6 +996,9 @@ export default function DealModal({
               {renderKeyDate("Paid in Full", "Paid in full date", "dm-paid-date", "paid_date")}
             </div>
           </div>
+          </section>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Links &amp; files</h3>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-opportunity-link">Aspire opportunity link</label>
             <div className={styles["aspire-link-row"]}>
@@ -1116,6 +1128,9 @@ export default function DealModal({
               )}
             </div>
           </div>
+          </section>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Attachments</h3>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Attachments (POs, receipts)</label>
             {deal.attachments.length > 0 && (
@@ -1174,6 +1189,9 @@ export default function DealModal({
               onChange={() => {}}
             />
           </div>
+          </section>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Correspondence</h3>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Correspondence with client</label>
             {deal.correspondence.length > 0 && (
@@ -1240,6 +1258,9 @@ export default function DealModal({
               onChange={() => {}}
             />
           </div>
+          </section>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Property</h3>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label htmlFor="dm-jobsite">Jobsite address</label>
             <div className={styles["aspire-link-row"]}>
@@ -1300,6 +1321,9 @@ export default function DealModal({
               <AddTaskInline dealId={deal.id} currentNextAction={deal.next_action} onAdded={onTaskAdded} />
             </div>
           </div>
+          </section>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Photos</h3>
           {(deal.site_plan_photos ?? []).length > 0 && (
             <div className={styles["photo-events"]}>
               <div className={styles["photo-event-group"]}>
@@ -1454,7 +1478,10 @@ export default function DealModal({
             </div>
             {photoPasteError && <div className={styles["card-edit-error"]}>{photoPasteError}</div>}
           </div>
+          </section>
+          </div>
 
+          <div className={styles["deal-form-footer"]}>
           {error && <div className={styles["card-edit-error"]}>{error}</div>}
 
           <div className={styles["modal-actions"]}>
@@ -1479,6 +1506,7 @@ export default function DealModal({
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>
+          </div>
           </div>
         </form>
       </div>

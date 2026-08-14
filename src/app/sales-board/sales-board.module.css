@@ -1010,12 +1010,66 @@
 .modal-close:hover { color: var(--text); background: var(--surface-2); }
 
 .modal-panel .card-edit-form { gap: 12px 14px; margin-top: 0; }
+
+/* Full-screen deal modal body: a masonry of bordered section cards — three
+   columns on desktop, one on phones — that scrolls between the fixed header
+   and the pinned action footer. */
 .modal-panel.is-fullscreen .card-edit-form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.deal-form-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px max(16px, env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  columns: 340px 3;
+  column-gap: 14px;
+  background: var(--bg);
+  padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
+}
+
+.deal-section {
+  break-inside: avoid;
+  margin: 0 0 14px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.deal-section-title {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.deal-form-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.deal-form-footer .modal-actions { margin-top: 0; padding-top: 0; border-top: none; }
+
+@media (max-width: 640px) {
+  .deal-form-body { columns: 1; }
 }
 .modal-panel .card-edit-field label { font-size: 0.7rem; }
 .modal-panel .card-edit-field input,
