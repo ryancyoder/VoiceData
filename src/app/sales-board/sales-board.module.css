@@ -965,6 +965,27 @@
 
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .modal-head-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.modal-head-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.modal-lock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.modal-lock-btn:hover { color: var(--text); border-color: var(--text-faint); }
+.modal-lock-btn.is-unlocked {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 .modal-cover-thumb {
   width: 48px;
   height: 48px;
@@ -1074,10 +1095,32 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  columns: 340px 3;
-  column-gap: 14px;
   background: var(--bg);
   padding: 16px;
+}
+
+/* Fieldset wrapper so a single `disabled` (driven by the header lock toggle)
+   makes every control read-only at once. Reset its native chrome and carry
+   the masonry columns. */
+.deal-form-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  min-inline-size: 0;
+  columns: 340px 3;
+  column-gap: 14px;
+}
+/* Keep locked values legible — browsers grey and (in Safari) fade disabled
+   controls; restore full contrast so a locked deal still reads cleanly. */
+.deal-form-fields:disabled input,
+.deal-form-fields:disabled textarea,
+.deal-form-fields:disabled select {
+  opacity: 1;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  background: var(--surface);
+  cursor: default;
 }
 
 .deal-section {
@@ -1114,7 +1157,7 @@
 .deal-form-footer .modal-actions { margin-top: 0; padding-top: 0; border-top: none; }
 
 @media (max-width: 640px) {
-  .deal-form-body { columns: 1; }
+  .deal-form-fields { columns: 1; }
 }
 .modal-panel .card-edit-field label { font-size: 0.7rem; }
 .modal-panel .card-edit-field input,

@@ -336,6 +336,9 @@ export default function DealModal({
   const [saving, setSaving] = useState(false);
   const [lostBusy, setLostBusy] = useState(false);
   const [error, setError] = useState("");
+  // The modal opens read-only; the fields (and Save) unlock via the header
+  // lock toggle, so a deal can't be edited by accident just from viewing it.
+  const [locked, setLocked] = useState(true);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -817,6 +820,7 @@ export default function DealModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (locked) return;
     const name = form.deal_name.trim();
     if (!name) return;
     setSaving(true);
@@ -906,13 +910,25 @@ export default function DealModal({
               </span>
             </div>
           </div>
-          <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={onClose}>
-            ×
-          </button>
+          <div className={styles["modal-head-right"]}>
+            <button
+              type="button"
+              className={`${styles["modal-lock-btn"]} ${locked ? "" : styles["is-unlocked"]}`}
+              aria-pressed={!locked}
+              title={locked ? "Locked — click to edit" : "Editing — click to lock"}
+              onClick={() => setLocked((l) => !l)}
+            >
+              {locked ? "🔒 Locked" : "🔓 Editing"}
+            </button>
+            <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={onClose}>
+              ×
+            </button>
+          </div>
         </div>
 
         <form className={styles["card-edit-form"]} onSubmit={handleSubmit}>
           <div className={styles["deal-form-body"]}>
+          <fieldset className={styles["deal-form-fields"]} disabled={locked}>
           <section className={styles["deal-section"]}>
             <h3 className={styles["deal-section-title"]}>Deal</h3>
           <div className={styles["card-edit-field"]}>
@@ -1510,6 +1526,7 @@ export default function DealModal({
             {photoPasteError && <div className={styles["card-edit-error"]}>{photoPasteError}</div>}
           </div>
           </section>
+          </fieldset>
           </div>
 
           <div className={styles["deal-form-footer"]}>
@@ -1531,9 +1548,9 @@ export default function DealModal({
             </div>
             <div className={styles["modal-actions-right"]}>
               <button type="button" className={styles["card-edit-cancel"]} onClick={onClose}>
-                Cancel
+                {locked ? "Close" : "Cancel"}
               </button>
-              <button type="submit" className={styles["card-edit-save"]} disabled={saving}>
+              <button type="submit" className={styles["card-edit-save"]} disabled={saving || locked}>
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>
