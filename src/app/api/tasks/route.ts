@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { TASK_CONTEXTS, type TaskInput } from "@/lib/tasks";
+import { syncDealNextActionPhoto } from "@/lib/nextActionPhoto";
 
 const TASK_SELECT =
   '*, deal:"Sales Board"(id, deal_name, company, stage, lost_at), photos:task_photos(id, task_id, storage_path, file_name, created_at)';
@@ -62,6 +63,11 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  // A new next-action task starts with no action photo, so re-derive the deal's
+  // next-action photo (clears any pointer left by the previously-marked task).
+  if (data?.is_next_action && data.deal_id != null) {
+    await syncDealNextActionPhoto(data.deal_id);
   }
   return NextResponse.json({ task: data }, { status: 201 });
 }

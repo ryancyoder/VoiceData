@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
-import { SITE_PLAN_IMAGE_TYPE, PROPERTY_REFERENCE_TYPE, type DealPhoto } from "@/lib/salesBoard";
+import { SITE_PLAN_IMAGE_TYPE, PROPERTY_REFERENCE_TYPE, ACTION_PHOTO_TYPE, type DealPhoto } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import PhotoGalleryClient, { type GalleryEvent } from "./PhotoGalleryClient";
 import { refEventId } from "./refEventId";
@@ -100,10 +100,21 @@ async function loadGallery(): Promise<GalleryEvent[]> {
   if (refError) throw new Error(`load reference photos: ${refError.message}`);
   const refPhotos = (refData ?? []) as DealPhoto[];
 
+  // 4) Action photos (event-less deal photos uploaded from the Next Actions
+  //    list), plain — grouped by deal below into an "Action" section.
+  const { data: actionData, error: actionError } = await supabase
+    .from("deal_photos")
+    .select("*")
+    .eq("photo_type", ACTION_PHOTO_TYPE)
+    .order("created_at", { ascending: false });
+  if (actionError) throw new Error(`load action photos: ${actionError.message}`);
+  const actionPhotos = (actionData ?? []) as DealPhoto[];
+
   // Resolve every deal and property referenced above in two batched lookups.
   const dealIds = [
     ...rawEvents.map((e) => e.deal_id),
     ...sitePlanPhotos.map((p) => p.deal_id),
+    ...actionPhotos.map((p) => p.deal_id),
   ].filter((id): id is number => id != null);
   const deals = await fetchDeals(dealIds);
 
@@ -170,6 +181,37 @@ async function loadGallery(): Promise<GalleryEvent[]> {
     };
   });
 
+  // --- Action photos (one synthetic "Action" group per deal) -----------------
+  const actionByDeal = new Map<number, DealPhoto[]>();
+  for (const photo of actionPhotos) {
+    if (photo.deal_id == null || !deals.has(photo.deal_id)) continue;
+    const list = actionByDeal.get(photo.deal_id) ?? [];
+    list.push(photo);
+    actionByDeal.set(photo.deal_id, list);
+  }
+  const actionEvents: GalleryEvent[] = Array.from(actionByDeal.entries()).map(([dealId, rows]) => {
+    const deal = deals.get(dealId)!;
+    const prop = deal.property_id != null ? props.get(deal.property_id) ?? null : null;
+    return {
+      id: -1_000_000 - dealId, // synthetic, offset so it never collides with a site-plan or real event id
+      name: "Next action",
+      start_time: rows[0].created_at,
+      end_time: rows[0].created_at,
+      event_type: null,
+      isActionSection: true,
+      photos: rows,
+      dealId,
+      dealName: deal.deal_name,
+      dealCompany: deal.company,
+      dealStage: deal.stage,
+      propertyId: deal.property_id,
+      propertyAddress: prop?.address ?? null,
+      propertyContactLastName: prop?.contacts?.last_name ?? null,
+      propertyCoverPhotoId: prop?.cover_photo_id ?? null,
+      dealNextActionPhotoId: deal.next_action_photo_id ?? null,
+    };
+  });
+
   // --- General reference (one synthetic group per property) ------------------
   const refByProperty = new Map<number, DealPhoto[]>();
   for (const photo of refPhotos) {
@@ -202,7 +244,7 @@ async function loadGallery(): Promise<GalleryEvent[]> {
 
   // Append synthetic groups after real events so a jobsite photo stays the
   // default album cover.
-  return [...events, ...sitePlanEvents, ...referenceEvents];
+  return [...events, ...sitePlanEvents, ...actionEvents, ...referenceEvents];
 }
 
 export default async function PhotosPage() {

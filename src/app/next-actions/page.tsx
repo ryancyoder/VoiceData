@@ -1,6 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
 import { STAGES, dealThumbUrl, type DealPhoto, type Stage } from "@/lib/salesBoard";
-import type { TaskPhoto } from "@/lib/tasks";
 import NextActionsClient, { type NextActionRow } from "./NextActionsClient";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +23,7 @@ type RawDeal = {
   } | null;
 };
 
-type RawTask = { id: number; deal_id: number | null; title: string; task_photos: TaskPhoto[] | null };
+type RawTask = { id: number; deal_id: number | null; title: string };
 
 export default async function NextActionsPage() {
   const [dealsRes, tasksRes] = await Promise.all([
@@ -34,10 +33,7 @@ export default async function NextActionsPage() {
         "id, deal_name, stage, lost_at, proposal_number, proposal_description, appointment_date, proposal_date, won_date, start_date, invoiced_date, paid_date, next_action_photo_id, properties(contacts(first_name, last_name, email, phone))"
       )
       .order("created_at", { ascending: true }),
-    supabase
-      .from("tasks")
-      .select("id, deal_id, title, task_photos(id, task_id, storage_path, file_name, created_at)")
-      .eq("is_next_action", true),
+    supabase.from("tasks").select("id, deal_id, title").eq("is_next_action", true),
   ]);
 
   if (dealsRes.error) {
@@ -85,7 +81,6 @@ export default async function NextActionsPage() {
         proposalDescription: d.proposal_description,
         nextActionTaskId: task?.id ?? null,
         nextActionTitle: task?.title ?? "",
-        nextActionPhotos: task?.task_photos ?? [],
         nextActionMarkedPhoto:
           markedPhoto != null ? { id: markedPhoto.id, url: dealThumbUrl(markedPhoto) } : null,
         // Timeline milestones come straight from the deal's per-stage dates.

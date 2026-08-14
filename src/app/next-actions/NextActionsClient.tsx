@@ -2,7 +2,6 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { STAGES, type Stage } from "@/lib/salesBoard";
-import { type TaskPhoto, taskPhotoUrl } from "@/lib/tasks";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import DealTimeline, { TimelineSortHeader, type TimelineDates, type MilestoneKey } from "./DealTimeline";
 import TextTemplateMenu from "../sales-board/TextTemplateMenu";
@@ -96,10 +95,9 @@ export interface NextActionRow {
   proposalDescription: string | null;
   nextActionTaskId: number | null;
   nextActionTitle: string;
-  nextActionPhotos: TaskPhoto[];
-  // The property's ⚡ next-action photo, chosen in the photo gallery. Shown
-  // read-only here (managed from the gallery), distinct from the task photos
-  // attached directly to the next-action task.
+  // The deal's single ⚡ next-action ("action") photo. Uploaded here (or marked
+  // in the photo gallery) and stored as an event-less deal photo in the deal
+  // album's Action section. Adding a new one replaces the old.
   nextActionMarkedPhoto: { id: number; url: string | null } | null;
   milestoneDates: TimelineDates;
 }
@@ -157,7 +155,6 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   // server/client hydration mismatch to guard against here.
   const [isTouchDevice] = useState(() => typeof navigator !== "undefined" && navigator.maxTouchPoints > 0);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
-  const [lightbox, setLightbox] = useState<{ rowId: number; taskId: number; photoId: number; url: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Focuses the armed row's fallback paste target once it's actually in
@@ -381,13 +378,12 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
   }
 
   // Deliberately left unmemoized, matching every other handler in this file
-  // (commit, deletePhoto, handlePasteClick) — the paste-listener effect
+  // (commit, deleteActionPhoto, handlePasteClick) — the paste-listener effect
   // below re-subscribing whenever this identity changes is harmless.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   async function attachPhoto(rowId: number, file: File) {
-    // commit() first — if there's unsaved text this creates the task from
-    // it, and if the row already has a saved next action it's a no-op that
-    // just returns the existing task id.
+    // An action photo belongs to the next-action task — commit() first so the
+    // task exists (creating it from any unsaved text), and attach to its id.
     const taskId = await commit(rowId);
     if (taskId == null) {
       showToast("Add a next action before attaching a photo");
@@ -398,10 +394,19 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetchWithTimeout(`/api/tasks/${taskId}/photos`, { method: "POST", body: formData }, SAVE_TIMEOUT_MS);
+      formData.append("task_id", String(taskId));
+      const res = await fetchWithTimeout(
+        `/api/sales-board/${rowId}/next-action-photo`,
+        { method: "POST", body: formData },
+        SAVE_TIMEOUT_MS
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to attach photo");
-      setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, nextActionPhotos: [...r.nextActionPhotos, data.photo] } : r)));
+      // The uploaded photo replaces the task's prior action photo and becomes
+      // the deal's ⚡ next-action photo.
+      setRows((rs) =>
+        rs.map((r) => (r.id === rowId ? { ...r, nextActionMarkedPhoto: { id: data.photo.id, url: data.url } } : r))
+      );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to attach photo");
     } finally {
@@ -493,17 +498,24 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
     return () => document.removeEventListener("paste", onPaste);
   }, [attachPhoto, armedPasteRowId]);
 
-  async function deletePhoto(rowId: number, taskId: number, photoId: number) {
+  async function deleteActionPhoto(rowId: number) {
+    const row = rows.find((r) => r.id === rowId);
+    const taskId = row?.nextActionTaskId ?? null;
+    const previous = row?.nextActionMarkedPhoto ?? null;
+    setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, nextActionMarkedPhoto: null } : r)));
+    if (taskId == null) return; // no task → no attached action photo to delete
     try {
-      const res = await fetchWithTimeout(`/api/tasks/${taskId}/photos/${photoId}`, { method: "DELETE" }, SAVE_TIMEOUT_MS);
+      const res = await fetchWithTimeout(
+        `/api/sales-board/${rowId}/next-action-photo?task_id=${taskId}`,
+        { method: "DELETE" },
+        SAVE_TIMEOUT_MS
+      );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to delete photo");
       }
-      setRows((rs) =>
-        rs.map((r) => (r.id === rowId ? { ...r, nextActionPhotos: r.nextActionPhotos.filter((p) => p.id !== photoId) } : r))
-      );
     } catch (err) {
+      setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, nextActionMarkedPhoto: previous } : r)));
       showToast(err instanceof Error ? err.message : "Failed to delete photo");
     }
   }
@@ -687,42 +699,34 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
                     <td className={styles["photos-cell"]}>
                       <div className={styles["photo-strip"]}>
                         {row.nextActionMarkedPhoto?.url && (
-                          <a
-                            className={`${styles["photo-thumb"]} ${styles["photo-marked"]}`}
-                            href={row.nextActionMarkedPhoto.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            title="Next-action photo — set in the photo gallery"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={row.nextActionMarkedPhoto.url} alt="" />
-                            <span className={styles["photo-marked-badge"]}>⚡</span>
-                          </a>
+                          <span className={styles["photo-item"]}>
+                            <a
+                              className={`${styles["photo-thumb"]} ${styles["photo-marked"]}`}
+                              href={row.nextActionMarkedPhoto.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Next-action photo — tap to view"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={row.nextActionMarkedPhoto.url} alt="" />
+                              <span className={styles["photo-marked-badge"]}>⚡</span>
+                            </a>
+                            <button
+                              type="button"
+                              className={styles["photo-remove"]}
+                              title="Remove next-action photo"
+                              aria-label="Remove next-action photo"
+                              onClick={() => deleteActionPhoto(row.id)}
+                            >
+                              ×
+                            </button>
+                          </span>
                         )}
-                        {row.nextActionPhotos.map((photo) => (
-                          <button
-                            key={photo.id}
-                            type="button"
-                            className={styles["photo-thumb"]}
-                            onClick={() =>
-                              setLightbox({
-                                rowId: row.id,
-                                taskId: row.nextActionTaskId!,
-                                photoId: photo.id,
-                                url: taskPhotoUrl(photo.storage_path),
-                              })
-                            }
-                            title={photo.file_name ?? "View photo"}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={taskPhotoUrl(photo.storage_path)} alt="" />
-                          </button>
-                        ))}
                         <button
                           type="button"
                           className={styles["photo-add"]}
                           disabled={!!uploading[row.id]}
-                          title="Take a photo"
+                          title={row.nextActionMarkedPhoto?.url ? "Replace next-action photo" : "Add next-action photo"}
                           onClick={() => fileInputRefs.current[row.id]?.click()}
                         >
                           {uploading[row.id] ? "…" : "+"}
@@ -829,35 +833,6 @@ export default function NextActionsClient({ initialRows }: { initialRows: NextAc
       <div className={`${styles.toast} ${toast ? styles["is-visible"] : ""}`} role="status" aria-live="polite">
         <span>{toast}</span>
       </div>
-
-      {lightbox && (
-        <div
-          className={styles.lightbox}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setLightbox(null);
-          }}
-        >
-          <div className={styles["lightbox-content"]}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={lightbox.url} alt="" />
-            <div className={styles["lightbox-actions"]}>
-              <button
-                type="button"
-                className={styles["lightbox-delete"]}
-                onClick={() => {
-                  deletePhoto(lightbox.rowId, lightbox.taskId, lightbox.photoId);
-                  setLightbox(null);
-                }}
-              >
-                Delete
-              </button>
-              <button type="button" className={styles["lightbox-close"]} onClick={() => setLightbox(null)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
