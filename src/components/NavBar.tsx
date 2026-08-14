@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/plants", label: "Plants" },
   { href: "/plant-reference", label: "Plant Reference" },
   { href: "/next-actions", label: "Next Actions" },
+  { href: "/next-action-photos", label: "Action Photos" },
   { href: "/tasks", label: "Tasks" },
   { href: "/properties", label: "Properties" },
   { href: "/calendar", label: "Calendar" },
