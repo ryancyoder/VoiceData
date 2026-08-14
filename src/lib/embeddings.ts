@@ -26,6 +26,25 @@ export async function embedText(text: string): Promise<number[]> {
   return data.embedding as number[];
 }
 
+// Batch variant — embeds many texts in one edge call (used for node reindexing).
+// Returns vectors in the same order as the input.
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+  if (!texts.length) return [];
+  const { url, key } = edgeConfig();
+  const inputs = texts.map((t) => (t || "").slice(0, MAX_CHARS).trim() || "(empty)");
+  const res = await fetch(`${url}/functions/v1/embed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ texts: inputs }),
+  });
+  if (!res.ok) throw new Error(`embed edge function ${res.status}`);
+  const data = (await res.json()) as { embeddings?: unknown };
+  if (!Array.isArray(data.embeddings) || data.embeddings.length !== inputs.length) {
+    throw new Error("embed edge function returned wrong number of embeddings");
+  }
+  return data.embeddings as number[][];
+}
+
 // pgvector accepts its text input form `[a,b,c]`; send this as the column value
 // (PostgREST casts text -> vector on assignment).
 export function toVectorLiteral(embedding: number[]): string {
