@@ -49,6 +49,7 @@ export function PlantReferenceClient() {
   const [groupMode, setGroupMode] = useState<"albums" | "all" | "combinations">("albums");
   const [drill, setDrill] = useState<PlantAlbum | null>(null);
   const [layout, setLayout] = useState<"gallery" | "table">("gallery");
+  const [bigTiles, setBigTiles] = useState(false);
   const [loading, setLoading] = useState(true);
   const [plantResult, setPlantResult] = useState<PlantQueryResult>({ plants: [], total: 0, page: 1, pageSize: 50 });
   const [albumResult, setAlbumResult] = useState<PlantAlbumsResult>({ albums: [], total: 0, page: 1, pageSize: 50 });
@@ -283,6 +284,12 @@ export function PlantReferenceClient() {
   const rangeTo = Math.min(active.total, active.page * active.pageSize);
   const noun = inAlbumList ? "species" : "plants";
 
+  // "Larger" drops the column count ~1/3 at each breakpoint, so tiles render
+  // roughly 50% bigger. Shared by every gallery grid on this page.
+  const galleryGrid = bigTiles
+    ? "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+    : "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5";
+
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
       <div className="mb-4 flex items-start justify-between gap-4">
@@ -322,6 +329,16 @@ export function PlantReferenceClient() {
             {locked ? <Lock size={16} /> : <Unlock size={16} />}
             <span className="hidden sm:inline">{locked ? "Locked" : "Editing"}</span>
           </button>
+          {layout === "gallery" && (
+            <button
+              onClick={() => setBigTiles((v) => !v)}
+              aria-pressed={bigTiles}
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              title={bigTiles ? "Smaller tiles" : "Larger tiles"}
+            >
+              {bigTiles ? "⊟ Smaller" : "⊞ Larger"}
+            </button>
+          )}
           <div className="flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
             {(["gallery", "table"] as const).map((l) => (
               <button
@@ -431,7 +448,7 @@ export function PlantReferenceClient() {
           {comboLoading ? (
             <p className="text-sm text-zinc-400">Loading…</p>
           ) : (
-            <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <ul className={galleryGrid}>
               {combos.map((c) => (
                 <CombinationCard key={c.id} combo={c} onClick={() => (locked ? setSelectedCombo(c) : setEditingCombo(c))} />
               ))}
@@ -451,7 +468,7 @@ export function PlantReferenceClient() {
           {stampsLoading ? (
             <p className="text-sm text-zinc-400">Loading…</p>
           ) : (
-            <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <ul className={galleryGrid}>
               {stamps.map((s) => (
                 <StampCard key={s.id} item={s} onClick={() => setSelectedStamp(s)} />
               ))}
@@ -483,7 +500,7 @@ export function PlantReferenceClient() {
             )}
           </div>
         ) : layout === "gallery" ? (
-          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <ul className={galleryGrid}>
             {visibleCombos.map((c) => (
               <CombinationCard key={c.id} combo={c} onClick={() => (locked ? setSelectedCombo(c) : setEditingCombo(c))} />
             ))}
@@ -524,7 +541,7 @@ export function PlantReferenceClient() {
         albumResult.albums.length === 0 ? (
           <Empty anyFilter={anyFilter} onClear={clearAll} noun="species" />
         ) : layout === "gallery" ? (
-          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <ul className={galleryGrid}>
             {albumResult.albums.map((a) => (
               <li
                 key={a.album_key}
@@ -581,7 +598,7 @@ export function PlantReferenceClient() {
       ) : plantResult.plants.length === 0 ? (
         <Empty anyFilter={anyFilter} onClear={clearAll} noun="plants" />
       ) : layout === "gallery" ? (
-        <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        <ul className={galleryGrid}>
           {plantResult.plants.map((p) => (
             <li
               key={p.id}

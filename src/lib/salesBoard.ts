@@ -152,6 +152,9 @@ export interface Deal {
   // `tasks` table) is flagged as this deal's next action, joined in at
   // fetch time. Never set directly; flag a task instead.
   next_action: string | null;
+  // The deal's ⚡ next-action photo (a deal_photos id) — chosen in the photo
+  // gallery and surfaced on the Next Actions page / Next Action Photos album.
+  next_action_photo_id: number | null;
   appointment_date: string | null;
   property_id: number | null;
   value: number | null;
@@ -260,4 +263,8 @@ export interface DealInput {
   lost_at?: string | null;
   aspire_link?: string | null;
   opportunity_link?: string | null;
+  // The deal's ⚡ next-action photo — one of the deal's photos, chosen in the
+  // photo gallery. FK to deal_photos; cleared to null to unset. Mirrors the
+  // one-next-action-task-per-deal model.
+  next_action_photo_id?: number | null;
 }

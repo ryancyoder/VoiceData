@@ -1,32 +1,66 @@
-import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { formatPropertyLabel, dealThumbUrl, type DealPhoto } from "@/lib/salesBoard";
+import { NextActionPhotosClient, type NextActionCard } from "./NextActionPhotosClient";
 
 export const dynamic = "force-dynamic";
 
-type PropRow = {
+type DealRow = {
   id: number;
-  address: string;
+  deal_name: string;
+  property_id: number | null;
   next_action_photo_id: number | null;
-  contacts: { last_name: string | null } | null;
 };
 
-// An album of every property's chosen "next action" photo (the ⚡ marker set
-// in the photo gallery) — one card per property, newest markers first isn't
-// meaningful here so cards sort by property label. The photo itself lives in
-// deal_photos and is fetched by id (a plain query — deal_photos is a junction
-// across events/deals/properties, so embedding it risks PostgREST ambiguity).
-export default async function NextActionPhotosPage() {
-  const { data: propsData, error: propsError } = await supabase
-    .from("properties")
-    .select("id, address, next_action_photo_id, contacts(last_name)")
-    .not("next_action_photo_id", "is", null);
-  if (propsError) {
-    throw new Error(`Failed to load properties: ${propsError.message}`);
-  }
-  const props = (propsData ?? []) as unknown as PropRow[];
+type PropRow = { id: number; address: string; contacts: { last_name: string | null } | null };
 
-  const photoIds = props.map((p) => p.next_action_photo_id).filter((v): v is number => v != null);
+// An album of every deal's "next action" — its ⚡ photo (the marker set in the
+// photo gallery) and/or the title of its is_next_action task. One card per
+// deal, sorted by property label. Deals whose next action has no photo still
+// appear (over a blank placeholder tile); the client's "text-only" toggle
+// chooses whether to include them. The photo lives in deal_photos and is
+// fetched by id (a plain query — deal_photos is a junction across events/
+// deals/properties, so embedding it risks PostgREST ambiguity).
+export default async function NextActionPhotosPage() {
+  // The next actions themselves: one is_next_action task per deal (enforced by
+  // a partial unique index), giving every deal that has a next action at all.
+  const { data: taskData, error: taskError } = await supabase
+    .from("tasks")
+    .select("deal_id, title")
+    .eq("is_next_action", true);
+  if (taskError) {
+    throw new Error(`Failed to load next actions: ${taskError.message}`);
+  }
+  const nextActionByDeal = new Map<number, string>();
+  for (const t of (taskData ?? []) as unknown as { deal_id: number | null; title: string | null }[]) {
+    if (t.deal_id != null && t.title?.trim()) nextActionByDeal.set(t.deal_id, t.title.trim());
+  }
+
+  // Deals to show = those with a next-action photo ∪ those with a next-action
+  // task. Fetched as two plain queries and merged by id (a deal can be in both).
+  const dealById = new Map<number, DealRow>();
+  const taskDealIds = [...nextActionByDeal.keys()];
+  const [photoDealsRes, taskDealsRes] = await Promise.all([
+    supabase
+      .from("Sales Board")
+      .select("id, deal_name, property_id, next_action_photo_id")
+      .not("next_action_photo_id", "is", null),
+    taskDealIds.length > 0
+      ? supabase.from("Sales Board").select("id, deal_name, property_id, next_action_photo_id").in("id", taskDealIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (photoDealsRes.error) {
+    throw new Error(`Failed to load deals: ${photoDealsRes.error.message}`);
+  }
+  if (taskDealsRes.error) {
+    throw new Error(`Failed to load deals: ${taskDealsRes.error.message}`);
+  }
+  for (const d of ([...(photoDealsRes.data ?? []), ...(taskDealsRes.data ?? [])] as unknown as DealRow[])) {
+    dealById.set(d.id, d);
+  }
+  const deals = [...dealById.values()];
+
+  // The chosen next-action photos (deal_photos rows), fetched by id.
+  const photoIds = deals.map((d) => d.next_action_photo_id).filter((v): v is number => v != null);
   const photoById = new Map<number, DealPhoto>();
   if (photoIds.length > 0) {
     const { data: photoRows, error: photoError } = await supabase.from("deal_photos").select("*").in("id", photoIds);
@@ -36,66 +70,37 @@ export default async function NextActionPhotosPage() {
     for (const p of (photoRows ?? []) as unknown as DealPhoto[]) photoById.set(p.id, p);
   }
 
-  const cards = props
-    .map((p) => ({
-      propertyId: p.id,
-      label: formatPropertyLabel({ address: p.address, contactLastName: p.contacts?.last_name ?? null }),
-      photo: p.next_action_photo_id != null ? photoById.get(p.next_action_photo_id) ?? null : null,
-    }))
-    .filter((c): c is { propertyId: number; label: string; photo: DealPhoto } => c.photo != null)
-    .sort((a, b) => a.label.localeCompare(b.label));
+  // Property labels (address + contact) for each deal's property.
+  const propertyIds = [...new Set(deals.map((d) => d.property_id).filter((v): v is number => v != null))];
+  const propById = new Map<number, PropRow>();
+  if (propertyIds.length > 0) {
+    const { data: propRows } = await supabase
+      .from("properties")
+      .select("id, address, contacts(last_name)")
+      .in("id", propertyIds);
+    for (const p of (propRows ?? []) as unknown as PropRow[]) propById.set(p.id, p);
+  }
 
-  return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
-      <div className="mb-5 flex items-baseline gap-3">
-        <h1 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Next Action Photos</h1>
-        <span className="text-sm text-zinc-500 dark:text-zinc-400">
-          {cards.length} {cards.length === 1 ? "property" : "properties"}
-        </span>
-      </div>
+  const cards: NextActionCard[] = deals
+    .map((d) => {
+      const photo = d.next_action_photo_id != null ? photoById.get(d.next_action_photo_id) ?? null : null;
+      const prop = d.property_id != null ? propById.get(d.property_id) ?? null : null;
+      const propertyLabel = prop
+        ? formatPropertyLabel({ address: prop.address, contactLastName: prop.contacts?.last_name ?? null })
+        : d.deal_name;
+      return {
+        dealId: d.id,
+        propertyId: d.property_id,
+        propertyLabel,
+        dealName: d.deal_name,
+        url: photo != null ? dealThumbUrl(photo) : null,
+        caption: photo?.caption ?? null,
+        nextAction: nextActionByDeal.get(d.id) ?? null,
+      };
+    })
+    // A card needs at least a photo or a next-action title to be worth showing.
+    .filter((c) => c.url != null || c.nextAction != null)
+    .sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel));
 
-      {cards.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-zinc-300 px-4 py-10 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-          No next-action photos yet. In the{" "}
-          <Link href="/photos" className="underline">
-            Photos
-          </Link>{" "}
-          gallery, tap the ⚡ on a photo to mark it as a property&apos;s next-action photo.
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {cards.map((card) => {
-            const url = dealThumbUrl(card.photo);
-            return (
-              <Link
-                key={card.propertyId}
-                href={`/photos?property=${card.propertyId}`}
-                className="group overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
-                title={`${card.label} — view in gallery`}
-              >
-                <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800">
-                  {url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={url}
-                      alt={card.photo.caption ?? card.label}
-                      className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
-                    />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-2xl">🖼</span>
-                  )}
-                  <span className="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#4C82F7] text-xs text-white shadow">
-                    ⚡
-                  </span>
-                </div>
-                <div className="truncate px-3 py-2 text-sm font-medium text-zinc-800 dark:text-zinc-200" title={card.label}>
-                  {card.label}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </main>
-  );
+  return <NextActionPhotosClient cards={cards} />;
 }
