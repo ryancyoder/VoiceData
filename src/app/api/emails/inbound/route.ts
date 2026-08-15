@@ -49,6 +49,14 @@ function makeSnippet(p: PostmarkInbound): string | null {
   return raw.length > 240 ? `${raw.slice(0, 240)}…` : raw;
 }
 
+// Diagnostic only: a browser GET reports whether the server has the token
+// configured (never reveals it, never compares a provided one). Lets you tell
+// "env var missing" from "token mismatch" without guessing. The real ingest is
+// POST-only below.
+export async function GET() {
+  return NextResponse.json({ ok: true, tokenConfigured: !!process.env.EMAIL_INBOUND_TOKEN });
+}
+
 export async function POST(req: NextRequest) {
   const expected = process.env.EMAIL_INBOUND_TOKEN;
   const token = req.nextUrl.searchParams.get("token") ?? req.headers.get("x-inbound-token");
