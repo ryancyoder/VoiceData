@@ -938,14 +938,11 @@ export default function DealModal({
       .map((e) => {
         const dt = new Date(e.start_time);
         const ymd = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-        // First displayable photo in the event (skips videos with no poster) —
-        // shown in the dot's hover bubble.
-        const photo = e.photos.map((p) => dealThumbUrl(p)).find((u): u is string => !!u) ?? null;
-        return { id: e.id, name: e.name ?? "Event", ymd, day: toDay(ymd), photo };
+        return { id: e.id, name: e.name ?? "Event", ymd, day: toDay(ymd) };
       })
       .filter((e) => e.day <= todayDay);
 
-    const byGap = new Map<number, { id: number; name: string; ymd: string; day: number; photo: string | null }[]>();
+    const byGap = new Map<number, { id: number; name: string; ymd: string; day: number }[]>();
     for (const e of events) {
       let anchor: { slot: number; day: number } | null = null;
       for (const m of dated) if (m.day <= e.day) anchor = m; // last dated milestone at/before the event
@@ -954,7 +951,7 @@ export default function DealModal({
       byGap.get(anchor.slot)!.push(e);
     }
 
-    const dots: { key: string; leftPct: number; href?: string; title: string; photo?: string | null; overflow?: number }[] = [];
+    const dots: { key: string; leftPct: number; href?: string; title: string; eventId?: number; overflow?: number }[] = [];
     for (const [gap, list] of byGap) {
       list.sort((a, b) => a.day - b.day);
       const N = list.length;
@@ -974,7 +971,7 @@ export default function DealModal({
             leftPct,
             href: `/calendar?event=${item.e.id}`,
             title: `${item.e.name} — ${formatMilestoneDate(item.e.ymd)}`,
-            photo: item.e.photo,
+            eventId: item.e.id,
           });
         } else {
           dots.push({ key: `${gap}-more`, leftPct, title: `${item.n} more events`, overflow: item.n });
@@ -991,6 +988,34 @@ export default function DealModal({
     form.invoiced_date,
     form.paid_date,
   ]);
+
+  // Every displayable deal photo, in one chronological row above the timeline.
+  // Each carries its event id so hovering a timeline dot can scroll its photos
+  // into view (querySelector finds the event's first photo in the strip).
+  const timelinePhotos = useMemo(() => {
+    const evs = (deal.events ?? [])
+      .slice()
+      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    const out: { key: string; url: string; eventId: number; caption: string }[] = [];
+    for (const e of evs) {
+      for (const p of e.photos) {
+        const url = dealThumbUrl(p);
+        if (!url) continue;
+        out.push({ key: `p${p.id}`, url, eventId: e.id, caption: p.caption ?? e.name ?? "" });
+      }
+    }
+    return out;
+  }, [deal.events]);
+
+  const photoStripRef = useRef<HTMLDivElement>(null);
+  const [stripEventId, setStripEventId] = useState<number | null>(null);
+  const focusStripEvent = useCallback((eventId: number) => {
+    setStripEventId(eventId);
+    const strip = photoStripRef.current;
+    if (!strip) return;
+    const el = strip.querySelector<HTMLElement>(`[data-strip-event="${eventId}"]`);
+    if (el) strip.scrollTo({ left: Math.max(0, el.offsetLeft - 8), behavior: "smooth" });
+  }, []);
 
   return (
     <div
@@ -1635,6 +1660,25 @@ export default function DealModal({
           </div>
 
           <div className={styles["deal-form-footer"]}>
+          {/* One continuous, horizontally-scrolling row of every deal photo,
+              sitting above the timeline. Hovering a timeline dot scrolls this
+              strip to that event's photos (and highlights them). */}
+          {timelinePhotos.length > 0 && (
+            <div className={styles["deal-photo-strip"]} ref={photoStripRef} onMouseLeave={() => setStripEventId(null)}>
+              {timelinePhotos.map((ph) => (
+                <Link
+                  key={ph.key}
+                  href={`/calendar?event=${ph.eventId}`}
+                  data-strip-event={ph.eventId}
+                  className={`${styles["deal-photo-strip-item"]} ${stripEventId === ph.eventId ? styles["is-active"] : ""}`}
+                  title={ph.caption || undefined}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={ph.url} alt="" />
+                </Link>
+              ))}
+            </div>
+          )}
           {/* Full-width milestone timeline — the same lifecycle shown in the
               Next Actions page's first column, stretched across the modal. */}
           <div className={styles["deal-timeline"]}>
@@ -1681,15 +1725,11 @@ export default function DealModal({
                   className={styles["deal-timeline-event"]}
                   style={{ left: `${dot.leftPct}%` }}
                   aria-label={dot.title}
+                  onMouseEnter={() => dot.eventId != null && focusStripEvent(dot.eventId)}
+                  onFocus={() => dot.eventId != null && focusStripEvent(dot.eventId)}
                 >
                   <span className={styles["deal-timeline-event-dot"]} />
-                  <span className={styles["deal-timeline-event-tip"]}>
-                    {dot.photo && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img className={styles["deal-timeline-event-tip-img"]} src={dot.photo} alt="" />
-                    )}
-                    <span className={styles["deal-timeline-event-tip-label"]}>{dot.title}</span>
-                  </span>
+                  <span className={styles["deal-timeline-event-tip"]}>{dot.title}</span>
                 </Link>
               )
             )}

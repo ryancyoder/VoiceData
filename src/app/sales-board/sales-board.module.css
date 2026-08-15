@@ -1180,6 +1180,43 @@
 /* Full-width milestone timeline pinned at the modal bottom — the Next Actions
    first-column timeline, stretched: six evenly-distributed slots (icon +
    label + date) joined by a line running behind the icons. */
+/* Continuous horizontally-scrolling row of every deal photo, above the
+   timeline. Hovering a timeline dot scrolls the matching event's photos in. */
+.deal-photo-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 8px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.deal-photo-strip-item {
+  flex: 0 0 auto;
+  width: 84px;
+  height: 84px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  background: var(--surface-2);
+  transition: border-color 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease;
+}
+.deal-photo-strip-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.deal-photo-strip-item:hover {
+  transform: translateY(-2px);
+}
+.deal-photo-strip-item.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  transform: translateY(-2px);
+}
+
 .deal-timeline {
   position: relative;
   display: flex;
@@ -1267,46 +1304,26 @@
   box-shadow: 0 0 0 1px var(--accent);
   transform: scale(1.2);
 }
-/* Styled tooltip (works on hover and keyboard focus, unlike a bare title).
-   Holds the event's first photo above a one-line caption. */
+/* Styled tooltip (works on hover and keyboard focus, unlike a bare title). */
 .deal-timeline-event-tip {
   position: absolute;
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: 3px;
-  padding: 4px;
-  border-radius: 7px;
+  margin-bottom: 1px;
+  padding: 3px 7px;
+  border-radius: 6px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   color: var(--text);
   font-size: 0.66rem;
   line-height: 1.2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  white-space: nowrap;
   opacity: 0;
   pointer-events: none;
   z-index: 5;
   transition: opacity 0.1s ease;
-}
-.deal-timeline-event-tip-img {
-  display: block;
-  width: 132px;
-  height: 88px;
-  object-fit: cover;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-.deal-timeline-event-tip-label {
-  max-width: 150px;
-  padding: 0 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .deal-timeline-event:hover .deal-timeline-event-tip,
 .deal-timeline-event:focus-visible .deal-timeline-event-tip {
