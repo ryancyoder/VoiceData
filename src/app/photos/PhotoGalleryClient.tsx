@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
-import { ACTION_PHOTO_TYPE, dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, WALKTHROUGH_VIDEO_TYPE, type DealPhoto, type Stage } from "@/lib/salesBoard";
+import { ACTION_PHOTO_TYPE, PROPERTY_REFERENCE_TYPE, dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, WALKTHROUGH_VIDEO_TYPE, type DealPhoto, type Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import { readClientExif } from "@/lib/clientExif";
@@ -109,6 +109,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   const [dragOverDealId, setDragOverDealId] = useState<number | null>(null);
   // Whether the General reference section is currently a drag-over drop target.
   const [dragOverReference, setDragOverReference] = useState(false);
+  // Event currently a drag-over drop target (for moving a filed photo back into it).
+  const [dragOverEventId, setDragOverEventId] = useState<number | null>(null);
   const [savingCaptionId, setSavingCaptionId] = useState<number | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
   // Optimistic overlay on top of the property's stored cover_photo_id —
@@ -455,40 +457,50 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     return null;
   }
 
-  // Optimistically move a photo into a deal's Action section in local state, so
-  // a dropped photo appears there without waiting for a reload.
-  function stateMovePhotoToAction(photoId: number, deal: DealGroup, moved: DealPhoto) {
-    const property = activeProperty;
+  // Optimistically relocate a photo to another group in local state, so a
+  // dropped photo appears in its new home without waiting for a reload. Removes
+  // it from wherever it is, then adds it to the target group (creating that
+  // group via `createTarget` if it isn't present yet).
+  function stateRelocatePhoto(
+    photoId: number,
+    targetEventId: number,
+    moved: DealPhoto,
+    createTarget?: () => GalleryEvent
+  ) {
     setEvents((evs) => {
       const cleared = evs.map((ev) =>
         ev.photos.some((p) => p.id === photoId)
           ? { ...ev, photos: ev.photos.filter((p) => p.id !== photoId) }
           : ev
       );
-      const actionId = -1_000_000 - (deal.dealId ?? 0);
-      if (cleared.some((ev) => ev.id === actionId)) {
-        return cleared.map((ev) => (ev.id === actionId ? { ...ev, photos: [...ev.photos, moved] } : ev));
+      if (cleared.some((ev) => ev.id === targetEventId)) {
+        return cleared.map((ev) => (ev.id === targetEventId ? { ...ev, photos: [...ev.photos, moved] } : ev));
       }
-      const newEvent: GalleryEvent = {
-        id: actionId,
-        name: "Next action",
-        start_time: moved.created_at,
-        end_time: moved.created_at,
-        event_type: null,
-        isActionSection: true,
-        photos: [moved],
-        dealId: deal.dealId ?? null,
-        dealName: deal.dealName,
-        dealCompany: null,
-        dealStage: deal.dealStage,
-        propertyId: property?.propertyId ?? null,
-        propertyAddress: null,
-        propertyContactLastName: null,
-        propertyCoverPhotoId: property?.coverPhotoId ?? null,
-        dealNextActionPhotoId: deal.nextActionPhotoId,
-      };
-      return [...cleared, newEvent];
+      const created = createTarget?.();
+      return created ? [...cleared, created] : cleared;
     });
+  }
+
+  function stateMovePhotoToAction(photoId: number, deal: DealGroup, moved: DealPhoto) {
+    const property = activeProperty;
+    stateRelocatePhoto(photoId, -1_000_000 - (deal.dealId ?? 0), moved, () => ({
+      id: -1_000_000 - (deal.dealId ?? 0),
+      name: "Next action",
+      start_time: moved.created_at,
+      end_time: moved.created_at,
+      event_type: null,
+      isActionSection: true,
+      photos: [moved],
+      dealId: deal.dealId ?? null,
+      dealName: deal.dealName,
+      dealCompany: null,
+      dealStage: deal.dealStage,
+      propertyId: property?.propertyId ?? null,
+      propertyAddress: null,
+      propertyContactLastName: null,
+      propertyCoverPhotoId: property?.coverPhotoId ?? null,
+      dealNextActionPhotoId: deal.nextActionPhotoId,
+    }));
   }
 
   // Dropping a photo onto a deal's Action section adds it as an action (a new
@@ -502,6 +514,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     if (Number.isNaN(photoId)) return;
     const photo = findPhotoInAlbum(photoId);
     if (!photo) return;
+    // Already one of this deal's action photos — dropping on its own section is a no-op.
+    if (photo.photo_type === ACTION_PHOTO_TYPE && photo.deal_id === deal.dealId) return;
     let title = photo.caption?.trim() ?? "";
     if (!title) {
       const entered = window.prompt("Caption for this action (used as its task title):");
@@ -549,36 +563,24 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // Optimistically move a photo into the property's General reference section.
   function stateMovePhotoToReference(photoId: number, propertyId: number, moved: DealPhoto) {
     const property = activeProperty;
-    setEvents((evs) => {
-      const cleared = evs.map((ev) =>
-        ev.photos.some((p) => p.id === photoId)
-          ? { ...ev, photos: ev.photos.filter((p) => p.id !== photoId) }
-          : ev
-      );
-      const refId = refEventId(propertyId);
-      if (cleared.some((ev) => ev.id === refId)) {
-        return cleared.map((ev) => (ev.id === refId ? { ...ev, photos: [...ev.photos, moved] } : ev));
-      }
-      const newEvent: GalleryEvent = {
-        id: refId,
-        name: "General reference",
-        start_time: moved.created_at,
-        end_time: moved.created_at,
-        event_type: null,
-        isPropertyReference: true,
-        photos: [moved],
-        dealId: null,
-        dealName: null,
-        dealCompany: null,
-        dealStage: null,
-        propertyId,
-        propertyAddress: null,
-        propertyContactLastName: null,
-        propertyCoverPhotoId: property?.coverPhotoId ?? null,
-        dealNextActionPhotoId: null,
-      };
-      return [...cleared, newEvent];
-    });
+    stateRelocatePhoto(photoId, refEventId(propertyId), moved, () => ({
+      id: refEventId(propertyId),
+      name: "General reference",
+      start_time: moved.created_at,
+      end_time: moved.created_at,
+      event_type: null,
+      isPropertyReference: true,
+      photos: [moved],
+      dealId: null,
+      dealName: null,
+      dealCompany: null,
+      dealStage: null,
+      propertyId,
+      propertyAddress: null,
+      propertyContactLastName: null,
+      propertyCoverPhotoId: property?.coverPhotoId ?? null,
+      dealNextActionPhotoId: null,
+    }));
   }
 
   // Dropping a photo onto the General reference section retags it as an
@@ -590,6 +592,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     if (propertyId == null) return;
     const photoId = Number(e.dataTransfer.getData("text/plain"));
     if (Number.isNaN(photoId)) return;
+    const photo = findPhotoInAlbum(photoId);
+    if (photo?.photo_type === PROPERTY_REFERENCE_TYPE) return; // already a reference photo
     try {
       const res = await fetch(`/api/properties/${propertyId}/photos/from-photo`, {
         method: "POST",
@@ -601,6 +605,31 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       stateMovePhotoToReference(photoId, propertyId, data.photo as DealPhoto);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to add reference photo");
+    }
+  }
+
+  // Dropping a filed photo (action / reference) onto a calendar event moves it
+  // back into that event as an ordinary photo.
+  async function handleDropOnEvent(e: DragEvent, event: GalleryEvent) {
+    e.preventDefault();
+    setDragOverEventId(null);
+    const photoId = Number(e.dataTransfer.getData("text/plain"));
+    if (Number.isNaN(photoId) || event.id <= 0) return;
+    const photo = findPhotoInAlbum(photoId);
+    // Only filed photos (in the Action or General reference sections) move here.
+    if (!photo || (photo.photo_type !== ACTION_PHOTO_TYPE && photo.photo_type !== PROPERTY_REFERENCE_TYPE)) return;
+    if (photo.event_id === event.id) return;
+    try {
+      const res = await fetch(`/api/events/${event.id}/photos/from-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_photo_id: photoId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to move photo");
+      stateRelocatePhoto(photoId, event.id, data.photo as DealPhoto);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to move photo");
     }
   }
 
@@ -945,7 +974,15 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                               const i = runningIndex;
                               const thumbUrl = dealThumbUrl(photo);
                               return (
-                                <div key={photo.id} className={styles.thumb}>
+                                <div
+                                  key={photo.id}
+                                  className={styles.thumb}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData("text/plain", String(photo.id));
+                                    e.dataTransfer.effectAllowed = "move";
+                                  }}
+                                >
                                   <button type="button" className={styles["thumb-open"]} onClick={() => setActiveIndex(i)}>
                                     <span className={styles["thumb-image-wrap"]}>
                                       {thumbUrl ? (
@@ -1011,7 +1048,10 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                           <div
                             key={event.id}
                             className={`${styles["event-group"]} ${
-                              event.isActionSection && dragOverDealId === deal.dealId ? styles["drag-over"] : ""
+                              (event.isActionSection && dragOverDealId === deal.dealId) ||
+                              (!event.isActionSection && !event.isSitePlan && dragOverEventId === event.id)
+                                ? styles["drag-over"]
+                                : ""
                             }`}
                             data-event-group={event.id}
                             onDragOver={
@@ -1020,14 +1060,27 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                     e.preventDefault();
                                     setDragOverDealId(deal.dealId);
                                   }
-                                : undefined
+                                : !event.isActionSection && !event.isSitePlan && event.id > 0
+                                  ? (e) => {
+                                      e.preventDefault();
+                                      setDragOverEventId(event.id);
+                                    }
+                                  : undefined
                             }
                             onDragLeave={
                               event.isActionSection
                                 ? () => setDragOverDealId((d) => (d === deal.dealId ? null : d))
-                                : undefined
+                                : !event.isActionSection && !event.isSitePlan && event.id > 0
+                                  ? () => setDragOverEventId((cur) => (cur === event.id ? null : cur))
+                                  : undefined
                             }
-                            onDrop={event.isActionSection ? (e) => handleDropOnAction(e, deal) : undefined}
+                            onDrop={
+                              event.isActionSection
+                                ? (e) => handleDropOnAction(e, deal)
+                                : !event.isActionSection && !event.isSitePlan && event.id > 0
+                                  ? (e) => handleDropOnEvent(e, event)
+                                  : undefined
+                            }
                           >
                             <div className={styles["event-group-header"]}>
                               {event.isSitePlan ? (
@@ -1098,7 +1151,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                   <div
                                     key={photo.id}
                                     className={styles.thumb}
-                                    draggable={deal.dealId != null && !event.isActionSection}
+                                    draggable={deal.dealId != null && !event.isSitePlan}
                                     onDragStart={(e) => {
                                       e.dataTransfer.setData("text/plain", String(photo.id));
                                       e.dataTransfer.effectAllowed = "move";
