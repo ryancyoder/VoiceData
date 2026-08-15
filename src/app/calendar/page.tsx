@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
-import type { Deal, DealPhoto, PropertyOption, Stage } from "@/lib/salesBoard";
+import type { DealPhoto, PropertyOption, Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import { PLANNING_BLOCK_COLUMNS, rowToBlock, type PlanningBlockRow } from "@/lib/planning/blocks";
 import type { ForecastDeal, Placement } from "@/lib/planning/schedule";
@@ -7,9 +7,14 @@ import CalendarClient, { type CalendarEvent, type DealOption, type ProductionDea
 
 export const dynamic = "force-dynamic";
 
-type RawPhoto = DealPhoto & {
-  deal: (Pick<Deal, "deal_name" | "company" | "stage"> & { properties: { address: string } | null }) | null;
-};
+// deal_photos are fetched as a plain one-to-many embed (`deal_photos(*)`),
+// NOT with a nested `deal:"Sales Board"(...)` cross-table embed. deal_photos is
+// a junction with FKs to events, "Sales Board", properties, AND tasks, and
+// embedding another table THROUGH it makes PostgREST's relationship resolution
+// ambiguous (the calendar 500'd once tasks became the 4th FK). Each photo's
+// deal name/company/jobsite address is joined in code from the deals query
+// instead — mirroring the plain-query pattern used in photos/page.tsx.
+type RawPhoto = DealPhoto;
 
 type RawEvent = {
   id: number;
@@ -29,11 +34,11 @@ export default async function CalendarPage() {
   const [eventsRes, dealsRes, propertiesRes, ungroupedRes, blocksRes, stageDefaultsRes, placementsRes] = await Promise.all([
     supabase
       .from("events")
-      .select('*, deal_photos(*, deal:"Sales Board"(deal_name, company, stage, properties(address)))')
+      .select("*, deal_photos(*)")
       .order("start_time", { ascending: true }),
     supabase
       .from("Sales Board")
-      .select("id, deal_name, company, stage, lost_at, estimated_hours, proposal_date, created_at, start_date, end_date, properties(contacts(last_name))")
+      .select("id, deal_name, company, stage, lost_at, estimated_hours, proposal_date, created_at, start_date, end_date, properties(address, contacts(last_name))")
       .order("deal_name", { ascending: true }),
     supabase
       .from("properties")
@@ -60,7 +65,7 @@ export default async function CalendarPage() {
 
   const rawEvents = (eventsRes.data ?? []) as unknown as RawEvent[];
   const rawDeals = (dealsRes.data ?? []) as unknown as (Omit<DealOption, "contactLastName"> & {
-    properties: { contacts: { last_name: string | null } | null } | null;
+    properties: { address: string | null; contacts: { last_name: string | null } | null } | null;
     estimated_hours: number | null;
     proposal_date: string | null;
     created_at: string | null;
@@ -122,13 +127,17 @@ export default async function CalendarPage() {
   }));
 
   const dealOptionsById = new Map(dealOptions.map((d) => [d.id, d]));
+  // Deal name/company/jobsite address by deal id — joined in code in place of
+  // the old nested `deal:"Sales Board"(...)` embed on the events query.
+  const dealInfoById = new Map(
+    rawDeals.map(
+      (d) =>
+        [d.id, { deal_name: d.deal_name, company: d.company, jobsiteAddress: d.properties?.address ?? null }] as const
+    )
+  );
 
   const calendarEvents: CalendarEvent[] = rawEvents.map((event) => {
     const photos = event.deal_photos ?? [];
-    const dealsById = new Map<number, RawPhoto["deal"]>();
-    for (const p of photos) {
-      if (p.deal_id != null && p.deal && !dealsById.has(p.deal_id)) dealsById.set(p.deal_id, p.deal);
-    }
     // A video attached only to the event (no deal_id of its own) doesn't
     // contribute a deal here — but the event's own deal_id (set directly,
     // separate from any individual photo's deal_id) still should.
@@ -164,13 +173,13 @@ export default async function CalendarPage() {
         is_outlier: p.is_outlier,
       })),
       deals: dealIds.map((id) => {
-        const fromPhoto = dealsById.get(id);
+        const info = dealInfoById.get(id);
         const fromOption = dealOptionsById.get(id);
         return {
           id,
-          name: fromPhoto?.deal_name ?? fromOption?.deal_name ?? `Deal #${id}`,
-          company: fromPhoto?.company ?? fromOption?.company ?? null,
-          jobsiteAddress: fromPhoto?.properties?.address ?? null,
+          name: info?.deal_name ?? fromOption?.deal_name ?? `Deal #${id}`,
+          company: info?.company ?? fromOption?.company ?? null,
+          jobsiteAddress: info?.jobsiteAddress ?? null,
         };
       }),
     };
