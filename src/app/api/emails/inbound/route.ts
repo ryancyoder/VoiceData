@@ -54,12 +54,23 @@ function makeSnippet(p: PostmarkInbound): string | null {
 // "env var missing" from "token mismatch" without guessing. The real ingest is
 // POST-only below.
 export async function GET() {
-  return NextResponse.json({ ok: true, tokenConfigured: !!process.env.EMAIL_INBOUND_TOKEN });
+  const t = process.env.EMAIL_INBOUND_TOKEN ?? "";
+  // Length + trimmed-length only (never the value). Expected length is 48; a
+  // different length, or trimmedLength !== length (stray whitespace/newline),
+  // pinpoints a bad paste without revealing the secret.
+  return NextResponse.json({
+    ok: true,
+    tokenConfigured: t.length > 0,
+    length: t.length,
+    trimmedLength: t.trim().length,
+  });
 }
 
 export async function POST(req: NextRequest) {
-  const expected = process.env.EMAIL_INBOUND_TOKEN;
-  const token = req.nextUrl.searchParams.get("token") ?? req.headers.get("x-inbound-token");
+  // Trim both sides: a trailing newline/space pasted into the env var (a very
+  // common mistake) shouldn't silently 401 every inbound email.
+  const expected = process.env.EMAIL_INBOUND_TOKEN?.trim();
+  const token = (req.nextUrl.searchParams.get("token") ?? req.headers.get("x-inbound-token"))?.trim();
   if (!expected || token !== expected) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
