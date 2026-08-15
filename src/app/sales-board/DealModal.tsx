@@ -966,52 +966,77 @@ export default function DealModal({
 
     const now = new Date();
     const todayDay = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-    const events = (deal.events ?? [])
-      .map((e) => {
-        const dt = new Date(e.start_time);
-        const ymd = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-        return { id: e.id, name: e.name ?? "Event", ymd, day: toDay(ymd) };
-      })
-      .filter((e) => e.day <= todayDay);
+    const isoToYmd = (iso: string) => {
+      const dt = new Date(iso);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    };
+    // Events AND correspondence both plot as dots between milestones, binned by
+    // date the same way. Correspondence uses created_at; its dot scrolls the
+    // strip to that record's tile rather than deep-linking to the calendar.
+    type Item = { kind: "event" | "corr"; refId: number; name: string; ymd: string; day: number };
+    const items: Item[] = [
+      ...(deal.events ?? []).map((e): Item => {
+        const ymd = isoToYmd(e.start_time);
+        return { kind: "event", refId: e.id, name: e.name ?? "Event", ymd, day: toDay(ymd) };
+      }),
+      ...(deal.correspondence ?? []).map((c): Item => {
+        const ymd = isoToYmd(c.created_at);
+        const name = c.channel ? CHANNEL_META[c.channel].label : c.file_name ?? "Screenshot";
+        return { kind: "corr", refId: c.id, name, ymd, day: toDay(ymd) };
+      }),
+    ].filter((it) => it.day <= todayDay);
 
-    const byGap = new Map<number, { id: number; name: string; ymd: string; day: number }[]>();
-    for (const e of events) {
+    const byGap = new Map<number, Item[]>();
+    for (const it of items) {
       let anchor: { slot: number; day: number } | null = null;
-      for (const m of dated) if (m.day <= e.day) anchor = m; // last dated milestone at/before the event
+      for (const m of dated) if (m.day <= it.day) anchor = m; // last dated milestone at/before it
       if (!anchor || anchor.slot >= 5) continue; // before first dated, or past the last slot
       if (!byGap.has(anchor.slot)) byGap.set(anchor.slot, []);
-      byGap.get(anchor.slot)!.push(e);
+      byGap.get(anchor.slot)!.push(it);
     }
 
-    const dots: { key: string; leftPct: number; href?: string; title: string; eventId?: number; overflow?: number }[] = [];
+    const dots: {
+      key: string;
+      leftPct: number;
+      href?: string;
+      title: string;
+      kind?: "event" | "corr";
+      eventId?: number;
+      stripKey?: string;
+      overflow?: number;
+    }[] = [];
     for (const [gap, list] of byGap) {
       list.sort((a, b) => a.day - b.day);
       const N = list.length;
-      const shown: ({ kind: "event"; e: (typeof list)[number] } | { kind: "more"; n: number })[] =
+      const shown: ({ kind: "item"; it: Item } | { kind: "more"; n: number })[] =
         N > CAP
           ? [
-              ...list.slice(0, CAP - 1).map((e) => ({ kind: "event" as const, e })),
+              ...list.slice(0, CAP - 1).map((it) => ({ kind: "item" as const, it })),
               { kind: "more" as const, n: N - (CAP - 1) },
             ]
-          : list.map((e) => ({ kind: "event" as const, e }));
+          : list.map((it) => ({ kind: "item" as const, it }));
       const D = shown.length;
-      shown.forEach((item, j) => {
+      shown.forEach((entry, j) => {
         const leftPct = LINE_START + gap * GAP + ((j + 1) / (D + 1)) * GAP;
-        if (item.kind === "event") {
+        if (entry.kind === "item") {
+          const it = entry.it;
           dots.push({
             key: `${gap}-${j}`,
             leftPct,
-            href: `/calendar?event=${item.e.id}`,
-            title: `${item.e.name} — ${formatMilestoneDate(item.e.ymd)}`,
-            eventId: item.e.id,
+            title: `${it.name} — ${formatMilestoneDate(it.ymd)}`,
+            kind: it.kind,
+            ...(it.kind === "event"
+              ? { href: `/calendar?event=${it.refId}`, eventId: it.refId }
+              : { stripKey: `c${it.refId}` }),
           });
         } else {
-          dots.push({ key: `${gap}-more`, leftPct, title: `${item.n} more events`, overflow: item.n });
+          dots.push({ key: `${gap}-more`, leftPct, title: `${entry.n} more`, overflow: entry.n });
         }
       });
     }
     return dots;
   }, [
+    deal.correspondence,
     deal.events,
     form.appointment_date,
     form.proposal_date,
@@ -1059,7 +1084,14 @@ export default function DealModal({
   }, [stripPhotos, stripCorrespondence]);
 
   const photoStripRef = useRef<HTMLDivElement>(null);
+  // Highlight state: an event id highlights all that event's photos; a single
+  // item key highlights one tile (a correspondence node or a specific photo).
   const [stripEventId, setStripEventId] = useState<number | null>(null);
+  const [stripActiveKey, setStripActiveKey] = useState<string | null>(null);
+  const clearStripFocus = useCallback(() => {
+    setStripEventId(null);
+    setStripActiveKey(null);
+  }, []);
   // Scroll the strip so a given child index aligns to the left edge.
   const scrollStripToIndex = useCallback((idx: number) => {
     const strip = photoStripRef.current;
@@ -1067,11 +1099,21 @@ export default function DealModal({
     const el = strip.children[idx] as HTMLElement | undefined;
     if (el) strip.scrollTo({ left: Math.max(0, el.offsetLeft - 8), behavior: "smooth" });
   }, []);
-  // A timeline dot: scroll to (and highlight) its event's photos.
+  // An event dot: scroll to (and highlight) its event's photos.
   const focusStripEvent = useCallback(
     (eventId: number) => {
       setStripEventId(eventId);
+      setStripActiveKey(null);
       scrollStripToIndex(stripItems.findIndex((it) => it.kind === "photo" && it.eventId === eventId));
+    },
+    [stripItems, scrollStripToIndex]
+  );
+  // A correspondence dot: scroll to (and highlight) that one strip tile.
+  const focusStripItem = useCallback(
+    (key: string) => {
+      setStripEventId(null);
+      setStripActiveKey(key);
+      scrollStripToIndex(stripItems.findIndex((it) => it.key === key));
     },
     [stripItems, scrollStripToIndex]
   );
@@ -1087,6 +1129,7 @@ export default function DealModal({
       if (idx === -1) idx = stripItems.length - 1;
       const hit = stripItems[idx];
       setStripEventId(hit && hit.kind === "photo" ? hit.eventId : null);
+      setStripActiveKey(hit && hit.kind === "corr" ? hit.key : null);
       scrollStripToIndex(idx);
     },
     [stripItems, scrollStripToIndex]
@@ -1742,7 +1785,7 @@ export default function DealModal({
               scrolls to the first item on/after its date — so you can scroll
               back to earlier events even when they belong to another deal. */}
           {stripItems.length > 0 && (
-            <div className={styles["deal-photo-strip"]} ref={photoStripRef} onMouseLeave={() => setStripEventId(null)}>
+            <div className={styles["deal-photo-strip"]} ref={photoStripRef} onMouseLeave={clearStripFocus}>
               {stripItems.map((it) =>
                 it.kind === "photo" ? (
                   <Link
@@ -1750,7 +1793,9 @@ export default function DealModal({
                     href={it.eventId != null ? `/calendar?event=${it.eventId}` : "/calendar"}
                     data-strip-event={it.eventId ?? undefined}
                     className={`${styles["deal-photo-strip-item"]} ${
-                      it.eventId != null && stripEventId === it.eventId ? styles["is-active"] : ""
+                      (it.eventId != null && stripEventId === it.eventId) || stripActiveKey === it.key
+                        ? styles["is-active"]
+                        : ""
                     }`}
                     title={it.caption || undefined}
                   >
@@ -1760,7 +1805,9 @@ export default function DealModal({
                 ) : (
                   <span
                     key={it.key}
-                    className={`${styles["deal-photo-strip-item"]} ${styles["is-correspondence"]}`}
+                    className={`${styles["deal-photo-strip-item"]} ${styles["is-correspondence"]} ${
+                      stripActiveKey === it.key ? styles["is-active"] : ""
+                    }`}
                     title={it.caption || undefined}
                   >
                     <span className={styles["deal-photo-strip-icon"]}>{it.icon}</span>
@@ -1771,7 +1818,7 @@ export default function DealModal({
           )}
           {/* Full-width milestone timeline — the same lifecycle shown in the
               Next Actions page's first column, stretched across the modal. */}
-          <div className={styles["deal-timeline"]} onMouseLeave={() => setStripEventId(null)}>
+          <div className={styles["deal-timeline"]} onMouseLeave={clearStripFocus}>
             <div className={styles["deal-timeline-line"]} />
             {MILESTONES.map((m) => {
               const date =
@@ -1809,6 +1856,20 @@ export default function DealModal({
                 >
                   +{dot.overflow}
                 </span>
+              ) : dot.kind === "corr" ? (
+                <button
+                  key={dot.key}
+                  type="button"
+                  className={styles["deal-timeline-event"]}
+                  style={{ left: `${dot.leftPct}%` }}
+                  aria-label={dot.title}
+                  onMouseEnter={() => dot.stripKey && focusStripItem(dot.stripKey)}
+                  onFocus={() => dot.stripKey && focusStripItem(dot.stripKey)}
+                  onClick={() => dot.stripKey && focusStripItem(dot.stripKey)}
+                >
+                  <span className={styles["deal-timeline-event-dot"]} />
+                  <span className={styles["deal-timeline-event-tip"]}>{dot.title}</span>
+                </button>
               ) : (
                 <Link
                   key={dot.key}

@@ -1301,6 +1301,12 @@
   justify-content: center;
   z-index: 2;
   cursor: pointer;
+  /* Resets so a correspondence dot rendered as <button> matches the <a> dots. */
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
 }
 .deal-timeline-event-dot {
   width: 11px;
