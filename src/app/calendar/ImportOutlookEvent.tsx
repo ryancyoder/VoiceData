@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./calendar.module.css";
 import { parseOutlookInvite } from "@/lib/parseOutlookInvite";
 import { fetchWithTimeout } from "@/lib/withTimeout";
@@ -65,6 +65,10 @@ export default function ImportOutlookEvent({
   const [error, setError] = useState<string | null>(null);
   const [addressMatches, setAddressMatches] = useState<AddressMatch[]>([]);
   const [matchingAddress, setMatchingAddress] = useState(false);
+  // For a seeded Outlook event, the start/end come from the event itself (its
+  // body has no parseable time line). Remember them so re-pressing "Parse"
+  // doesn't wipe the times.
+  const seedTimesRef = useRef<{ start?: string; end?: string }>({});
 
   function set<K extends keyof ImportForm>(key: K, value: ImportForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -123,6 +127,7 @@ export default function ImportOutlookEvent({
   // Open + auto-parse when the parent hands us a seeded Outlook event.
   useEffect(() => {
     if (!seed) return;
+    seedTimesRef.current = { start: seed.start, end: seed.end };
     setOpen(true);
     setRawText(seed.text);
     applyParse(seed.text, seed.start, seed.end);
@@ -135,6 +140,7 @@ export default function ImportOutlookEvent({
     setForm(EMPTY_FORM);
     setError(null);
     setAddressMatches([]);
+    seedTimesRef.current = {};
   }
 
   async function handleCreate() {
@@ -228,7 +234,12 @@ export default function ImportOutlookEvent({
                   onChange={(e) => setRawText(e.target.value)}
                 />
               </label>
-              <button type="button" className={styles["nav-btn"]} onClick={() => applyParse(rawText)} disabled={!rawText.trim()}>
+              <button
+                type="button"
+                className={styles["nav-btn"]}
+                onClick={() => applyParse(rawText, seedTimesRef.current.start, seedTimesRef.current.end)}
+                disabled={!rawText.trim()}
+              >
                 Parse
               </button>
 
