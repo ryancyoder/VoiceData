@@ -10,8 +10,11 @@ export const dynamic = "force-dynamic";
 // server-side. The upstream feed lags (Outlook regenerates it periodically), so
 // the fetch is cached briefly rather than hit on every calendar navigation.
 export async function GET(req: NextRequest) {
+  const debug = req.nextUrl.searchParams.get("debug") === "1";
   const feedUrl = await getSetting(OUTLOOK_ICS_KEY);
-  if (!feedUrl) return NextResponse.json({ configured: false, events: [] });
+  if (!feedUrl) {
+    return NextResponse.json(debug ? { configured: false, note: "No feed URL saved in Settings." } : { configured: false, events: [] });
+  }
 
   const startParam = req.nextUrl.searchParams.get("start");
   const endParam = req.nextUrl.searchParams.get("end");
@@ -21,15 +24,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid start/end" }, { status: 400 });
   }
 
+  // Host only (never leak the secret path/token), so debug output is shareable.
+  let feedHost: string | null = null;
+  try {
+    feedHost = new URL(feedUrl).host;
+  } catch {
+    /* ignore */
+  }
+
   let ics: string;
   try {
-    const res = await fetch(feedUrl, { next: { revalidate: 600 } });
+    const res = await fetch(feedUrl, { next: { revalidate: debug ? 0 : 600 } });
     if (!res.ok) {
-      return NextResponse.json({ configured: true, error: `Feed returned HTTP ${res.status}`, events: [] });
+      return NextResponse.json({ configured: true, error: `Feed returned HTTP ${res.status}`, feedHost, events: [] });
     }
     ics = await res.text();
   } catch {
-    return NextResponse.json({ configured: true, error: "Could not reach the calendar feed", events: [] });
+    return NextResponse.json({ configured: true, error: "Could not reach the calendar feed", feedHost, events: [] });
+  }
+
+  if (debug) {
+    const veventCount = (ics.match(/BEGIN:VEVENT/g) || []).length;
+    return NextResponse.json({
+      configured: true,
+      feedHost,
+      fetchedBytes: ics.length,
+      looksLikeIcs: ics.includes("BEGIN:VCALENDAR"),
+      totalVEVENTs: veventCount,
+      window: { start: start.toISOString(), end: end.toISOString() },
+      firstChars: ics.slice(0, 200),
+    });
   }
 
   let expanded;
@@ -37,7 +61,7 @@ export async function GET(req: NextRequest) {
     const expander = new IcalExpander({ ics, maxIterations: 2000, skipInvalidDates: true });
     expanded = expander.between(start, end);
   } catch {
-    return NextResponse.json({ configured: true, error: "Could not parse the calendar feed", events: [] });
+    return NextResponse.json({ configured: true, error: "Could not parse the calendar feed", feedHost, events: [] });
   }
 
   type Occ = { startDate: { toJSDate(): Date; isDate: boolean }; endDate: { toJSDate(): Date }; title: string; location: string | null; uid: string };
