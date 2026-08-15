@@ -1059,7 +1059,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                         )}
                                       </span>
                                     </button>
-                                    {activeProperty.propertyId != null && (
+                                    {activeProperty.propertyId != null && !event.isActionSection && (
                                       <button
                                         type="button"
                                         className={`${styles["thumb-cover"]} ${photo.id === activeProperty.coverPhotoId ? styles["is-cover"] : ""}`}
@@ -1212,7 +1212,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                 >
                   Next ›
                 </button>
-                {activeProperty.propertyId != null && (
+                {activeProperty.propertyId != null && activePhoto.photo_type !== ACTION_PHOTO_TYPE && (
                   <button
                     type="button"
                     className={`${styles["lightbox-cover"]} ${activePhoto.id === activeProperty.coverPhotoId ? styles["is-cover"] : ""}`}
