@@ -224,6 +224,59 @@ function layoutDay(day: Date, events: CalendarEvent[], hourPx: number): LaidOutE
   });
 }
 
+// A read-only event from the user's published Outlook .ics feed.
+interface OutlookEvt {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  location: string | null;
+}
+interface LaidOutOutlook {
+  ev: OutlookEvt;
+  lane: number;
+  totalLanes: number;
+  top: number;
+  height: number;
+}
+// Same lane-packing as layoutDay, for the timed Outlook overlay events.
+function layoutOutlookDay(day: Date, events: OutlookEvt[], hourPx: number): LaidOutOutlook[] {
+  const dayStart = new Date(day);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = addDays(dayStart, 1);
+  const clipped = events
+    .filter((e) => !e.allDay && new Date(e.start) < dayEnd && new Date(e.end) >= dayStart)
+    .map((e) => {
+      const rawStart = new Date(e.start);
+      const rawEnd = new Date(e.end);
+      const start = rawStart < dayStart ? dayStart : rawStart;
+      let end = rawEnd > dayEnd ? dayEnd : rawEnd;
+      const minEnd = new Date(start.getTime() + MIN_EVENT_MS);
+      if (end < minEnd) end = minEnd > dayEnd ? dayEnd : minEnd;
+      return { ev: e, start, end };
+    })
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+  const laneEndTimes: number[] = [];
+  const placed = clipped.map((item) => {
+    const startMs = item.start.getTime();
+    let lane = laneEndTimes.findIndex((t) => t <= startMs);
+    if (lane === -1) {
+      lane = laneEndTimes.length;
+      laneEndTimes.push(item.end.getTime());
+    } else {
+      laneEndTimes[lane] = item.end.getTime();
+    }
+    return { ...item, lane };
+  });
+  const totalLanes = laneEndTimes.length || 1;
+  return placed.map(({ ev, lane, start, end }) => {
+    const top = ((start.getTime() - dayStart.getTime()) / 60000 / 60) * hourPx;
+    const bottom = ((end.getTime() - dayStart.getTime()) / 60000 / 60) * hourPx;
+    return { ev, lane, totalLanes, top, height: Math.max(4, bottom - top) };
+  });
+}
+
 interface LaidOutBlock {
   block: PlanningBlock;
   top: number;
@@ -377,6 +430,30 @@ export default function CalendarClient({
   // 1-week (7-day) or 2-week (14-day) span. Prev/Next/swipe page by the span.
   const [twoWeek, setTwoWeek] = usePersistentState("calendar.twoWeek", false);
   const span = twoWeek ? 14 : 7;
+  // Read-only Outlook calendar overlay (published .ics feed, set in Settings).
+  const [showOutlook, setShowOutlook] = usePersistentState("calendar.showOutlook", true);
+  const [outlookEvents, setOutlookEvents] = useState<OutlookEvt[]>([]);
+  const [outlookConfigured, setOutlookConfigured] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const params = new URLSearchParams({
+      start: weekStart.toISOString(),
+      end: addDays(weekStart, span).toISOString(),
+    });
+    fetch(`/api/outlook-calendar?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("load failed"))))
+      .then((d) => {
+        if (!active) return;
+        setOutlookConfigured(!!d.configured);
+        setOutlookEvents(Array.isArray(d.events) ? d.events : []);
+      })
+      .catch(() => {
+        /* keep whatever we last had on a transient error */
+      });
+    return () => {
+      active = false;
+    };
+  }, [weekStart, span]);
   // Work Week also condenses the visible time range to business hours (6am–5pm);
   // otherwise the full 24-hour day is shown. Event/block tops are shifted up by
   // the grid's start hour so they line up with the condensed axis.
@@ -1275,6 +1352,17 @@ export default function CalendarClient({
         >
           2 Weeks
         </button>
+        {outlookConfigured && (
+          <button
+            type="button"
+            className={`${styles["nav-btn"]} ${showOutlook ? styles["is-active"] : ""}`}
+            onClick={() => setShowOutlook((v) => !v)}
+            aria-pressed={showOutlook}
+            title="Show/hide your Outlook calendar overlay"
+          >
+            📅 Outlook
+          </button>
+        )}
         <span className={styles["range-label"]}>{rangeLabel}</span>
         <PhotoUpload
           propertyOptions={propertyOptions}
@@ -1518,6 +1606,35 @@ export default function CalendarClient({
                     </div>
                   );
                 })}
+                {showOutlook &&
+                  layoutOutlookDay(day, outlookEvents, hourPx).map(({ ev, lane, totalLanes, top, height }) => (
+                    <div
+                      key={`ol-${ev.id}`}
+                      className={styles["outlook-event"]}
+                      style={{
+                        top: top - GRID_OFFSET_PX,
+                        height,
+                        left: `${(lane / totalLanes) * 100}%`,
+                        width: `${100 / totalLanes}%`,
+                      }}
+                      title={`${ev.title}${ev.location ? ` · ${ev.location}` : ""} — Outlook`}
+                    >
+                      <div className={styles["outlook-event-title"]}>{ev.title}</div>
+                    </div>
+                  ))}
+                {showOutlook &&
+                  outlookEvents
+                    .filter((e) => e.allDay && new Date(e.start) < addDays(day, 1) && new Date(e.end) > day)
+                    .map((e, i) => (
+                      <div
+                        key={`olad-${e.id}`}
+                        className={styles["outlook-allday"]}
+                        style={{ top: i * 15 }}
+                        title={`${e.title} — Outlook (all day)`}
+                      >
+                        {e.title}
+                      </div>
+                    ))}
                 {laidOut.map(({ event, lane, totalLanes, top, height }) => (
                   <div
                     key={event.id}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import StageDefaultsEditor from "./StageDefaultsEditor";
 import KeyboardShortcuts from "./KeyboardShortcuts";
+import OutlookCalendarSetting from "./OutlookCalendarSetting";
 import styles from "./settings.module.css";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
         <p>Planning &amp; forecast configuration.</p>
       </div>
       <StageDefaultsEditor initialDefaults={defaults} />
+      <OutlookCalendarSetting />
       <KeyboardShortcuts />
 
       <div className={`${styles.card} ${styles.shortcutsCard}`}>

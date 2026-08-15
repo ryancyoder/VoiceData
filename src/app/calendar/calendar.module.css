@@ -270,6 +270,54 @@
   touch-action: none;
   user-select: none;
 }
+/* Read-only Outlook overlay — hatched indigo, dashed, never intercepts clicks
+   (pointer-events:none), sits under the app's own events. */
+.outlook-event {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  box-sizing: border-box;
+  border-radius: 5px;
+  padding: 1px 4px;
+  overflow: hidden;
+  border: 1px dashed rgba(99, 102, 241, 0.55);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(99, 102, 241, 0.1),
+    rgba(99, 102, 241, 0.1) 6px,
+    rgba(99, 102, 241, 0.17) 6px,
+    rgba(99, 102, 241, 0.17) 12px
+  );
+}
+.outlook-event-title {
+  font-size: 0.62rem;
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outlook-allday {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  height: 14px;
+  z-index: 1;
+  pointer-events: none;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  background: rgba(99, 102, 241, 0.18);
+  font-size: 0.6rem;
+  font-weight: 600;
+  line-height: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .event-block:hover { filter: brightness(0.97); }
 .event-block.is-dragging { filter: brightness(0.94); z-index: 5; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
 .event-block.no-deal { background: var(--warn-soft); border-left-color: var(--warn); }
