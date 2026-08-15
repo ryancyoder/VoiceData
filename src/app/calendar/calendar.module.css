@@ -318,12 +318,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The one interactive bit of the overlay: a "+" to add it as a real app event.
-   pointer-events:auto re-enables clicks on top of the click-through overlay. */
-.outlook-import-btn {
+/* The interactive corner of the overlay: 📇 (parse into an appointment) and ＋
+   (plain event). pointer-events:auto re-enables clicks on the click-through
+   overlay; the wrapper stays click-through between the buttons. */
+.outlook-btns {
   position: absolute;
   top: 1px;
   right: 1px;
+  display: flex;
+  gap: 2px;
+  pointer-events: none;
+}
+.outlook-import-btn {
   width: 15px;
   height: 15px;
   padding: 0;
@@ -331,7 +337,7 @@
   border-radius: 4px;
   background: rgba(79, 70, 229, 0.92);
   color: #fff;
-  font-size: 0.68rem;
+  font-size: 0.6rem;
   line-height: 1;
   cursor: pointer;
   pointer-events: auto;

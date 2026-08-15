@@ -64,13 +64,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ configured: true, error: "Could not parse the calendar feed", feedHost, events: [] });
   }
 
-  type Occ = { startDate: { toJSDate(): Date; isDate: boolean }; endDate: { toJSDate(): Date }; title: string; location: string | null; uid: string };
+  type Occ = {
+    startDate: { toJSDate(): Date; isDate: boolean };
+    endDate: { toJSDate(): Date };
+    title: string;
+    location: string | null;
+    description: string | null;
+    uid: string;
+  };
   const rows: Occ[] = [
     ...expanded.events.map((e) => ({
       startDate: e.startDate,
       endDate: e.endDate,
       title: e.summary || "(busy)",
       location: e.location || null,
+      description: e.description || null,
       uid: e.uid,
     })),
     ...expanded.occurrences.map((o) => ({
@@ -78,6 +86,7 @@ export async function GET(req: NextRequest) {
       endDate: o.endDate,
       title: o.item.summary || "(busy)",
       location: o.item.location || null,
+      description: o.item.description || null,
       uid: o.item.uid,
     })),
   ];
@@ -91,6 +100,7 @@ export async function GET(req: NextRequest) {
       end: r.endDate.toJSDate().toISOString(),
       allDay: r.startDate.isDate,
       location: r.location,
+      description: r.description,
     };
   });
 

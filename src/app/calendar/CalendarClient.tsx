@@ -232,6 +232,7 @@ interface OutlookEvt {
   end: string;
   allDay: boolean;
   location: string | null;
+  description: string | null;
 }
 interface LaidOutOutlook {
   ev: OutlookEvt;
@@ -534,6 +535,21 @@ export default function CalendarClient({
       notes: ev.location ? `Location: ${ev.location}` : "",
     });
     setNewEventOpen(true);
+  };
+  // Run the Outlook event through the appointment parser (same flow as the
+  // "Import Outlook Event" button): its title/location/body carry the contact
+  // name, phone, email, and address, which the parser extracts and turns into a
+  // matched-or-new property plus the event.
+  const [importSeed, setImportSeed] = useState<{ text: string; start?: string; end?: string } | null>(null);
+  const makeAppointmentFromOutlook = (ev: OutlookEvt) => {
+    const text = [
+      ev.title && ev.title !== "(busy)" ? ev.title : "",
+      ev.location ? `Location: ${ev.location}` : "",
+      ev.description ?? "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    setImportSeed({ text, start: ev.start, end: ev.end });
   };
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [newEventError, setNewEventError] = useState<string | null>(null);
@@ -1403,6 +1419,7 @@ export default function CalendarClient({
           + New Block
         </button>
         <ImportOutlookEvent
+          seed={importSeed}
           onImported={(eventId) => {
             setPendingOpenEventId(eventId);
             router.refresh();
@@ -1633,15 +1650,26 @@ export default function CalendarClient({
                       title={`${ev.title}${ev.location ? ` · ${ev.location}` : ""} — Outlook`}
                     >
                       <div className={styles["outlook-event-title"]}>{ev.title}</div>
-                      <button
-                        type="button"
-                        className={styles["outlook-import-btn"]}
-                        title="Add as an app event"
-                        aria-label="Add as an app event"
-                        onClick={() => convertOutlookEvent(ev)}
-                      >
-                        ＋
-                      </button>
+                      <div className={styles["outlook-btns"]}>
+                        <button
+                          type="button"
+                          className={styles["outlook-import-btn"]}
+                          title="Make an appointment (parse contact & address)"
+                          aria-label="Make an appointment from this Outlook event"
+                          onClick={() => makeAppointmentFromOutlook(ev)}
+                        >
+                          📇
+                        </button>
+                        <button
+                          type="button"
+                          className={styles["outlook-import-btn"]}
+                          title="Add as a plain app event"
+                          aria-label="Add as a plain app event"
+                          onClick={() => convertOutlookEvent(ev)}
+                        >
+                          ＋
+                        </button>
+                      </div>
                     </div>
                   ))}
                 {showOutlook &&
@@ -1655,15 +1683,26 @@ export default function CalendarClient({
                         title={`${e.title} — Outlook (all day)`}
                       >
                         {e.title}
-                        <button
-                          type="button"
-                          className={styles["outlook-import-btn"]}
-                          title="Add as an app event"
-                          aria-label="Add as an app event"
-                          onClick={() => convertOutlookEvent(e)}
-                        >
-                          ＋
-                        </button>
+                        <div className={styles["outlook-btns"]}>
+                          <button
+                            type="button"
+                            className={styles["outlook-import-btn"]}
+                            title="Make an appointment (parse contact & address)"
+                            aria-label="Make an appointment from this Outlook event"
+                            onClick={() => makeAppointmentFromOutlook(e)}
+                          >
+                            📇
+                          </button>
+                          <button
+                            type="button"
+                            className={styles["outlook-import-btn"]}
+                            title="Add as a plain app event"
+                            aria-label="Add as a plain app event"
+                            onClick={() => convertOutlookEvent(e)}
+                          >
+                            ＋
+                          </button>
+                        </div>
                       </div>
                     ))}
                 {laidOut.map(({ event, lane, totalLanes, top, height }) => (

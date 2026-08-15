@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "./calendar.module.css";
 import { parseOutlookInvite } from "@/lib/parseOutlookInvite";
 import { fetchWithTimeout } from "@/lib/withTimeout";
@@ -48,7 +48,16 @@ function toDatetimeLocal(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function ImportOutlookEvent({ onImported }: { onImported: (eventId: number) => void }) {
+export default function ImportOutlookEvent({
+  onImported,
+  seed,
+}: {
+  onImported: (eventId: number) => void;
+  // When set to a new object (e.g. from an Outlook overlay event's "make
+  // appointment" button), open the modal pre-filled with this text and parse
+  // it — using the given start/end as authoritative over any parsed times.
+  seed?: { text: string; start?: string; end?: string } | null;
+}) {
   const [open, setOpen] = useState(false);
   const [rawText, setRawText] = useState("");
   const [form, setForm] = useState<ImportForm>(EMPTY_FORM);
@@ -93,7 +102,7 @@ export default function ImportOutlookEvent({ onImported }: { onImported: (eventI
     setAddressMatches([]);
   }
 
-  function applyParse(text: string) {
+  function applyParse(text: string, startOverride?: string, endOverride?: string) {
     const parsed = parseOutlookInvite(text);
     setForm({
       firstName: parsed.firstName ?? "",
@@ -101,8 +110,8 @@ export default function ImportOutlookEvent({ onImported }: { onImported: (eventI
       phone: parsed.phone ?? "",
       email: parsed.email ?? "",
       address: parsed.address ?? "",
-      start: parsed.startTime ? toDatetimeLocal(parsed.startTime) : "",
-      end: parsed.endTime ? toDatetimeLocal(parsed.endTime) : "",
+      start: startOverride ? toDatetimeLocal(startOverride) : parsed.startTime ? toDatetimeLocal(parsed.startTime) : "",
+      end: endOverride ? toDatetimeLocal(endOverride) : parsed.endTime ? toDatetimeLocal(parsed.endTime) : "",
       eventType: "Appointment",
       notes: parsed.notes,
     });
@@ -110,6 +119,15 @@ export default function ImportOutlookEvent({ onImported }: { onImported: (eventI
     if (parsed.address) checkAddressMatch(parsed.address);
     else setAddressMatches([]);
   }
+
+  // Open + auto-parse when the parent hands us a seeded Outlook event.
+  useEffect(() => {
+    if (!seed) return;
+    setOpen(true);
+    setRawText(seed.text);
+    applyParse(seed.text, seed.start, seed.end);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed]);
 
   function closeModal() {
     setOpen(false);
