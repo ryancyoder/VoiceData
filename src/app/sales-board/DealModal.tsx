@@ -1676,9 +1676,11 @@ export default function DealModal({
                   href={dot.href!}
                   className={styles["deal-timeline-event"]}
                   style={{ left: `${dot.leftPct}%` }}
-                  title={dot.title}
                   aria-label={dot.title}
-                />
+                >
+                  <span className={styles["deal-timeline-event-dot"]} />
+                  <span className={styles["deal-timeline-event-tip"]}>{dot.title}</span>
+                </Link>
               )
             )}
           </div>
