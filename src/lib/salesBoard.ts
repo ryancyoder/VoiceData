@@ -86,6 +86,27 @@ export interface DealCorrespondence {
   created_at: string;
 }
 
+// An email brought into the CRM by forwarding it to the inbound address (see
+// /api/emails/inbound). Matched to a contact by any address on the message,
+// then to that contact's property. Rendered read-only in the deal modal's
+// Emails list and as a 📧 tile/dot on the timeline strip.
+export interface Email {
+  id: number;
+  message_id: string | null;
+  subject: string | null;
+  from_address: string | null;
+  from_name: string | null;
+  to_addresses: string[];
+  snippet: string | null;
+  body_text: string | null;
+  sent_at: string | null;
+  contact_id: number | null;
+  property_id: number | null;
+  deal_id: number | null;
+  matched: boolean;
+  created_at: string;
+}
+
 export interface DealEvent {
   id: number;
   name: string | null;

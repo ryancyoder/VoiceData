@@ -15,6 +15,7 @@ import {
   type DealCorrespondence,
   type DealInput,
   type DealPhoto,
+  type Email,
   type PropertyOption,
 } from "@/lib/salesBoard";
 import { TASK_CONTEXTS, type TaskContext } from "@/lib/tasks";
@@ -314,6 +315,9 @@ export default function DealModal({
   // The property's correspondence (across all its deals) — interleaved into the
   // strip as icon tiles alongside the photos.
   const [stripCorrespondence, setStripCorrespondence] = useState<DealCorrespondence[]>([]);
+  // The property's forwarded-in emails (matched by contact), oldest-first —
+  // shown in the deal modal's Emails list and as 📧 tiles/dots on the strip.
+  const [stripEmails, setStripEmails] = useState<Email[]>([]);
   // The property's album cover photo (properties.cover_photo_id), shown as a
   // thumbnail in the modal header. Fetched by id, like the reference photos.
   const [coverPhoto, setCoverPhoto] = useState<DealPhoto | null>(null);
@@ -506,6 +510,7 @@ export default function DealModal({
     if (propertyId == null) {
       setStripPhotos([]);
       setStripCorrespondence([]);
+      setStripEmails([]);
       return;
     }
     let active = true;
@@ -515,6 +520,7 @@ export default function DealModal({
         if (!active) return;
         setStripPhotos(data.photos ?? []);
         setStripCorrespondence(data.correspondence ?? []);
+        setStripEmails(data.emails ?? []);
       })
       .catch(() => {
         /* leave the current list as-is on a transient fetch error */
@@ -973,7 +979,7 @@ export default function DealModal({
     // Events AND correspondence both plot as dots between milestones, binned by
     // date the same way. Correspondence uses created_at; its dot scrolls the
     // strip to that record's tile rather than deep-linking to the calendar.
-    type Item = { kind: "event" | "corr"; refId: number; name: string; ymd: string; day: number };
+    type Item = { kind: "event" | "corr"; refId: number; name: string; ymd: string; day: number; stripKey?: string };
     const items: Item[] = [
       ...(deal.events ?? []).map((e): Item => {
         const ymd = isoToYmd(e.start_time);
@@ -982,7 +988,11 @@ export default function DealModal({
       ...(deal.correspondence ?? []).map((c): Item => {
         const ymd = isoToYmd(c.created_at);
         const name = c.channel ? CHANNEL_META[c.channel].label : c.file_name ?? "Screenshot";
-        return { kind: "corr", refId: c.id, name, ymd, day: toDay(ymd) };
+        return { kind: "corr", refId: c.id, name, ymd, day: toDay(ymd), stripKey: `c${c.id}` };
+      }),
+      ...stripEmails.map((e): Item => {
+        const ymd = isoToYmd(e.sent_at ?? e.created_at);
+        return { kind: "corr", refId: e.id, name: e.subject ?? "Email", ymd, day: toDay(ymd), stripKey: `e${e.id}` };
       }),
     ].filter((it) => it.day <= todayDay);
 
@@ -1027,7 +1037,7 @@ export default function DealModal({
             kind: it.kind,
             ...(it.kind === "event"
               ? { href: `/calendar?event=${it.refId}`, eventId: it.refId }
-              : { stripKey: `c${it.refId}` }),
+              : { stripKey: it.stripKey }),
           });
         } else {
           dots.push({ key: `${gap}-more`, leftPct, title: `${entry.n} more`, overflow: entry.n });
@@ -1036,6 +1046,7 @@ export default function DealModal({
     }
     return dots;
   }, [
+    stripEmails,
     deal.correspondence,
     deal.events,
     form.appointment_date,
@@ -1079,9 +1090,13 @@ export default function DealModal({
       const caption = c.channel ? CHANNEL_META[c.channel].label : c.file_name ?? "Screenshot";
       out.push({ kind: "corr", key: `c${c.id}`, icon, day: dayOf(c.created_at), ts: new Date(c.created_at).getTime(), caption });
     }
+    for (const e of stripEmails) {
+      const iso = e.sent_at ?? e.created_at;
+      out.push({ kind: "corr", key: `e${e.id}`, icon: "📧", day: dayOf(iso), ts: new Date(iso).getTime(), caption: e.subject ?? "Email" });
+    }
     out.sort((a, b) => a.ts - b.ts);
     return out;
-  }, [stripPhotos, stripCorrespondence]);
+  }, [stripPhotos, stripCorrespondence, stripEmails]);
 
   const photoStripRef = useRef<HTMLDivElement>(null);
   // Highlight state: an event id highlights all that event's photos; a single
@@ -1552,6 +1567,38 @@ export default function DealModal({
               value=""
               onChange={() => {}}
             />
+          </div>
+          </section>
+          <section className={styles["deal-section"]}>
+            <h3 className={styles["deal-section-title"]}>Emails</h3>
+          <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+            {stripEmails.length === 0 ? (
+              <p className={styles["deal-emails-empty"]}>
+                No emails yet. Forward an email to the property&apos;s inbound address and it&apos;ll appear here.
+              </p>
+            ) : (
+              <div className={styles["deal-emails-list"]}>
+                {[...stripEmails].reverse().map((em) => (
+                  <details key={em.id} className={styles["deal-email"]}>
+                    <summary className={styles["deal-email-head"]}>
+                      <span className={styles["deal-email-icon"]}>📧</span>
+                      <span className={styles["deal-email-meta"]}>
+                        <span className={styles["deal-email-subject"]}>{em.subject || "(no subject)"}</span>
+                        <span className={styles["deal-email-sub"]}>
+                          {em.from_name || em.from_address || "Unknown sender"}
+                          {em.sent_at ? ` — ${formatDateTime(em.sent_at)}` : ""}
+                        </span>
+                      </span>
+                    </summary>
+                    {em.body_text ? (
+                      <pre className={styles["deal-email-body"]}>{em.body_text}</pre>
+                    ) : em.snippet ? (
+                      <p className={styles["deal-email-body"]}>{em.snippet}</p>
+                    ) : null}
+                  </details>
+                ))}
+              </div>
+            )}
           </div>
           </section>
           <section className={styles["deal-section"]}>

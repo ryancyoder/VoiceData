@@ -64,5 +64,13 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     .slice()
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-  return NextResponse.json({ photos, correspondence });
+  // Emails matched to this property (by contact), oldest-first.
+  const { data: emailRows, error: emailErr } = await supabase
+    .from("emails")
+    .select("*")
+    .eq("property_id", propertyId)
+    .order("sent_at", { ascending: true, nullsFirst: true });
+  if (emailErr) return NextResponse.json({ error: emailErr.message }, { status: 500 });
+
+  return NextResponse.json({ photos, correspondence, emails: emailRows ?? [] });
 }

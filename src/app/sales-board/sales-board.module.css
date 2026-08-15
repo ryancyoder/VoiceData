@@ -1230,6 +1230,67 @@
   line-height: 1;
 }
 
+/* Emails list (deal modal "Emails" section) — read-only, newest first. */
+.deal-emails-empty {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+.deal-emails-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.deal-email {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.deal-email-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.deal-email-head::-webkit-details-marker {
+  display: none;
+}
+.deal-email-icon {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+.deal-email-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.deal-email-subject {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deal-email-sub {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.deal-email-body {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+  font-family: inherit;
+  color: var(--text);
+}
+
 .deal-timeline {
   position: relative;
   display: flex;
