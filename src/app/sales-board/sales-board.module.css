@@ -1183,6 +1183,7 @@
 /* Continuous horizontally-scrolling row of every deal photo, above the
    timeline. Hovering a timeline dot scrolls the matching event's photos in. */
 .deal-photo-strip {
+  position: relative; /* offset parent, so item.offsetLeft == its scrollLeft */
   display: flex;
   gap: 6px;
   overflow-x: auto;

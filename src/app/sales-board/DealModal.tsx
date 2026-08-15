@@ -306,6 +306,10 @@ export default function DealModal({
   // Fetched client-side, not embedded in the deal, since deal_photos is a
   // junction table and cross-table embeds risk PostgREST ambiguity.
   const [referencePhotos, setReferencePhotos] = useState<DealPhoto[]>([]);
+  // Every photo across the whole PROPERTY (all its deals + reference photos),
+  // oldest-first — the source for the photo strip above the timeline, which
+  // spans the property's full history, not just this deal.
+  const [stripPhotos, setStripPhotos] = useState<DealPhoto[]>([]);
   // The property's album cover photo (properties.cover_photo_id), shown as a
   // thumbnail in the modal header. Fetched by id, like the reference photos.
   const [coverPhoto, setCoverPhoto] = useState<DealPhoto | null>(null);
@@ -483,6 +487,27 @@ export default function DealModal({
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("load failed"))))
       .then((data) => {
         if (active) setReferencePhotos(data.photos ?? []);
+      })
+      .catch(() => {
+        /* leave the current list as-is on a transient fetch error */
+      });
+    return () => {
+      active = false;
+    };
+  }, [deal.property_id]);
+
+  // Load every photo at the property (across all its deals) for the strip.
+  useEffect(() => {
+    const propertyId = deal.property_id;
+    if (propertyId == null) {
+      setStripPhotos([]);
+      return;
+    }
+    let active = true;
+    fetch(`/api/properties/${propertyId}/all-photos`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("load failed"))))
+      .then((data) => {
+        if (active) setStripPhotos(data.photos ?? []);
       })
       .catch(() => {
         /* leave the current list as-is on a transient fetch error */
@@ -989,33 +1014,63 @@ export default function DealModal({
     form.paid_date,
   ]);
 
-  // Every displayable deal photo, in one chronological row above the timeline.
-  // Each carries its event id so hovering a timeline dot can scroll its photos
-  // into view (querySelector finds the event's first photo in the strip).
+  // Every displayable photo across the whole property, oldest-first (already
+  // sorted by the all-photos endpoint), in one chronological row above the
+  // timeline. Each carries its event id (null for reference photos) so a
+  // timeline dot can scroll its event's photos in, and a UTC day so a milestone
+  // node can scroll to the first photo on/after its date.
   const timelinePhotos = useMemo(() => {
-    const evs = (deal.events ?? [])
-      .slice()
-      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-    const out: { key: string; url: string; eventId: number; caption: string }[] = [];
-    for (const e of evs) {
-      for (const p of e.photos) {
-        const url = dealThumbUrl(p);
-        if (!url) continue;
-        out.push({ key: `p${p.id}`, url, eventId: e.id, caption: p.caption ?? e.name ?? "" });
-      }
+    const dayOf = (iso: string): number | null => {
+      const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+      return Number.isFinite(y) ? Date.UTC(y, m - 1, d) : null;
+    };
+    const out: { key: string; url: string; eventId: number | null; day: number | null; caption: string }[] = [];
+    for (const p of stripPhotos) {
+      const url = dealThumbUrl(p);
+      if (!url) continue;
+      out.push({
+        key: `p${p.id}`,
+        url,
+        eventId: p.event_id,
+        day: dayOf(p.taken_at ?? p.created_at),
+        caption: p.caption ?? "",
+      });
     }
     return out;
-  }, [deal.events]);
+  }, [stripPhotos]);
 
   const photoStripRef = useRef<HTMLDivElement>(null);
   const [stripEventId, setStripEventId] = useState<number | null>(null);
-  const focusStripEvent = useCallback((eventId: number) => {
-    setStripEventId(eventId);
+  // Scroll the strip so a given child index aligns to the left edge.
+  const scrollStripToIndex = useCallback((idx: number) => {
     const strip = photoStripRef.current;
-    if (!strip) return;
-    const el = strip.querySelector<HTMLElement>(`[data-strip-event="${eventId}"]`);
+    if (!strip || idx < 0) return;
+    const el = strip.children[idx] as HTMLElement | undefined;
     if (el) strip.scrollTo({ left: Math.max(0, el.offsetLeft - 8), behavior: "smooth" });
   }, []);
+  // A timeline dot: scroll to (and highlight) its event's photos.
+  const focusStripEvent = useCallback(
+    (eventId: number) => {
+      setStripEventId(eventId);
+      scrollStripToIndex(timelinePhotos.findIndex((p) => p.eventId === eventId));
+    },
+    [timelinePhotos, scrollStripToIndex]
+  );
+  // A milestone node/date: scroll to the first photo on or after its date
+  // (falling back to the last photo when everything predates it).
+  const focusStripByDay = useCallback(
+    (ymd: string) => {
+      if (timelinePhotos.length === 0) return;
+      const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
+      if (!Number.isFinite(y)) return;
+      const target = Date.UTC(y, m - 1, d);
+      let idx = timelinePhotos.findIndex((p) => p.day != null && p.day >= target);
+      if (idx === -1) idx = timelinePhotos.length - 1;
+      setStripEventId(timelinePhotos[idx]?.eventId ?? null);
+      scrollStripToIndex(idx);
+    },
+    [timelinePhotos, scrollStripToIndex]
+  );
 
   return (
     <div
@@ -1660,17 +1715,22 @@ export default function DealModal({
           </div>
 
           <div className={styles["deal-form-footer"]}>
-          {/* One continuous, horizontally-scrolling row of every deal photo,
-              sitting above the timeline. Hovering a timeline dot scrolls this
-              strip to that event's photos (and highlights them). */}
+          {/* One continuous, horizontally-scrolling row of every photo across
+              the whole property (all its deals + reference photos), sitting
+              above the timeline. Hovering a timeline dot scrolls to that
+              event's photos; hovering a milestone node scrolls to the first
+              photo on/after its date — so you can scroll back to earlier
+              events even when they belong to another deal. */}
           {timelinePhotos.length > 0 && (
             <div className={styles["deal-photo-strip"]} ref={photoStripRef} onMouseLeave={() => setStripEventId(null)}>
               {timelinePhotos.map((ph) => (
                 <Link
                   key={ph.key}
-                  href={`/calendar?event=${ph.eventId}`}
-                  data-strip-event={ph.eventId}
-                  className={`${styles["deal-photo-strip-item"]} ${stripEventId === ph.eventId ? styles["is-active"] : ""}`}
+                  href={ph.eventId != null ? `/calendar?event=${ph.eventId}` : "/calendar"}
+                  data-strip-event={ph.eventId ?? undefined}
+                  className={`${styles["deal-photo-strip-item"]} ${
+                    ph.eventId != null && stripEventId === ph.eventId ? styles["is-active"] : ""
+                  }`}
                   title={ph.caption || undefined}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1681,7 +1741,7 @@ export default function DealModal({
           )}
           {/* Full-width milestone timeline — the same lifecycle shown in the
               Next Actions page's first column, stretched across the modal. */}
-          <div className={styles["deal-timeline"]}>
+          <div className={styles["deal-timeline"]} onMouseLeave={() => setStripEventId(null)}>
             <div className={styles["deal-timeline-line"]} />
             {MILESTONES.map((m) => {
               const date =
@@ -1697,6 +1757,7 @@ export default function DealModal({
                   key={m.key}
                   className={styles["deal-timeline-slot"]}
                   title={`${m.label}${fulfilled ? ` — ${formatMilestoneDate(date)}` : " — not yet reached"}`}
+                  onMouseEnter={fulfilled ? () => focusStripByDay(date) : undefined}
                 >
                   <span
                     className={`${styles["deal-timeline-icon"]} ${fulfilled ? styles["is-fulfilled"] : styles["is-pending"]}`}
