@@ -52,7 +52,7 @@ interface DealModalProps {
   onDeleteProposalPdf: (dealId: number) => Promise<void>;
   onUploadAttachment: (dealId: number, file: File) => Promise<void>;
   onDeleteAttachment: (dealId: number, attachmentId: number) => Promise<void>;
-  onUploadCorrespondence: (dealId: number, file: File) => Promise<void>;
+  onUploadCorrespondence: (dealId: number, file: File, parentId?: number) => Promise<void>;
   onLogCorrespondence: (dealId: number, channel: "call" | "email" | "text") => Promise<void>;
   onDeleteCorrespondence: (dealId: number, correspondenceId: number) => Promise<void>;
 }
@@ -302,6 +302,9 @@ export default function DealModal({
   // listener below), so a document-level listener can't otherwise tell which
   // section an untargeted ⌘V was meant for without risking a double-upload.
   const correspondencePasteArmedRef = useRef(false);
+  // Which logged correspondence entry a pasted screenshot attaches to (set when
+  // an entry's Paste button is pressed).
+  const correspondencePasteParentRef = useRef<number | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoPasteError, setPhotoPasteError] = useState("");
   // The deal's property's general-reference photos (where pasted images go).
@@ -427,11 +430,11 @@ export default function DealModal({
   );
 
   const uploadCorrespondenceFile = useCallback(
-    async (file: File) => {
+    async (file: File, parentId?: number) => {
       setUploadingCorrespondence(true);
       setCorrespondencePasteError("");
       try {
-        await onUploadCorrespondence(deal.id, file);
+        await onUploadCorrespondence(deal.id, file, parentId);
       } finally {
         setUploadingCorrespondence(false);
       }
@@ -635,7 +638,8 @@ export default function DealModal({
     correspondencePasteTargetRef.current?.focus();
   }
 
-  async function handlePasteCorrespondenceClick() {
+  async function handlePasteCorrespondenceClick(parentId: number) {
+    correspondencePasteParentRef.current = parentId;
     setCorrespondencePasteError("");
     if (!navigator.clipboard?.read) {
       setCorrespondencePasteError("Press ⌘V / Ctrl+V now to paste");
@@ -663,7 +667,7 @@ export default function DealModal({
         armCorrespondencePasteTarget();
         return;
       }
-      for (const file of files) await uploadCorrespondenceFile(file);
+      for (const file of files) await uploadCorrespondenceFile(file, correspondencePasteParentRef.current ?? undefined);
     } catch {
       setCorrespondencePasteError("Press ⌘V / Ctrl+V now to paste");
       armCorrespondencePasteTarget();
@@ -698,7 +702,8 @@ export default function DealModal({
         e.preventDefault();
         correspondencePasteArmedRef.current = false;
         setCorrespondencePasteError("");
-        files.forEach((file) => uploadCorrespondenceFile(file));
+        const parentId = correspondencePasteParentRef.current ?? undefined;
+        files.forEach((file) => uploadCorrespondenceFile(file, parentId));
         return;
       }
 
@@ -1504,60 +1509,101 @@ export default function DealModal({
             <h3 className={styles["deal-section-title"]}>Correspondence</h3>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Correspondence with client</label>
-            {deal.correspondence.length > 0 && (
+            {deal.correspondence.filter((c) => c.parent_id == null).length === 0 ? (
+              <p className={styles["deal-emails-empty"]}>
+                Log a call, email, or text from the Contact section above — then attach screenshots to that entry here.
+              </p>
+            ) : (
               <div className={styles["attachments-list"]}>
-                {deal.correspondence.map((item) => (
-                  <div key={item.id} className={styles["attachment-row"]}>
-                    {item.channel ? (
-                      <div className={styles["attachment-link"]} style={{ cursor: "default" }}>
-                        <span className={styles["attachment-icon"]}>{CHANNEL_META[item.channel].icon}</span>
-                        <span className={styles["attachment-name"]}>{CHANNEL_META[item.channel].label}</span>
-                        <span className={styles["attachment-date"]}>{formatDateTime(item.created_at)}</span>
+                {deal.correspondence
+                  .filter((c) => c.parent_id == null)
+                  .map((item) => {
+                    const shots = deal.correspondence.filter((c) => c.parent_id === item.id);
+                    return (
+                      <div key={item.id} className={styles["corr-entry"]}>
+                        <div className={styles["attachment-row"]}>
+                          {item.channel ? (
+                            <div className={styles["attachment-link"]} style={{ cursor: "default" }}>
+                              <span className={styles["attachment-icon"]}>{CHANNEL_META[item.channel].icon}</span>
+                              <span className={styles["attachment-name"]}>{CHANNEL_META[item.channel].label}</span>
+                              <span className={styles["attachment-date"]}>{formatDateTime(item.created_at)}</span>
+                            </div>
+                          ) : (
+                            <a
+                              href={dealCorrespondenceUrl(item.storage_path ?? "")}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={styles["attachment-link"]}
+                            >
+                              <span className={styles["attachment-icon"]}>🖼️</span>
+                              <span className={styles["attachment-name"]}>{item.file_name}</span>
+                              <span className={styles["attachment-date"]}>{formatDateTime(item.created_at)}</span>
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            className={styles["attachment-remove"]}
+                            aria-label="Delete correspondence"
+                            disabled={deletingCorrespondenceId === item.id}
+                            onClick={() => handleDeleteCorrespondenceClick(item.id)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        {shots.length > 0 && (
+                          <div className={styles["corr-shots"]}>
+                            {shots.map((s) => (
+                              <div key={s.id} className={styles["corr-shot"]}>
+                                <a
+                                  href={dealCorrespondenceUrl(s.storage_path ?? "")}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={s.file_name ?? "Screenshot"}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={dealCorrespondenceUrl(s.storage_path ?? "")} alt={s.file_name ?? "Screenshot"} />
+                                </a>
+                                <button
+                                  type="button"
+                                  className={styles["corr-shot-remove"]}
+                                  aria-label="Delete screenshot"
+                                  disabled={deletingCorrespondenceId === s.id}
+                                  onClick={() => handleDeleteCorrespondenceClick(s.id)}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className={styles["corr-attach-actions"]}>
+                          <label className={styles["corr-attach-btn"]}>
+                            📎 Attach image
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={(e) => {
+                                const files = e.target.files;
+                                if (files) Array.from(files).forEach((file) => uploadCorrespondenceFile(file, item.id));
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className={styles["corr-attach-btn"]}
+                            onClick={() => handlePasteCorrespondenceClick(item.id)}
+                          >
+                            📋 Paste
+                          </button>
+                        </div>
                       </div>
-                    ) : (
-                      <a
-                        href={dealCorrespondenceUrl(item.storage_path ?? "")}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={styles["attachment-link"]}
-                      >
-                        <span className={styles["attachment-icon"]}>🖼️</span>
-                        <span className={styles["attachment-name"]}>{item.file_name}</span>
-                        <span className={styles["attachment-date"]}>{formatDateTime(item.created_at)}</span>
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      className={styles["attachment-remove"]}
-                      aria-label="Delete correspondence"
-                      disabled={deletingCorrespondenceId === item.id}
-                      onClick={() => handleDeleteCorrespondenceClick(item.id)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                    );
+                  })}
               </div>
             )}
-            <div className={styles["attachment-actions"]}>
-              <label className={styles["attachment-add"]}>
-                + Add file
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => {
-                    const files = e.target.files;
-                    if (files) Array.from(files).forEach((file) => uploadCorrespondenceFile(file));
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              <button type="button" className={styles["attachment-paste-btn"]} onClick={handlePasteCorrespondenceClick}>
-                📋 Paste from clipboard
-              </button>
-              {uploadingCorrespondence && <span className={styles["proposal-pdf-busy"]}>Uploading…</span>}
-            </div>
+            {uploadingCorrespondence && <span className={styles["proposal-pdf-busy"]}>Uploading…</span>}
             {correspondencePasteError && <div className={styles["card-edit-error"]}>{correspondencePasteError}</div>}
             <textarea
               ref={correspondencePasteTargetRef}

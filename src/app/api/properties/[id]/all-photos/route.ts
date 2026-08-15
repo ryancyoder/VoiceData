@@ -41,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
       ? supabase.from("deal_photos").select("*").in("deal_id", dealIds)
       : Promise.resolve({ data: [] as DealPhoto[], error: null }),
     dealIds.length
-      ? supabase.from("deal_correspondence").select("*").in("deal_id", dealIds)
+      ? supabase.from("deal_correspondence").select("*").in("deal_id", dealIds).is("parent_id", null)
       : Promise.resolve({ data: [] as DealCorrespondence[], error: null }),
   ]);
   if (evPhotosRes.error) return NextResponse.json({ error: evPhotosRes.error.message }, { status: 500 });

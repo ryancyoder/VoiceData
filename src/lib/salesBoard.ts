@@ -83,6 +83,9 @@ export interface DealCorrespondence {
   storage_path: string | null;
   file_name: string | null;
   channel: CorrespondenceChannel | null;
+  // When set, this row is a screenshot attached to another correspondence entry
+  // (that entry's id) — not a standalone record. Top-level entries are null.
+  parent_id: number | null;
   created_at: string;
 }
 

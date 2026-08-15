@@ -30,6 +30,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const formData = await req.formData();
   const file = formData.get("file");
+  // A screenshot is always attached to a logged correspondence entry — its id
+  // arrives as parent_id. (Kept optional for backwards-compatibility.)
+  const parentRaw = formData.get("parent_id");
+  const parentId =
+    typeof parentRaw === "string" && parentRaw.trim() !== "" && Number.isFinite(Number(parentRaw))
+      ? Number(parentRaw)
+      : null;
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
@@ -52,6 +59,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     .from("deal_correspondence")
     .insert({
       deal_id: Number(id),
+      parent_id: parentId,
       storage_path: path,
       // Pasted screenshots arrive with a generic generated name (the
       // browser gives clipboard blobs no filename of their own) — still

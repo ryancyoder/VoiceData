@@ -581,9 +581,10 @@ export default function SalesBoardClient({
     }
   }
 
-  async function handleUploadCorrespondence(dealId: number, file: File) {
+  async function handleUploadCorrespondence(dealId: number, file: File, parentId?: number) {
     const formData = new FormData();
     formData.append("file", file);
+    if (parentId != null) formData.append("parent_id", String(parentId));
     try {
       const res = await fetchWithTimeout(
         `/api/sales-board/${dealId}/correspondence`,
