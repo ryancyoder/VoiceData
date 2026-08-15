@@ -18,7 +18,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const { data: photo, error: photoError } = await supabase
     .from("deal_photos")
-    .select("id, deal_id, event_id, property_id, photo_type")
+    .select("id, deal_id, event_id, property_id, photo_type, source_event_id")
     .eq("id", sourceId)
     .maybeSingle();
   if (photoError) {
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const { data: moved, error } = await supabase
     .from("deal_photos")
     .update({
-      source_event_id: photo.event_id,
+      source_event_id: photo.source_event_id ?? photo.event_id,
       event_id: null,
       deal_id: null,
       task_id: null,
