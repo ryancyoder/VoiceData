@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./photos.module.css";
-import { dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, WALKTHROUGH_VIDEO_TYPE, type DealPhoto, type Stage } from "@/lib/salesBoard";
+import { ACTION_PHOTO_TYPE, dealPhotoUrl, dealThumbUrl, formatPropertyLabel, STAGES, WALKTHROUGH_VIDEO_TYPE, type DealPhoto, type Stage } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import { readClientExif } from "@/lib/clientExif";
@@ -444,35 +444,104 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     }
   }
 
-  // Mark an existing photo as a deal's next action: the server moves it into the
-  // deal's Action section attached to the next-action task. Optimistically flag
-  // it here; on the next load it appears under the Action section.
-  async function handleMarkNextAction(deal: DealGroup, photoId: number) {
-    if (deal.dealId == null) return;
-    const dealId = deal.dealId;
-    const previous = deal.nextActionPhotoId;
-    setNextActionOverrides((m) => new Map(m).set(dealId, photoId));
-    try {
-      const res = await fetch(`/api/sales-board/${dealId}/next-action-photo/from-photo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_photo_id: photoId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to set next-action photo");
-    } catch (err) {
-      setNextActionOverrides((m) => new Map(m).set(dealId, previous));
-      alert(err instanceof Error ? err.message : "Failed to set next-action photo");
-    }
+  // Find a photo in the open album by id.
+  function findPhotoInAlbum(photoId: number): DealPhoto | null {
+    if (!activeProperty) return null;
+    for (const p of activeProperty.referencePhotos) if (p.id === photoId) return p;
+    for (const deal of activeProperty.deals)
+      for (const event of deal.events) for (const p of event.photos) if (p.id === photoId) return p;
+    return null;
   }
 
-  // Dropping a photo onto a deal's Action section marks it as the next action.
-  function handleDropOnAction(e: DragEvent, deal: DealGroup) {
+  // Optimistically move a photo into a deal's Action section in local state, so
+  // a dropped photo appears there without waiting for a reload.
+  function stateMovePhotoToAction(photoId: number, deal: DealGroup, moved: DealPhoto) {
+    const property = activeProperty;
+    setEvents((evs) => {
+      const cleared = evs.map((ev) =>
+        ev.photos.some((p) => p.id === photoId)
+          ? { ...ev, photos: ev.photos.filter((p) => p.id !== photoId) }
+          : ev
+      );
+      const actionId = -1_000_000 - (deal.dealId ?? 0);
+      if (cleared.some((ev) => ev.id === actionId)) {
+        return cleared.map((ev) => (ev.id === actionId ? { ...ev, photos: [...ev.photos, moved] } : ev));
+      }
+      const newEvent: GalleryEvent = {
+        id: actionId,
+        name: "Next action",
+        start_time: moved.created_at,
+        end_time: moved.created_at,
+        event_type: null,
+        isActionSection: true,
+        photos: [moved],
+        dealId: deal.dealId ?? null,
+        dealName: deal.dealName,
+        dealCompany: null,
+        dealStage: deal.dealStage,
+        propertyId: property?.propertyId ?? null,
+        propertyAddress: null,
+        propertyContactLastName: null,
+        propertyCoverPhotoId: property?.coverPhotoId ?? null,
+        dealNextActionPhotoId: deal.nextActionPhotoId,
+      };
+      return [...cleared, newEvent];
+    });
+  }
+
+  // Dropping a photo onto a deal's Action section adds it as an action (a new
+  // task) — NOT the next action. Its caption becomes the task title; if it has
+  // none, prompt for one.
+  async function handleDropOnAction(e: DragEvent, deal: DealGroup) {
     e.preventDefault();
     setDragOverDealId(null);
     if (deal.dealId == null) return;
     const photoId = Number(e.dataTransfer.getData("text/plain"));
-    if (!Number.isNaN(photoId) && photoId !== deal.nextActionPhotoId) handleMarkNextAction(deal, photoId);
+    if (Number.isNaN(photoId)) return;
+    const photo = findPhotoInAlbum(photoId);
+    if (!photo) return;
+    let title = photo.caption?.trim() ?? "";
+    if (!title) {
+      const entered = window.prompt("Caption for this action (used as its task title):");
+      if (entered == null) return; // cancelled
+      title = entered.trim();
+    }
+    try {
+      const res = await fetch(`/api/sales-board/${deal.dealId}/next-action-photo/from-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_photo_id: photoId, title }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add action");
+      stateMovePhotoToAction(photoId, deal, data.photo as DealPhoto);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to add action");
+    }
+  }
+
+  // The ⚡ icon on an action photo promotes it to the deal's next action (or
+  // clears it if it already is). Backed by the task's is_next_action flag.
+  async function handleToggleNextAction(deal: DealGroup, photo: DealPhoto) {
+    if (deal.dealId == null || photo.task_id == null) return;
+    const dealId = deal.dealId;
+    const makeNext = photo.id !== deal.nextActionPhotoId;
+    const previous = deal.nextActionPhotoId;
+    setNextActionOverrides((m) => new Map(m).set(dealId, makeNext ? photo.id : null));
+    try {
+      const res = await fetch(`/api/tasks/${photo.task_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_next_action: makeNext }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to set next action");
+      }
+    } catch (err) {
+      setNextActionOverrides((m) => new Map(m).set(dealId, previous));
+      alert(err instanceof Error ? err.message : "Failed to set next action");
+    }
   }
 
   const uploadPhotoToEvent = useCallback(async (eventId: number, file: File) => {
@@ -902,8 +971,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                               ) : event.isActionSection ? (
                                 <>
                                   <span className={styles["event-type-badge"]}>ACTION</span>
-                                  <span className={styles["event-group-name"]}>Next action</span>
-                                  <span className={styles["event-group-date"]}>from the Next Actions list</span>
+                                  <span className={styles["event-group-name"]}>Actions</span>
+                                  <span className={styles["event-group-date"]}>tap ⚡ to set the next action</span>
                                 </>
                               ) : (
                                 <>
@@ -1004,26 +1073,16 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                                         {photo.id === activeProperty.coverPhotoId ? "★" : "☆"}
                                       </button>
                                     )}
-                                    {event.isActionSection ? (
-                                      photo.id === deal.nextActionPhotoId && (
-                                        <span
-                                          className={`${styles["thumb-next-action"]} ${styles["is-next-action"]}`}
-                                          title="Next-action photo"
-                                          aria-label="Next-action photo"
-                                        >
-                                          ⚡
-                                        </span>
-                                      )
-                                    ) : deal.dealId != null ? (
+                                    {event.isActionSection && deal.dealId != null ? (
                                       <button
                                         type="button"
                                         className={`${styles["thumb-next-action"]} ${photo.id === deal.nextActionPhotoId ? styles["is-next-action"] : ""}`}
-                                        title={photo.id === deal.nextActionPhotoId ? "Next-action photo" : "Set as next action"}
-                                        aria-label={photo.id === deal.nextActionPhotoId ? "Next-action photo" : "Set as next action"}
+                                        title={photo.id === deal.nextActionPhotoId ? "Next action — click to unset" : "Make next action"}
+                                        aria-label={photo.id === deal.nextActionPhotoId ? "Next action" : "Make next action"}
                                         aria-pressed={photo.id === deal.nextActionPhotoId}
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          if (photo.id !== deal.nextActionPhotoId) handleMarkNextAction(deal, photo.id);
+                                          handleToggleNextAction(deal, photo);
                                         }}
                                       >
                                         ⚡
@@ -1063,10 +1122,10 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                         <div className={styles["event-group-header"]}>
                           <span className={styles["event-type-badge"]}>ACTION</span>
                           <span className={styles["event-group-name"]}>Next action</span>
-                          <span className={styles["event-group-date"]}>drag a photo here to make it the next action</span>
+                          <span className={styles["event-group-date"]}>drag a photo here to add it as an action</span>
                         </div>
                         <div className={styles["reference-empty"]}>
-                          Drag a photo here to make it this deal&apos;s next action.
+                          Drag a photo here to add it as an action, then tap ⚡ to make it the next action.
                         </div>
                       </div>
                     )}
@@ -1164,17 +1223,16 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                     {activePhoto.id === activeProperty.coverPhotoId ? "★ Cover photo" : "☆ Set as cover"}
                   </button>
                 )}
-                {activePhotoDeal != null && activePhoto.id !== activePhotoDeal.nextActionPhotoId && (
+                {activePhotoDeal != null && activePhoto.photo_type === ACTION_PHOTO_TYPE && (
                   <button
                     type="button"
-                    className={styles["lightbox-cover"]}
-                    onClick={() => handleMarkNextAction(activePhotoDeal, activePhoto.id)}
+                    className={`${styles["lightbox-cover"]} ${
+                      activePhoto.id === activePhotoDeal.nextActionPhotoId ? styles["is-next-action"] : ""
+                    }`}
+                    onClick={() => handleToggleNextAction(activePhotoDeal, activePhoto)}
                   >
-                    ⚡ Set as next action
+                    {activePhoto.id === activePhotoDeal.nextActionPhotoId ? "⚡ Next action" : "⚡ Make next action"}
                   </button>
-                )}
-                {activePhotoDeal != null && activePhoto.id === activePhotoDeal.nextActionPhotoId && (
-                  <span className={`${styles["lightbox-cover"]} ${styles["is-next-action"]}`}>⚡ Next-action photo</span>
                 )}
                 {activePhoto.media_type !== "video" && (
                   <button type="button" className={styles["lightbox-annotate"]} onClick={() => setAnnotating(activePhoto)}>

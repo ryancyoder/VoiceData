@@ -39,6 +39,9 @@ export type PhotoType =
 export interface DealPhoto {
   id: number;
   deal_id: number | null;
+  // The task an Action_Photo is attached to (the action it represents). Null on
+  // ordinary jobsite/reference photos.
+  task_id?: number | null;
   property_id?: number | null;
   storage_path: string;
   caption: string | null;
