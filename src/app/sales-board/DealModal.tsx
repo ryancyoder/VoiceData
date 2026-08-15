@@ -938,11 +938,14 @@ export default function DealModal({
       .map((e) => {
         const dt = new Date(e.start_time);
         const ymd = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-        return { id: e.id, name: e.name ?? "Event", ymd, day: toDay(ymd) };
+        // First displayable photo in the event (skips videos with no poster) —
+        // shown in the dot's hover bubble.
+        const photo = e.photos.map((p) => dealThumbUrl(p)).find((u): u is string => !!u) ?? null;
+        return { id: e.id, name: e.name ?? "Event", ymd, day: toDay(ymd), photo };
       })
       .filter((e) => e.day <= todayDay);
 
-    const byGap = new Map<number, { id: number; name: string; ymd: string; day: number }[]>();
+    const byGap = new Map<number, { id: number; name: string; ymd: string; day: number; photo: string | null }[]>();
     for (const e of events) {
       let anchor: { slot: number; day: number } | null = null;
       for (const m of dated) if (m.day <= e.day) anchor = m; // last dated milestone at/before the event
@@ -951,7 +954,7 @@ export default function DealModal({
       byGap.get(anchor.slot)!.push(e);
     }
 
-    const dots: { key: string; leftPct: number; href?: string; title: string; overflow?: number }[] = [];
+    const dots: { key: string; leftPct: number; href?: string; title: string; photo?: string | null; overflow?: number }[] = [];
     for (const [gap, list] of byGap) {
       list.sort((a, b) => a.day - b.day);
       const N = list.length;
@@ -971,6 +974,7 @@ export default function DealModal({
             leftPct,
             href: `/calendar?event=${item.e.id}`,
             title: `${item.e.name} — ${formatMilestoneDate(item.e.ymd)}`,
+            photo: item.e.photo,
           });
         } else {
           dots.push({ key: `${gap}-more`, leftPct, title: `${item.n} more events`, overflow: item.n });
@@ -1679,7 +1683,13 @@ export default function DealModal({
                   aria-label={dot.title}
                 >
                   <span className={styles["deal-timeline-event-dot"]} />
-                  <span className={styles["deal-timeline-event-tip"]}>{dot.title}</span>
+                  <span className={styles["deal-timeline-event-tip"]}>
+                    {dot.photo && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img className={styles["deal-timeline-event-tip-img"]} src={dot.photo} alt="" />
+                    )}
+                    <span className={styles["deal-timeline-event-tip-label"]}>{dot.title}</span>
+                  </span>
                 </Link>
               )
             )}
