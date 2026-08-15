@@ -69,6 +69,9 @@ export default function ImportOutlookEvent({
   // body has no parseable time line). Remember them so re-pressing "Parse"
   // doesn't wipe the times.
   const seedTimesRef = useRef<{ start?: string; end?: string }>({});
+  // "appointment" parses the contact/address and creates or matches a property;
+  // "plain" just creates the event (no property). Toggled in the modal.
+  const [mode, setMode] = useState<"appointment" | "plain">("appointment");
 
   function set<K extends keyof ImportForm>(key: K, value: ImportForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -128,6 +131,7 @@ export default function ImportOutlookEvent({
   useEffect(() => {
     if (!seed) return;
     seedTimesRef.current = { start: seed.start, end: seed.end };
+    setMode("appointment");
     setOpen(true);
     setRawText(seed.text);
     applyParse(seed.text, seed.start, seed.end);
@@ -141,6 +145,7 @@ export default function ImportOutlookEvent({
     setError(null);
     setAddressMatches([]);
     seedTimesRef.current = {};
+    setMode("appointment");
   }
 
   async function handleCreate() {
@@ -153,7 +158,7 @@ export default function ImportOutlookEvent({
     try {
       let propertyId: number | null = null;
       const address = form.address.trim();
-      if (address) {
+      if (mode === "appointment" && address) {
         const propRes = await fetchWithTimeout(
           "/api/properties",
           {
@@ -225,6 +230,25 @@ export default function ImportOutlookEvent({
             </div>
 
             <div className={styles["event-edit-form"]}>
+              <div className={styles["import-mode-toggle"]}>
+                <button
+                  type="button"
+                  className={`${styles["nav-btn"]} ${mode === "appointment" ? styles["is-active"] : ""}`}
+                  onClick={() => setMode("appointment")}
+                >
+                  📇 Appointment
+                </button>
+                <button
+                  type="button"
+                  className={`${styles["nav-btn"]} ${mode === "plain" ? styles["is-active"] : ""}`}
+                  onClick={() => {
+                    setForm((f) => ({ ...f, firstName: [f.firstName, f.lastName].filter(Boolean).join(" "), lastName: "" }));
+                    setMode("plain");
+                  }}
+                >
+                  ＋ Plain event
+                </button>
+              </div>
               <label className={styles["event-edit-label"]}>
                 Paste the calendar invite text
                 <textarea
@@ -244,13 +268,15 @@ export default function ImportOutlookEvent({
               </button>
 
               <label className={styles["event-edit-label"]}>
-                First name
+                {mode === "plain" ? "Event name" : "First name"}
                 <input type="text" value={form.firstName} onChange={(e) => set("firstName", e.target.value)} />
               </label>
-              <label className={styles["event-edit-label"]}>
-                Last name
-                <input type="text" value={form.lastName} onChange={(e) => set("lastName", e.target.value)} />
-              </label>
+              {mode === "appointment" && (
+                <>
+                  <label className={styles["event-edit-label"]}>
+                    Last name
+                    <input type="text" value={form.lastName} onChange={(e) => set("lastName", e.target.value)} />
+                  </label>
               <label className={styles["event-edit-label"]}>
                 Phone
                 <input type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
@@ -285,6 +311,8 @@ export default function ImportOutlookEvent({
                     ))}
                   </div>
                 </div>
+              )}
+                </>
               )}
               <label className={styles["event-edit-label"]}>
                 Start
