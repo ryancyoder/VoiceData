@@ -522,6 +522,19 @@ export default function CalendarClient({
 
   const [newEventOpen, setNewEventOpen] = useState(false);
   const [newEventForm, setNewEventForm] = useState<EventFormState>(emptyEventForm);
+  // Turn a read-only Outlook overlay event into a real app event: prefill the
+  // New-event form with its title/time/location and open it so you can attach a
+  // property/deal and save.
+  const convertOutlookEvent = (ev: OutlookEvt) => {
+    setNewEventForm({
+      ...emptyEventForm(),
+      name: ev.title && ev.title !== "(busy)" ? ev.title : "",
+      start: toDatetimeLocal(ev.start),
+      end: toDatetimeLocal(ev.end),
+      notes: ev.location ? `Location: ${ev.location}` : "",
+    });
+    setNewEventOpen(true);
+  };
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [newEventError, setNewEventError] = useState<string | null>(null);
 
@@ -1620,6 +1633,15 @@ export default function CalendarClient({
                       title={`${ev.title}${ev.location ? ` · ${ev.location}` : ""} — Outlook`}
                     >
                       <div className={styles["outlook-event-title"]}>{ev.title}</div>
+                      <button
+                        type="button"
+                        className={styles["outlook-import-btn"]}
+                        title="Add as an app event"
+                        aria-label="Add as an app event"
+                        onClick={() => convertOutlookEvent(ev)}
+                      >
+                        ＋
+                      </button>
                     </div>
                   ))}
                 {showOutlook &&
@@ -1633,6 +1655,15 @@ export default function CalendarClient({
                         title={`${e.title} — Outlook (all day)`}
                       >
                         {e.title}
+                        <button
+                          type="button"
+                          className={styles["outlook-import-btn"]}
+                          title="Add as an app event"
+                          aria-label="Add as an app event"
+                          onClick={() => convertOutlookEvent(e)}
+                        >
+                          ＋
+                        </button>
                       </div>
                     ))}
                 {laidOut.map(({ event, lane, totalLanes, top, height }) => (
