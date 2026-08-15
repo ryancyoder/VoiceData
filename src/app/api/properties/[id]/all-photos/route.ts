@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
-import type { DealPhoto } from "@/lib/salesBoard";
+import type { DealCorrespondence, DealPhoto } from "@/lib/salesBoard";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -33,16 +33,20 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   const eventIds = (eventsRes.data ?? []).map((e) => e.id as number);
   const dealIds = (dealsRes.data ?? []).map((d) => d.id as number);
 
-  const [evPhotosRes, dealPhotosRes] = await Promise.all([
+  const [evPhotosRes, dealPhotosRes, corrRes] = await Promise.all([
     eventIds.length
       ? supabase.from("deal_photos").select("*").in("event_id", eventIds)
       : Promise.resolve({ data: [] as DealPhoto[], error: null }),
     dealIds.length
       ? supabase.from("deal_photos").select("*").in("deal_id", dealIds)
       : Promise.resolve({ data: [] as DealPhoto[], error: null }),
+    dealIds.length
+      ? supabase.from("deal_correspondence").select("*").in("deal_id", dealIds)
+      : Promise.resolve({ data: [] as DealCorrespondence[], error: null }),
   ]);
   if (evPhotosRes.error) return NextResponse.json({ error: evPhotosRes.error.message }, { status: 500 });
   if (dealPhotosRes.error) return NextResponse.json({ error: dealPhotosRes.error.message }, { status: 500 });
+  if (corrRes.error) return NextResponse.json({ error: corrRes.error.message }, { status: 500 });
 
   const byId = new Map<number, DealPhoto>();
   for (const p of [
@@ -56,5 +60,9 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   const sortTs = (p: DealPhoto) => new Date(p.taken_at ?? p.created_at).getTime();
   const photos = [...byId.values()].sort((a, b) => sortTs(a) - sortTs(b));
 
-  return NextResponse.json({ photos });
+  const correspondence = ((corrRes.data ?? []) as DealCorrespondence[])
+    .slice()
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  return NextResponse.json({ photos, correspondence });
 }

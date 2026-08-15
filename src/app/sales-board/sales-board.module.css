@@ -1217,6 +1217,18 @@
   box-shadow: 0 0 0 1px var(--accent);
   transform: translateY(-2px);
 }
+/* Correspondence tile: same footprint as a photo thumb, but a centered channel
+   icon (📞 / ✉️ / 💬 / 🖼️) on the surface instead of an image. */
+.deal-photo-strip-item.is-correspondence {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+.deal-photo-strip-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
 
 .deal-timeline {
   position: relative;

@@ -12,6 +12,7 @@ import {
   dealDocumentUrl,
   dealThumbUrl,
   type Deal,
+  type DealCorrespondence,
   type DealInput,
   type DealPhoto,
   type PropertyOption,
@@ -310,6 +311,9 @@ export default function DealModal({
   // oldest-first — the source for the photo strip above the timeline, which
   // spans the property's full history, not just this deal.
   const [stripPhotos, setStripPhotos] = useState<DealPhoto[]>([]);
+  // The property's correspondence (across all its deals) — interleaved into the
+  // strip as icon tiles alongside the photos.
+  const [stripCorrespondence, setStripCorrespondence] = useState<DealCorrespondence[]>([]);
   // The property's album cover photo (properties.cover_photo_id), shown as a
   // thumbnail in the modal header. Fetched by id, like the reference photos.
   const [coverPhoto, setCoverPhoto] = useState<DealPhoto | null>(null);
@@ -501,13 +505,16 @@ export default function DealModal({
     const propertyId = deal.property_id;
     if (propertyId == null) {
       setStripPhotos([]);
+      setStripCorrespondence([]);
       return;
     }
     let active = true;
     fetch(`/api/properties/${propertyId}/all-photos`)
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("load failed"))))
       .then((data) => {
-        if (active) setStripPhotos(data.photos ?? []);
+        if (!active) return;
+        setStripPhotos(data.photos ?? []);
+        setStripCorrespondence(data.correspondence ?? []);
       })
       .catch(() => {
         /* leave the current list as-is on a transient fetch error */
@@ -1014,30 +1021,42 @@ export default function DealModal({
     form.paid_date,
   ]);
 
-  // Every displayable photo across the whole property, oldest-first (already
-  // sorted by the all-photos endpoint), in one chronological row above the
-  // timeline. Each carries its event id (null for reference photos) so a
-  // timeline dot can scroll its event's photos in, and a UTC day so a milestone
-  // node can scroll to the first photo on/after its date.
-  const timelinePhotos = useMemo(() => {
+  // Every strip item across the whole property, oldest-first: displayable
+  // photos AND correspondence (call/email/text touchpoints or screenshots),
+  // interleaved chronologically in one row above the timeline. Photos carry an
+  // event id (null for reference photos) so a timeline dot can scroll its
+  // event's photos in; every item carries a UTC day so a milestone node can
+  // scroll to the first item on/after its date.
+  const stripItems = useMemo(() => {
     const dayOf = (iso: string): number | null => {
       const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
       return Number.isFinite(y) ? Date.UTC(y, m - 1, d) : null;
     };
-    const out: { key: string; url: string; eventId: number | null; day: number | null; caption: string }[] = [];
+    type PhotoItem = {
+      kind: "photo";
+      key: string;
+      url: string;
+      eventId: number | null;
+      day: number | null;
+      ts: number;
+      caption: string;
+    };
+    type CorrItem = { kind: "corr"; key: string; icon: string; day: number | null; ts: number; caption: string };
+    const out: (PhotoItem | CorrItem)[] = [];
     for (const p of stripPhotos) {
       const url = dealThumbUrl(p);
       if (!url) continue;
-      out.push({
-        key: `p${p.id}`,
-        url,
-        eventId: p.event_id,
-        day: dayOf(p.taken_at ?? p.created_at),
-        caption: p.caption ?? "",
-      });
+      const iso = p.taken_at ?? p.created_at;
+      out.push({ kind: "photo", key: `p${p.id}`, url, eventId: p.event_id, day: dayOf(iso), ts: new Date(iso).getTime(), caption: p.caption ?? "" });
     }
+    for (const c of stripCorrespondence) {
+      const icon = c.channel ? CHANNEL_META[c.channel].icon : "🖼️";
+      const caption = c.channel ? CHANNEL_META[c.channel].label : c.file_name ?? "Screenshot";
+      out.push({ kind: "corr", key: `c${c.id}`, icon, day: dayOf(c.created_at), ts: new Date(c.created_at).getTime(), caption });
+    }
+    out.sort((a, b) => a.ts - b.ts);
     return out;
-  }, [stripPhotos]);
+  }, [stripPhotos, stripCorrespondence]);
 
   const photoStripRef = useRef<HTMLDivElement>(null);
   const [stripEventId, setStripEventId] = useState<number | null>(null);
@@ -1052,24 +1071,25 @@ export default function DealModal({
   const focusStripEvent = useCallback(
     (eventId: number) => {
       setStripEventId(eventId);
-      scrollStripToIndex(timelinePhotos.findIndex((p) => p.eventId === eventId));
+      scrollStripToIndex(stripItems.findIndex((it) => it.kind === "photo" && it.eventId === eventId));
     },
-    [timelinePhotos, scrollStripToIndex]
+    [stripItems, scrollStripToIndex]
   );
-  // A milestone node/date: scroll to the first photo on or after its date
-  // (falling back to the last photo when everything predates it).
+  // A milestone node/date: scroll to the first item on or after its date
+  // (falling back to the last item when everything predates it).
   const focusStripByDay = useCallback(
     (ymd: string) => {
-      if (timelinePhotos.length === 0) return;
+      if (stripItems.length === 0) return;
       const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
       if (!Number.isFinite(y)) return;
       const target = Date.UTC(y, m - 1, d);
-      let idx = timelinePhotos.findIndex((p) => p.day != null && p.day >= target);
-      if (idx === -1) idx = timelinePhotos.length - 1;
-      setStripEventId(timelinePhotos[idx]?.eventId ?? null);
+      let idx = stripItems.findIndex((it) => it.day != null && it.day >= target);
+      if (idx === -1) idx = stripItems.length - 1;
+      const hit = stripItems[idx];
+      setStripEventId(hit && hit.kind === "photo" ? hit.eventId : null);
       scrollStripToIndex(idx);
     },
-    [timelinePhotos, scrollStripToIndex]
+    [stripItems, scrollStripToIndex]
   );
 
   return (
@@ -1715,28 +1735,38 @@ export default function DealModal({
           </div>
 
           <div className={styles["deal-form-footer"]}>
-          {/* One continuous, horizontally-scrolling row of every photo across
-              the whole property (all its deals + reference photos), sitting
-              above the timeline. Hovering a timeline dot scrolls to that
-              event's photos; hovering a milestone node scrolls to the first
-              photo on/after its date — so you can scroll back to earlier
-              events even when they belong to another deal. */}
-          {timelinePhotos.length > 0 && (
+          {/* One continuous, horizontally-scrolling row of every photo AND
+              correspondence across the whole property (all its deals +
+              reference photos), sitting above the timeline. Hovering a timeline
+              dot scrolls to that event's photos; hovering a milestone node
+              scrolls to the first item on/after its date — so you can scroll
+              back to earlier events even when they belong to another deal. */}
+          {stripItems.length > 0 && (
             <div className={styles["deal-photo-strip"]} ref={photoStripRef} onMouseLeave={() => setStripEventId(null)}>
-              {timelinePhotos.map((ph) => (
-                <Link
-                  key={ph.key}
-                  href={ph.eventId != null ? `/calendar?event=${ph.eventId}` : "/calendar"}
-                  data-strip-event={ph.eventId ?? undefined}
-                  className={`${styles["deal-photo-strip-item"]} ${
-                    ph.eventId != null && stripEventId === ph.eventId ? styles["is-active"] : ""
-                  }`}
-                  title={ph.caption || undefined}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={ph.url} alt="" />
-                </Link>
-              ))}
+              {stripItems.map((it) =>
+                it.kind === "photo" ? (
+                  <Link
+                    key={it.key}
+                    href={it.eventId != null ? `/calendar?event=${it.eventId}` : "/calendar"}
+                    data-strip-event={it.eventId ?? undefined}
+                    className={`${styles["deal-photo-strip-item"]} ${
+                      it.eventId != null && stripEventId === it.eventId ? styles["is-active"] : ""
+                    }`}
+                    title={it.caption || undefined}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={it.url} alt="" />
+                  </Link>
+                ) : (
+                  <span
+                    key={it.key}
+                    className={`${styles["deal-photo-strip-item"]} ${styles["is-correspondence"]}`}
+                    title={it.caption || undefined}
+                  >
+                    <span className={styles["deal-photo-strip-icon"]}>{it.icon}</span>
+                  </span>
+                )
+              )}
             </div>
           )}
           {/* Full-width milestone timeline — the same lifecycle shown in the
