@@ -107,6 +107,8 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // Deal whose Action section is currently a drag-over drop target (for the
   // "drag a photo into the Action section to make it the next action" gesture).
   const [dragOverDealId, setDragOverDealId] = useState<number | null>(null);
+  // Whether the General reference section is currently a drag-over drop target.
+  const [dragOverReference, setDragOverReference] = useState(false);
   const [savingCaptionId, setSavingCaptionId] = useState<number | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
   // Optimistic overlay on top of the property's stored cover_photo_id —
@@ -544,6 +546,64 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
     }
   }
 
+  // Optimistically move a photo into the property's General reference section.
+  function stateMovePhotoToReference(photoId: number, propertyId: number, moved: DealPhoto) {
+    const property = activeProperty;
+    setEvents((evs) => {
+      const cleared = evs.map((ev) =>
+        ev.photos.some((p) => p.id === photoId)
+          ? { ...ev, photos: ev.photos.filter((p) => p.id !== photoId) }
+          : ev
+      );
+      const refId = refEventId(propertyId);
+      if (cleared.some((ev) => ev.id === refId)) {
+        return cleared.map((ev) => (ev.id === refId ? { ...ev, photos: [...ev.photos, moved] } : ev));
+      }
+      const newEvent: GalleryEvent = {
+        id: refId,
+        name: "General reference",
+        start_time: moved.created_at,
+        end_time: moved.created_at,
+        event_type: null,
+        isPropertyReference: true,
+        photos: [moved],
+        dealId: null,
+        dealName: null,
+        dealCompany: null,
+        dealStage: null,
+        propertyId,
+        propertyAddress: null,
+        propertyContactLastName: null,
+        propertyCoverPhotoId: property?.coverPhotoId ?? null,
+        dealNextActionPhotoId: null,
+      };
+      return [...cleared, newEvent];
+    });
+  }
+
+  // Dropping a photo onto the General reference section retags it as an
+  // event-less property-reference photo.
+  async function handleDropOnReference(e: DragEvent) {
+    e.preventDefault();
+    setDragOverReference(false);
+    const propertyId = activeProperty?.propertyId ?? null;
+    if (propertyId == null) return;
+    const photoId = Number(e.dataTransfer.getData("text/plain"));
+    if (Number.isNaN(photoId)) return;
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/photos/from-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_photo_id: photoId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add reference photo");
+      stateMovePhotoToReference(photoId, propertyId, data.photo as DealPhoto);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to add reference photo");
+    }
+  }
+
   const uploadPhotoToEvent = useCallback(async (eventId: number, file: File) => {
     const { gps, takenAt } = await readClientExif(file);
     const uploadFile = await compressImage(file);
@@ -845,11 +905,19 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                 {activeProperty.propertyId != null && (
                   <div className={styles["deal-group"]}>
                     <div className={styles["event-groups"]}>
-                      <div className={styles["event-group"]}>
+                      <div
+                        className={`${styles["event-group"]} ${dragOverReference ? styles["drag-over"] : ""}`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverReference(true);
+                        }}
+                        onDragLeave={() => setDragOverReference(false)}
+                        onDrop={(e) => handleDropOnReference(e)}
+                      >
                         <div className={styles["event-group-header"]}>
                           <span className={styles["event-type-badge"]}>REFERENCE</span>
                           <span className={styles["event-group-name"]}>General reference</span>
-                          <span className={styles["event-group-date"]}>property photos — not event-specific</span>
+                          <span className={styles["event-group-date"]}>property photos — drag a photo here to add one</span>
                           <span className={styles["event-add-actions"]}>
                             <label className={styles["event-add-btn"]}>
                               + Add
