@@ -1236,6 +1236,40 @@
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
+/* Calendar events plotted between milestones as bold dots, sitting on the
+   connecting line (top: 17px = the milestone icon centers). */
+.deal-timeline-event {
+  position: absolute;
+  top: 17px;
+  transform: translate(-50%, -50%);
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  z-index: 2;
+  cursor: pointer;
+}
+.deal-timeline-event:hover {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.deal-timeline-eventMore {
+  position: absolute;
+  top: 17px;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
 
 @media (max-width: 640px) {
   .deal-form-fields { columns: 1; }

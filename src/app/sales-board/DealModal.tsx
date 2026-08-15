@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./sales-board.module.css";
@@ -904,6 +904,90 @@ export default function DealModal({
     }
   }
 
+  // Calendar events plotted on the milestone timeline as bold dots. Each event
+  // (past only) anchors to the most recent DATED milestone at/before its date
+  // and lands in the visual gap to the NEXT slot (dated or not); events before
+  // the first dated milestone or after the last slot are dropped. Within a gap
+  // the events subdivide it evenly (k/(N+1)); a gap over the cap collapses its
+  // tail into a "+N" pill. Positions are percentages across the timeline: the
+  // line runs from the first slot's center (100/12%) to the last's, in 5 gaps.
+  const timelineEventDots = useMemo(() => {
+    const LINE_START = 100 / 12;
+    const GAP = (100 - 2 * LINE_START) / 5;
+    const CAP = 5; // max dots per gap before the last becomes a "+N" pill
+    const toDay = (ymd: string) => {
+      const [y, m, d] = ymd.split("-").map(Number);
+      return Date.UTC(y, m - 1, d);
+    };
+    const slotDates = [
+      form.appointment_date,
+      form.proposal_date,
+      form.won_date,
+      form.start_date,
+      form.invoiced_date,
+      form.paid_date,
+    ].map((d) => (d && d.trim() ? d.trim() : null));
+    const dated = slotDates
+      .map((d, slot) => (d ? { slot, day: toDay(d) } : null))
+      .filter((v): v is { slot: number; day: number } => v != null);
+    if (dated.length === 0) return [];
+
+    const now = new Date();
+    const todayDay = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const events = (deal.events ?? [])
+      .map((e) => {
+        const dt = new Date(e.start_time);
+        const ymd = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+        return { id: e.id, name: e.name ?? "Event", ymd, day: toDay(ymd) };
+      })
+      .filter((e) => e.day <= todayDay);
+
+    const byGap = new Map<number, { id: number; name: string; ymd: string; day: number }[]>();
+    for (const e of events) {
+      let anchor: { slot: number; day: number } | null = null;
+      for (const m of dated) if (m.day <= e.day) anchor = m; // last dated milestone at/before the event
+      if (!anchor || anchor.slot >= 5) continue; // before first dated, or past the last slot
+      if (!byGap.has(anchor.slot)) byGap.set(anchor.slot, []);
+      byGap.get(anchor.slot)!.push(e);
+    }
+
+    const dots: { key: string; leftPct: number; href?: string; title: string; overflow?: number }[] = [];
+    for (const [gap, list] of byGap) {
+      list.sort((a, b) => a.day - b.day);
+      const N = list.length;
+      const shown: ({ kind: "event"; e: (typeof list)[number] } | { kind: "more"; n: number })[] =
+        N > CAP
+          ? [
+              ...list.slice(0, CAP - 1).map((e) => ({ kind: "event" as const, e })),
+              { kind: "more" as const, n: N - (CAP - 1) },
+            ]
+          : list.map((e) => ({ kind: "event" as const, e }));
+      const D = shown.length;
+      shown.forEach((item, j) => {
+        const leftPct = LINE_START + gap * GAP + ((j + 1) / (D + 1)) * GAP;
+        if (item.kind === "event") {
+          dots.push({
+            key: `${gap}-${j}`,
+            leftPct,
+            href: `/calendar?event=${item.e.id}`,
+            title: `${item.e.name} — ${formatMilestoneDate(item.e.ymd)}`,
+          });
+        } else {
+          dots.push({ key: `${gap}-more`, leftPct, title: `${item.n} more events`, overflow: item.n });
+        }
+      });
+    }
+    return dots;
+  }, [
+    deal.events,
+    form.appointment_date,
+    form.proposal_date,
+    form.won_date,
+    form.start_date,
+    form.invoiced_date,
+    form.paid_date,
+  ]);
+
   return (
     <div
       className={`${styles["modal-overlay"]} ${styles["is-fullscreen"]}`}
@@ -1576,6 +1660,27 @@ export default function DealModal({
                 </div>
               );
             })}
+            {timelineEventDots.map((dot) =>
+              dot.overflow ? (
+                <span
+                  key={dot.key}
+                  className={styles["deal-timeline-eventMore"]}
+                  style={{ left: `${dot.leftPct}%` }}
+                  title={dot.title}
+                >
+                  +{dot.overflow}
+                </span>
+              ) : (
+                <Link
+                  key={dot.key}
+                  href={dot.href!}
+                  className={styles["deal-timeline-event"]}
+                  style={{ left: `${dot.leftPct}%` }}
+                  title={dot.title}
+                  aria-label={dot.title}
+                />
+              )
+            )}
           </div>
 
           {error && <div className={styles["card-edit-error"]}>{error}</div>}
