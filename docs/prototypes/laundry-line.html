@@ -1,0 +1,1059 @@
+<title>The Laundry Line</title>
+
+<style>
+  /* ---- tokens: light is the base, both dark paths redefine only these ---- */
+  :root {
+    --ground:      #EEF0F6;
+    --panel:       #FFFFFF;
+    --panel-sunk:  #E4E7F0;
+    --rule:        #D3D7E4;
+    --rule-soft:   #E3E6EF;
+    --ink:         #191C2B;
+    --ink-2:       #4A5068;
+    --steam:       #8A90A8;
+    --bluing:      #2A3FCB;
+    --bluing-soft: #DDE2FB;
+    --bluing-ink:  #FFFFFF;
+    --ok:          #2E7D5B;
+    --ok-soft:     #DCEEE5;
+    --warn:        #B26A12;
+    --warn-soft:   #F7E9D2;
+    --alarm:       #C0392E;
+    --alarm-soft:  #F8DEDA;
+    --shadow:      0 1px 0 rgba(25,28,43,.04), 0 6px 20px -12px rgba(25,28,43,.28);
+
+    --serif: Charter, "Bitstream Charter", "Iowan Old Style", "Source Serif Pro", Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #12141F;
+      --panel:       #1B1E2C;
+      --panel-sunk:  #161927;
+      --rule:        #2E3346;
+      --rule-soft:   #262A3A;
+      --ink:         #E8EAF2;
+      --ink-2:       #B4BACE;
+      --steam:       #7F869E;
+      --bluing:      #8DA0FF;
+      --bluing-soft: #232946;
+      --bluing-ink:  #12141F;
+      --ok:          #6FCFA3;
+      --ok-soft:     #172A24;
+      --warn:        #E0A54F;
+      --warn-soft:   #2C2417;
+      --alarm:       #F0705F;
+      --alarm-soft:  #2F1B19;
+      --shadow:      0 1px 0 rgba(0,0,0,.2), 0 8px 24px -14px rgba(0,0,0,.8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #12141F;
+    --panel:       #1B1E2C;
+    --panel-sunk:  #161927;
+    --rule:        #2E3346;
+    --rule-soft:   #262A3A;
+    --ink:         #E8EAF2;
+    --ink-2:       #B4BACE;
+    --steam:       #7F869E;
+    --bluing:      #8DA0FF;
+    --bluing-soft: #232946;
+    --bluing-ink:  #12141F;
+    --ok:          #6FCFA3;
+    --ok-soft:     #172A24;
+    --warn:        #E0A54F;
+    --warn-soft:   #2C2417;
+    --alarm:       #F0705F;
+    --alarm-soft:  #2F1B19;
+    --shadow:      0 1px 0 rgba(0,0,0,.2), 0 8px 24px -14px rgba(0,0,0,.8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* ---- shared atoms ---- */
+  .label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--steam);
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    box-shadow: var(--shadow);
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+    background: var(--panel);
+    padding: 7px 13px;
+    transition: background .12s ease, border-color .12s ease, color .12s ease;
+  }
+  button:hover { border-color: var(--steam); }
+  button:focus-visible,
+  [contenteditable]:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--bluing);
+    outline-offset: 2px;
+  }
+  button[disabled] { opacity: .38; cursor: not-allowed; }
+  button[disabled]:hover { border-color: var(--rule); }
+
+  .btn-primary {
+    background: var(--bluing);
+    border-color: var(--bluing);
+    color: var(--bluing-ink);
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: var(--bluing); filter: brightness(1.08); border-color: var(--bluing); }
+
+  .btn-alarm {
+    background: var(--alarm);
+    border-color: var(--alarm);
+    color: var(--panel);
+    font-weight: 600;
+  }
+  .btn-alarm:hover { border-color: var(--alarm); filter: brightness(1.08); }
+
+  .care { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; flex: none; }
+
+  /* ---- masthead ---- */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px 24px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .masthead h1 {
+    font-family: var(--serif);
+    font-size: clamp(30px, 5vw, 44px);
+    line-height: 1.02;
+    letter-spacing: -.018em;
+    margin: 6px 0 4px;
+    text-wrap: balance;
+  }
+  .masthead p {
+    margin: 0;
+    color: var(--ink-2);
+    max-width: 46ch;
+    font-size: 14px;
+  }
+  .today-chip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--bluing-soft);
+    border: 1px solid var(--bluing);
+    border-radius: 4px;
+  }
+  .today-chip strong {
+    font-family: var(--serif);
+    font-size: 21px;
+    line-height: 1.1;
+    display: block;
+    font-weight: 600;
+  }
+
+  /* ---- machines ---- */
+  .machines {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .machine {
+    padding: 18px 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .machine.is-alarm { border-color: var(--alarm); background: var(--alarm-soft); }
+  .machine.is-done  { border-color: var(--ok); }
+
+  .machine-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .machine-name {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--serif);
+    font-size: 19px;
+    font-weight: 600;
+  }
+  .machine-name .care { width: 20px; height: 20px; color: var(--steam); }
+
+  .state-pill {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .state-idle  { background: var(--panel-sunk); color: var(--steam); }
+  .state-run   { background: var(--bluing-soft); color: var(--bluing); }
+  .state-done  { background: var(--ok-soft); color: var(--ok); }
+  .state-alarm { background: var(--alarm); color: var(--panel); }
+
+  .readout {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(38px, 6.4vw, 54px);
+    line-height: .95;
+    letter-spacing: -.03em;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .readout small {
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--steam);
+  }
+  .machine.is-alarm .readout { color: var(--alarm); }
+  .machine.is-done .readout { color: var(--ok); }
+  .machine.is-idle .readout { color: var(--steam); }
+
+  .contents { font-size: 13.5px; color: var(--ink-2); min-height: 20px; }
+  .contents b { color: var(--ink); font-weight: 600; }
+
+  .bar {
+    height: 5px;
+    background: var(--panel-sunk);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bar > i {
+    display: block;
+    height: 100%;
+    background: var(--bluing);
+    border-radius: 3px;
+    transition: width .9s linear;
+  }
+  .machine.is-alarm .bar > i { background: var(--alarm); }
+
+  .machine-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .machine.is-alarm { animation: nag 2.4s ease-in-out infinite; }
+    @keyframes nag {
+      0%, 100% { box-shadow: var(--shadow); }
+      50%      { box-shadow: 0 0 0 3px var(--alarm-soft), var(--shadow); }
+    }
+  }
+
+  /* ---- rota ---- */
+  .rota { padding: 16px 18px 18px; }
+  .rota-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+  .rota-head h2 {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 0;
+    white-space: nowrap;
+  }
+  .rota-head p { margin: 0; font-size: 12.5px; color: var(--steam); max-width: 62ch; }
+  .week {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background: var(--rule-soft);
+    border: 1px solid var(--rule-soft);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .day {
+    background: var(--panel);
+    padding: 11px 8px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    align-items: center;
+    text-align: center;
+    min-width: 0;
+  }
+  .day.is-today { background: var(--bluing-soft); }
+  .day.is-past { background: var(--panel-sunk); }
+  .day-name {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--steam);
+  }
+  .day.is-today .day-name { color: var(--bluing); }
+  .person {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.15;
+    padding: 1px 4px;
+    border-radius: 3px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .person:hover { background: var(--panel-sunk); }
+  .person:focus { outline: 2px solid var(--bluing); outline-offset: 1px; background: var(--panel); }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--rule);
+  }
+  .dot.is-clear { background: var(--ok); }
+  .dot.is-due { background: var(--warn); }
+
+  /* ---- main split ---- */
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  section.panel { padding: 16px 18px 18px; }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .panel-head h2 {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -.01em;
+  }
+  .count {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--steam);
+  }
+
+  .stack { display: flex; flex-direction: column; gap: 9px; }
+
+  .load {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+    align-items: center;
+    padding: 11px 13px;
+    background: var(--panel-sunk);
+    border: 1px solid transparent;
+    border-radius: 4px;
+  }
+  .load.is-next { background: var(--panel); border-color: var(--bluing); }
+  .load-title {
+    font-weight: 600;
+    font-size: 14.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .owner {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--rule-soft);
+    color: var(--ink-2);
+  }
+  .owner.is-shared { background: var(--warn-soft); color: var(--warn); }
+  .load-meta {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--steam);
+    font-size: 12.5px;
+  }
+  .load-meta .care { color: var(--ink-2); }
+  .load-meta .temp { font-family: var(--mono); font-size: 11px; }
+  .up-next {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--bluing);
+    padding: 4px 8px;
+    align-self: center;
+    white-space: nowrap;
+  }
+  .load-actions { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 6px; }
+
+  .empty {
+    padding: 22px 4px;
+    text-align: center;
+    color: var(--steam);
+    font-size: 13.5px;
+  }
+
+  /* ---- backlog ---- */
+  .basket {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--panel-sunk);
+    border-radius: 4px;
+  }
+  .basket-title { font-size: 14px; font-weight: 600; }
+  .basket-sub { font-size: 12px; color: var(--steam); }
+  .stage {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 3px;
+  }
+  .stage-fold { background: var(--warn-soft); color: var(--warn); }
+  .stage-away { background: var(--bluing-soft); color: var(--bluing); }
+
+  /* ---- hampers ---- */
+  .hamper {
+    display: grid;
+    grid-template-columns: 74px 1fr auto;
+    align-items: center;
+    gap: 10px;
+  }
+  .hamper-name { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .meter {
+    height: 8px;
+    background: var(--panel-sunk);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .meter > i {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+    background: var(--bluing);
+    transition: width .25s ease;
+  }
+  .meter.is-full > i { background: var(--warn); }
+  .hamper-pct { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--steam); min-width: 34px; text-align: right; }
+  .hamper button { padding: 3px 8px; font-size: 12px; }
+
+  /* ---- add form ---- */
+  .addbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 12px;
+    margin-top: 12px;
+    border-top: 1px solid var(--rule-soft);
+  }
+  .addbar select, .addbar input {
+    font: inherit;
+    font-size: 13.5px;
+    color: inherit;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 7px 9px;
+    min-width: 0;
+  }
+  .addbar input { flex: 1 1 150px; }
+
+  footer.note {
+    font-size: 12.5px;
+    color: var(--steam);
+    max-width: 68ch;
+    line-height: 1.65;
+  }
+  footer.note b { color: var(--ink-2); }
+
+  @media (max-width: 880px) {
+    .machines { grid-template-columns: 1fr; }
+    .split { grid-template-columns: 1fr; }
+    .week { grid-template-columns: repeat(4, 1fr); }
+  }
+  @media (max-width: 460px) {
+    .week { grid-template-columns: repeat(2, 1fr); }
+    .load-actions { grid-row: auto; grid-column: 1; }
+  }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="sym-wash" viewBox="0 0 24 24">
+      <path d="M3.7 8.4 L5.5 19.2 a1.3 1.3 0 0 0 1.3 1.1 h10.4 a1.3 1.3 0 0 0 1.3-1.1 L20.3 8.4 Z"/>
+      <path d="M6.2 11.7 q1.45-1.9 2.9 0 t2.9 0 t2.9 0 t2.9 0"/>
+    </symbol>
+    <symbol id="sym-tumble" viewBox="0 0 24 24">
+      <rect x="3.6" y="4.6" width="16.8" height="14.8" rx="1.4"/>
+      <circle cx="12" cy="12" r="5"/>
+    </symbol>
+    <symbol id="sym-hang" viewBox="0 0 24 24">
+      <rect x="3.6" y="4.6" width="16.8" height="14.8" rx="1.4"/>
+      <path d="M3.6 8.4 h16.8"/>
+    </symbol>
+    <symbol id="sym-iron" viewBox="0 0 24 24">
+      <path d="M3.4 17.6 h17.2 l-2.4-6.6 a2 2 0 0 0-1.9-1.3 H10.4 a2 2 0 0 0-1.5.7 Z"/>
+      <path d="M8.6 9.9 C8.6 7.7 9.9 6.4 12.2 6.4 H17.6"/>
+    </symbol>
+    <symbol id="sym-nobleach" viewBox="0 0 24 24">
+      <path d="M12 4.4 L20.6 19.4 H3.4 Z"/>
+      <path d="M5.6 19 L18.6 5.2"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <div class="label">Household rota &middot; seven people, seven days</div>
+      <h1>The Laundry Line</h1>
+      <p>One machine, seven people, and one question that actually matters: is anything sitting wet right now?</p>
+    </div>
+    <div class="today-chip">
+      <div>
+        <div class="label" style="color:var(--bluing)">Today &middot; <span id="today-day">—</span></div>
+        <strong id="today-person">—</strong>
+      </div>
+    </div>
+  </header>
+
+  <div class="machines">
+    <article class="card machine" id="washer"></article>
+    <article class="card machine" id="dryer"></article>
+  </div>
+
+  <section class="card rota">
+    <div class="rota-head">
+      <h2>The week</h2>
+      <p>Each person owns one day for their own clothes. Towels, sheets and kit sit outside the rota. Click a name to change it.</p>
+    </div>
+    <div class="week" id="week"></div>
+  </section>
+
+  <div class="split">
+
+    <section class="card panel">
+      <div class="panel-head">
+        <h2>Waiting to wash</h2>
+        <span class="count" id="queue-count">0 loads</span>
+      </div>
+      <div class="stack" id="queue"></div>
+      <div class="addbar">
+        <input id="new-title" type="text" placeholder="What is it? e.g. Football kit" aria-label="Load description">
+        <select id="new-owner" aria-label="Whose load"></select>
+        <select id="new-kind" aria-label="Fabric type">
+          <option value="darks">Darks</option>
+          <option value="lights">Lights</option>
+          <option value="whites">Whites</option>
+          <option value="towels">Towels</option>
+          <option value="bedding">Bedding</option>
+          <option value="delicates">Delicates</option>
+        </select>
+        <button class="btn-primary" id="add-load">Add to line</button>
+      </div>
+    </section>
+
+    <div class="stack" style="gap:16px">
+
+      <section class="card panel">
+        <div class="panel-head">
+          <h2>Clean, not away</h2>
+          <span class="count" id="backlog-count">0 baskets</span>
+        </div>
+        <div class="stack" id="backlog"></div>
+      </section>
+
+      <section class="card panel">
+        <div class="panel-head">
+          <h2>Hampers</h2>
+          <span class="count">tap + when it fills</span>
+        </div>
+        <div class="stack" id="hampers" style="gap:11px"></div>
+      </section>
+
+    </div>
+  </div>
+
+  <footer class="note">
+    <b>Prototype.</b> State lives in your browser only &mdash; nothing is saved to a server, and every name here is a placeholder you can edit.
+    The washer and dryer run on real clock time, so the countdowns you see are live.
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  var DAY_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+  // Fabric profiles: cycle length, temperature, and the care symbols that apply.
+  var KINDS = {
+    darks:     { label: "Darks",     mins: 42, temp: "30°", care: ["wash", "tumble"] },
+    lights:    { label: "Lights",    mins: 42, temp: "30°", care: ["wash", "tumble"] },
+    whites:    { label: "Whites",    mins: 58, temp: "60°", care: ["wash", "tumble", "iron"] },
+    towels:    { label: "Towels",    mins: 58, temp: "60°", care: ["wash", "tumble"] },
+    bedding:   { label: "Bedding",   mins: 62, temp: "60°", care: ["wash", "tumble", "iron"] },
+    delicates: { label: "Delicates", mins: 28, temp: "20°", care: ["wash", "hang", "nobleach"] }
+  };
+
+  var DRY_MINS = { darks: 55, lights: 55, whites: 65, towels: 80, bedding: 75, delicates: 0 };
+  var STRANDED_AFTER = 10; // minutes sitting done before it becomes an alarm
+
+  var uid = 0;
+  function nextId(p) { uid += 1; return p + uid; }
+
+  var state = {
+    people: [
+      { id: "p1", name: "Ada",  day: 0 },
+      { id: "p2", name: "Beck", day: 1 },
+      { id: "p3", name: "Cleo", day: 2 },
+      { id: "p4", name: "Dez",  day: 3 },
+      { id: "p5", name: "Esme", day: 4 },
+      { id: "p6", name: "Finn", day: 5 },
+      { id: "p7", name: "Gus",  day: 6 }
+    ],
+    hampers: { p1: 35, p2: 80, p3: 20, p4: 55, p5: 90, p6: 45, p7: 15 },
+    washer: { status: "running", load: null, endsAt: 0, doneAt: 0, total: 0 },
+    dryer:  { status: "done",    load: null, endsAt: 0, doneAt: 0, total: 0 },
+    queue: [],
+    backlog: []
+  };
+
+  // Seed a believable Tuesday-evening state.
+  state.queue = [
+    { id: nextId("l"), title: "Beck's darks", owner: "p2", kind: "darks" },
+    { id: nextId("l"), title: "Football kit", owner: null, kind: "lights" },
+    { id: nextId("l"), title: "Bath towels", owner: null, kind: "towels" },
+    { id: nextId("l"), title: "Esme's school shirts", owner: "p5", kind: "whites" }
+  ];
+  state.backlog = [
+    { id: nextId("b"), title: "Bunk-bed sheets", owner: null, stage: "fold" },
+    { id: nextId("b"), title: "Cleo's lights", owner: "p3", stage: "away" }
+  ];
+
+  var now = Date.now();
+  state.washer.load = { id: nextId("l"), title: "Ada's darks", owner: "p1", kind: "darks" };
+  state.washer.total = 42 * 60000;
+  state.washer.endsAt = now + 45000;             // finishes in 45s so the handoff is visible
+  state.dryer.load = { id: nextId("l"), title: "Bath towels", owner: null, kind: "towels" };
+  state.dryer.total = 80 * 60000;
+  state.dryer.doneAt = now - 22 * 60000;          // stranded 22 minutes ago
+
+  // ---- helpers ----
+  function personName(id) {
+    for (var i = 0; i < state.people.length; i++) {
+      if (state.people[i].id === id) return state.people[i].name;
+    }
+    return "Shared";
+  }
+  function todayIndex() {
+    var js = new Date().getDay();          // 0 = Sunday
+    return js === 0 ? 6 : js - 1;          // rota weeks start Monday
+  }
+  function personOnDay(d) {
+    for (var i = 0; i < state.people.length; i++) {
+      if (state.people[i].day === d) return state.people[i];
+    }
+    return null;
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function icon(name, cls) {
+    return '<svg class="care ' + (cls || "") + '" aria-hidden="true"><use href="#sym-' + name + '"/></svg>';
+  }
+  function clock(ms) {
+    var t = Math.max(0, Math.round(ms / 1000));
+    var m = Math.floor(t / 60), s = t % 60;
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+  function minsSince(ts) { return Math.floor((Date.now() - ts) / 60000); }
+
+  // ---- machines ----
+  function machineView(key) {
+    var m = state[key];
+    var isWasher = key === "washer";
+    var el = document.getElementById(key);
+    var kind = m.load ? KINDS[m.load.kind] : null;
+
+    var cls = "card machine", pill, pillCls, big, unit, contents, actions, pct = 0;
+
+    if (m.status === "idle") {
+      cls += " is-idle";
+      pill = "Empty"; pillCls = "state-idle";
+      big = "—"; unit = "ready";
+      contents = isWasher
+        ? "Next in line: <b>" + esc(state.queue.length ? state.queue[0].title : "nothing waiting") + "</b>"
+        : "Nothing drying.";
+      actions = isWasher
+        ? '<button class="btn-primary" data-act="start-washer"' + (state.queue.length ? "" : " disabled") + ">Start next load</button>"
+        : '<button data-act="noop" disabled>Waiting on the washer</button>';
+
+    } else if (m.status === "running") {
+      cls += " is-run";
+      pill = kind.label + " · " + kind.temp; pillCls = "state-run";
+      var left = m.endsAt - Date.now();
+      big = clock(left); unit = "left";
+      pct = Math.min(100, Math.max(0, 100 - (left / m.total) * 100));
+      contents = "<b>" + esc(m.load.title) + "</b> · " + esc(personName(m.load.owner));
+      actions = '<button data-act="finish-' + key + '">Mark finished</button>';
+
+    } else {
+      var stranded = minsSince(m.doneAt);
+      var alarm = stranded >= STRANDED_AFTER;
+      cls += alarm ? " is-alarm" : " is-done";
+      pill = alarm ? "Sitting " + stranded + " min" : "Done"; pillCls = alarm ? "state-alarm" : "state-done";
+      big = stranded < 1 ? "just now" : stranded + ""; unit = stranded < 1 ? "" : "min ago";
+      pct = 100;
+      contents = "<b>" + esc(m.load.title) + "</b> · " + esc(personName(m.load.owner)) +
+                 (alarm ? " — get it out before it sours." : "");
+      if (isWasher) {
+        var canDry = state.dryer.status === "idle" && DRY_MINS[m.load.kind] > 0;
+        actions =
+          '<button class="' + (alarm ? "btn-alarm" : "btn-primary") + '" data-act="to-dryer"' + (canDry ? "" : " disabled") + ">Move to dryer</button>" +
+          '<button data-act="washer-to-line">Hang it out</button>';
+      } else {
+        actions = '<button class="' + (alarm ? "btn-alarm" : "btn-primary") + '" data-act="unload-dryer">Unload to folding</button>';
+      }
+    }
+
+    el.className = cls;
+    el.innerHTML =
+      '<div class="machine-top">' +
+        '<div class="machine-name">' + icon(isWasher ? "wash" : "tumble") + (isWasher ? "Washer" : "Dryer") + "</div>" +
+        '<span class="state-pill ' + pillCls + '">' + esc(pill) + "</span>" +
+      "</div>" +
+      '<div class="readout">' + esc(big) + (unit ? "<small>" + esc(unit) + "</small>" : "") + "</div>" +
+      '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
+      '<div class="contents">' + contents + "</div>" +
+      '<div class="machine-actions">' + actions + "</div>";
+  }
+
+  // ---- rota ----
+  function renderWeek() {
+    var t = todayIndex();
+    document.getElementById("today-day").textContent = DAY_FULL[t];
+    var who = personOnDay(t);
+    document.getElementById("today-person").textContent = who ? who.name + "'s wash day" : "Shared day";
+
+    var html = "";
+    for (var d = 0; d < 7; d++) {
+      var p = personOnDay(d);
+      var fill = p ? state.hampers[p.id] : 0;
+      var dotCls = fill >= 75 ? "is-due" : fill <= 30 ? "is-clear" : "";
+      var cls = "day" + (d === t ? " is-today" : d < t ? " is-past" : "");
+      html +=
+        '<div class="' + cls + '">' +
+          '<span class="day-name">' + DAYS[d] + "</span>" +
+          '<span class="person" contenteditable="true" spellcheck="false" role="textbox" ' +
+            'aria-label="Person assigned to ' + DAY_FULL[d] + '" data-person="' + (p ? p.id : "") + '">' +
+            esc(p ? p.name : "—") + "</span>" +
+          '<span class="dot ' + dotCls + '" title="' + fill + '% hamper"></span>' +
+        "</div>";
+    }
+    document.getElementById("week").innerHTML = html;
+  }
+
+  // ---- queue ----
+  function renderQueue() {
+    var box = document.getElementById("queue");
+    document.getElementById("queue-count").textContent =
+      state.queue.length + (state.queue.length === 1 ? " load" : " loads");
+
+    if (!state.queue.length) {
+      box.innerHTML = '<p class="empty">Nothing waiting. Rare and worth noticing.</p>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < state.queue.length; i++) {
+      var l = state.queue[i], k = KINDS[l.kind], sym = "";
+      for (var c = 0; c < k.care.length; c++) sym += icon(k.care[c]);
+      html +=
+        '<div class="load' + (i === 0 ? " is-next" : "") + '">' +
+          '<div class="load-title">' + esc(l.title) +
+            '<span class="owner' + (l.owner ? "" : " is-shared") + '">' +
+              esc(l.owner ? personName(l.owner) : "Shared") + "</span>" +
+          "</div>" +
+          '<div class="load-meta">' + sym +
+            '<span class="temp">' + k.temp + " · " + k.mins + " min</span>" +
+          "</div>" +
+          '<div class="load-actions">' +
+            (i === 0
+              ? (state.washer.status === "idle"
+                  ? '<button class="btn-primary" data-act="start-washer">Wash now</button>'
+                  : '<span class="up-next">Up next</span>')
+              : '<button data-act="bump" data-id="' + l.id + '">Jump queue</button>') +
+            '<button data-act="drop" data-id="' + l.id + '" aria-label="Remove ' + esc(l.title) + '">&times;</button>' +
+          "</div>" +
+        "</div>";
+    }
+    box.innerHTML = html;
+  }
+
+  // ---- backlog ----
+  function renderBacklog() {
+    var box = document.getElementById("backlog");
+    document.getElementById("backlog-count").textContent =
+      state.backlog.length + (state.backlog.length === 1 ? " basket" : " baskets");
+
+    if (!state.backlog.length) {
+      box.innerHTML = '<p class="empty">Everything is put away.</p>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < state.backlog.length; i++) {
+      var b = state.backlog[i];
+      html +=
+        '<div class="basket">' +
+          "<div>" +
+            '<div class="basket-title">' + esc(b.title) + "</div>" +
+            '<div class="basket-sub">' + esc(b.owner ? personName(b.owner) : "Shared") + "</div>" +
+          "</div>" +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<span class="stage ' + (b.stage === "fold" ? "stage-fold" : "stage-away") + '">' +
+              (b.stage === "fold" ? "To fold" : "To put away") + "</span>" +
+            '<button data-act="advance" data-id="' + b.id + '">' +
+              (b.stage === "fold" ? "Folded" : "Done") + "</button>" +
+          "</div>" +
+        "</div>";
+    }
+    box.innerHTML = html;
+  }
+
+  // ---- hampers ----
+  function renderHampers() {
+    var html = "";
+    for (var i = 0; i < state.people.length; i++) {
+      var p = state.people[i], fill = state.hampers[p.id];
+      html +=
+        '<div class="hamper">' +
+          '<div class="hamper-name">' + esc(p.name) + "</div>" +
+          '<div class="meter' + (fill >= 75 ? " is-full" : "") + '"><i style="width:' + fill + '%"></i></div>' +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<span class="hamper-pct">' + fill + "%</span>" +
+            '<button data-act="fill" data-id="' + p.id + '" aria-label="Add to ' + esc(p.name) + '\'s hamper">+</button>' +
+          "</div>" +
+        "</div>";
+    }
+    document.getElementById("hampers").innerHTML = html;
+  }
+
+  function renderOwnerSelect() {
+    var sel = document.getElementById("new-owner");
+    var keep = sel.value;
+    var html = '<option value="">Shared</option>';
+    for (var i = 0; i < state.people.length; i++) {
+      html += '<option value="' + state.people[i].id + '">' + esc(state.people[i].name) + "</option>";
+    }
+    sel.innerHTML = html;
+    sel.value = keep;
+  }
+
+  function render() {
+    machineView("washer");
+    machineView("dryer");
+    renderWeek();
+    renderQueue();
+    renderBacklog();
+    renderHampers();
+    renderOwnerSelect();
+  }
+
+  // ---- actions ----
+  function startWasher() {
+    if (state.washer.status !== "idle" || !state.queue.length) return;
+    var load = state.queue.shift();
+    var mins = KINDS[load.kind].mins;
+    state.washer = {
+      status: "running", load: load,
+      total: mins * 60000, endsAt: Date.now() + mins * 60000, doneAt: 0
+    };
+    if (load.owner) state.hampers[load.owner] = Math.max(0, state.hampers[load.owner] - 45);
+    render();
+  }
+
+  function toDryer() {
+    if (state.washer.status !== "done" || state.dryer.status !== "idle") return;
+    var load = state.washer.load;
+    var mins = DRY_MINS[load.kind];
+    state.dryer = {
+      status: "running", load: load,
+      total: mins * 60000, endsAt: Date.now() + mins * 60000, doneAt: 0
+    };
+    state.washer = { status: "idle", load: null, endsAt: 0, doneAt: 0, total: 0 };
+    render();
+  }
+
+  function actions(act, id) {
+    if (act === "start-washer") { startWasher(); return; }
+
+    if (act === "finish-washer") {
+      state.washer.status = "done"; state.washer.doneAt = Date.now(); render(); return;
+    }
+    if (act === "finish-dryer") {
+      state.dryer.status = "done"; state.dryer.doneAt = Date.now(); render(); return;
+    }
+    if (act === "to-dryer") { toDryer(); return; }
+
+    if (act === "washer-to-line") {
+      state.backlog.push({ id: nextId("b"), title: state.washer.load.title, owner: state.washer.load.owner, stage: "fold" });
+      state.washer = { status: "idle", load: null, endsAt: 0, doneAt: 0, total: 0 };
+      render(); return;
+    }
+    if (act === "unload-dryer") {
+      state.backlog.push({ id: nextId("b"), title: state.dryer.load.title, owner: state.dryer.load.owner, stage: "fold" });
+      state.dryer = { status: "idle", load: null, endsAt: 0, doneAt: 0, total: 0 };
+      render(); return;
+    }
+
+    if (act === "bump") {
+      for (var i = 0; i < state.queue.length; i++) {
+        if (state.queue[i].id === id) {
+          state.queue.unshift(state.queue.splice(i, 1)[0]);
+          break;
+        }
+      }
+      render(); return;
+    }
+    if (act === "drop") {
+      state.queue = state.queue.filter(function (l) { return l.id !== id; });
+      render(); return;
+    }
+
+    if (act === "advance") {
+      for (var j = 0; j < state.backlog.length; j++) {
+        if (state.backlog[j].id === id) {
+          if (state.backlog[j].stage === "fold") state.backlog[j].stage = "away";
+          else state.backlog.splice(j, 1);
+          break;
+        }
+      }
+      render(); return;
+    }
+
+    if (act === "fill") {
+      state.hampers[id] = Math.min(100, state.hampers[id] + 15);
+      render(); return;
+    }
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-act]");
+    if (!btn || btn.disabled) return;
+    actions(btn.getAttribute("data-act"), btn.getAttribute("data-id"));
+  });
+
+  // Rename a person straight in the rota.
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.classList && e.target.classList.contains("person")) {
+      e.preventDefault();
+      e.target.blur();
+    }
+  });
+  document.addEventListener("focusout", function (e) {
+    var el = e.target;
+    if (!el.classList || !el.classList.contains("person")) return;
+    var pid = el.getAttribute("data-person");
+    var name = el.textContent.trim().slice(0, 18);
+    for (var i = 0; i < state.people.length; i++) {
+      if (state.people[i].id === pid) {
+        state.people[i].name = name || state.people[i].name;
+        break;
+      }
+    }
+    render();
+  });
+
+  document.getElementById("add-load").addEventListener("click", function () {
+    var title = document.getElementById("new-title");
+    var owner = document.getElementById("new-owner").value;
+    var kind = document.getElementById("new-kind").value;
+    var text = title.value.trim();
+    if (!text) {
+      text = (owner ? personName(owner) + "'s " : "") + KINDS[kind].label.toLowerCase();
+    }
+    state.queue.push({ id: nextId("l"), title: text, owner: owner || null, kind: kind });
+    title.value = "";
+    render();
+  });
+
+  document.getElementById("new-title").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") document.getElementById("add-load").click();
+  });
+
+  // Live clock: machines finish on their own, and "sitting for N minutes" keeps climbing.
+  setInterval(function () {
+    var dirty = false;
+    ["washer", "dryer"].forEach(function (key) {
+      var m = state[key];
+      if (m.status === "running" && Date.now() >= m.endsAt) {
+        m.status = "done";
+        m.doneAt = m.endsAt;
+        dirty = true;
+      }
+    });
+    if (dirty) render();
+    else { machineView("washer"); machineView("dryer"); }
+  }, 1000);
+
+  render();
+})();
+</script>
