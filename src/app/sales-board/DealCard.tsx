@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./sales-board.module.css";
 import { flattenDealPhotos, type Deal } from "@/lib/salesBoard";
 
@@ -63,11 +63,35 @@ const DOUBLE_TAP_MS = 300;
 // browser won't block the new tab. Any drag past DRAG_THRESHOLD cancels it.
 const LONG_PRESS_MS = 550;
 
+// Key-property-photo hover preview (Settings → Sales Board view). Held back
+// briefly so sweeping the pointer across a column doesn't strobe previews.
+const HOVER_PHOTO_DELAY_MS = 250;
+const HOVER_PHOTO_W = 260;
+const HOVER_PHOTO_H = 190;
+const HOVER_PHOTO_GAP = 10;
+const HOVER_PHOTO_MARGIN = 8;
+
+// Places the preview beside the card, flipping to its left when there's no room
+// on the right and clamping to the viewport so it's never half off-screen.
+// Fixed coordinates (not absolute) because the column body scrolls and would
+// otherwise clip the preview.
+function hoverPhotoPosition(rect: DOMRect) {
+  let left = rect.right + HOVER_PHOTO_GAP;
+  if (left + HOVER_PHOTO_W > window.innerWidth - HOVER_PHOTO_MARGIN) {
+    left = rect.left - HOVER_PHOTO_W - HOVER_PHOTO_GAP;
+  }
+  return {
+    left: Math.max(HOVER_PHOTO_MARGIN, Math.min(left, window.innerWidth - HOVER_PHOTO_W - HOVER_PHOTO_MARGIN)),
+    top: Math.max(HOVER_PHOTO_MARGIN, Math.min(rect.top, window.innerHeight - HOVER_PHOTO_H - HOVER_PHOTO_MARGIN)),
+  };
+}
+
 export default function DealCard({
   deal,
   color,
   showDescriptions,
   showNextAction,
+  hoverPhotoUrl,
   onDragActivate,
   onOpen,
   onAlbums,
@@ -76,6 +100,9 @@ export default function DealCard({
   color: string;
   showDescriptions: boolean;
   showNextAction: boolean;
+  // The property's key photo, shown while a pointer hovers this card. Null when
+  // the view option is off or the property has no key photo set.
+  hoverPhotoUrl: string | null;
   // Start dragging the given card element with the active pointer.
   onDragActivate: (card: HTMLElement, pointerId: number, clientX: number, clientY: number, deal: UiDeal) => void;
   onOpen: (deal: UiDeal) => void;
@@ -90,6 +117,50 @@ export default function DealCard({
   const draggingRef = useRef(false);
   const lastTapRef = useRef(0);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Non-null once the hover preview is actually showing, holding its viewport
+  // coordinates (measured when the delay elapses, not on enter).
+  const [hoverPhotoPos, setHoverPhotoPos] = useState<{ top: number; left: number } | null>(null);
+  const hoverPhotoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearHoverPhoto() {
+    if (hoverPhotoTimerRef.current) {
+      clearTimeout(hoverPhotoTimerRef.current);
+      hoverPhotoTimerRef.current = null;
+    }
+    setHoverPhotoPos(null);
+  }
+
+  function scheduleHoverPhoto(el: HTMLElement) {
+    if (!hoverPhotoUrl) return;
+    clearHoverPhoto();
+    hoverPhotoTimerRef.current = setTimeout(() => {
+      hoverPhotoTimerRef.current = null;
+      setHoverPhotoPos(hoverPhotoPosition(el.getBoundingClientRect()));
+    }, HOVER_PHOTO_DELAY_MS);
+  }
+
+  // The preview is pinned to viewport coordinates measured once, so any scroll
+  // (the column body, the board's horizontal strip, the page) or resize leaves
+  // it stranded beside where the card used to be. Dismiss instead of tracking —
+  // the pointer has effectively left the card anyway.
+  useEffect(() => {
+    if (!hoverPhotoPos) return;
+    const dismiss = () => setHoverPhotoPos(null);
+    window.addEventListener("scroll", dismiss, { capture: true, passive: true });
+    window.addEventListener("resize", dismiss);
+    return () => {
+      window.removeEventListener("scroll", dismiss, { capture: true });
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [hoverPhotoPos]);
+
+  // A card can unmount mid-delay (drag reorder, stage change, refresh) — drop
+  // the pending timer with it.
+  useEffect(() => {
+    return () => {
+      if (hoverPhotoTimerRef.current) clearTimeout(hoverPhotoTimerRef.current);
+    };
+  }, []);
 
   function clearHold() {
     if (holdTimerRef.current) {
@@ -115,6 +186,7 @@ export default function DealCard({
   function startDrag(p: { id: number; x: number; y: number; el: HTMLElement }) {
     clearHold();
     clearLongPress();
+    clearHoverPhoto();
     draggingRef.current = true;
     // Suppress native scrolling for the rest of a finger drag too (pen/mouse
     // were already suppressed on hover/down).
@@ -127,15 +199,24 @@ export default function DealCard({
   // starts without the column trying to scroll and stealing the drag. A finger
   // never hovers, so it keeps native scrolling.
   function handlePointerEnter(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.pointerType !== "touch") (e.currentTarget as HTMLElement).style.touchAction = "none";
+    if (e.pointerType === "touch") return;
+    (e.currentTarget as HTMLElement).style.touchAction = "none";
+    // Hover is a pointer-only concept — a finger "enters" a card on tap, which
+    // would flash the preview over whatever the tap was about to do.
+    scheduleHoverPhoto(e.currentTarget as HTMLElement);
   }
   function handlePointerLeave(e: React.PointerEvent<HTMLDivElement>) {
+    clearHoverPhoto();
     if (!draggingRef.current && !pointerRef.current) (e.currentTarget as HTMLElement).style.touchAction = "";
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (deal._pending) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    // Pressing means opening, dragging, or arming the link — get the preview
+    // out of the way for all three (and out from under .is-pressing's
+    // transform, which would otherwise become its containing block).
+    clearHoverPhoto();
     const el = e.currentTarget as HTMLElement;
     const touch = e.pointerType === "touch";
     // Pen/mouse never scrolls the column — kill native panning up front so a
@@ -228,6 +309,7 @@ export default function DealCard({
   function handlePointerCancel() {
     clearHold();
     clearLongPress();
+    clearHoverPhoto();
     const p = pointerRef.current;
     if (p?.touch) p.el.style.touchAction = "";
     draggingRef.current = false;
@@ -235,6 +317,7 @@ export default function DealCard({
   }
 
   return (
+    <>
     <div
       className={[
         styles.card,
@@ -316,5 +399,20 @@ export default function DealCard({
 
       {deal._error && <div className={styles["card-error"]}>{deal._error}</div>}
     </div>
+
+    {/* Rendered as the card's sibling, not its child, so .is-pressing's
+        transform can never turn the card into this fixed box's containing
+        block. Decorative — the card itself carries the accessible name. */}
+    {hoverPhotoUrl && hoverPhotoPos && (
+      <div
+        className={styles["card-hover-photo"]}
+        style={{ top: hoverPhotoPos.top, left: hoverPhotoPos.left }}
+        aria-hidden="true"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={hoverPhotoUrl} alt="" draggable={false} />
+      </div>
+    )}
+    </>
   );
 }

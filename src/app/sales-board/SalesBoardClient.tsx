@@ -213,9 +213,16 @@ interface DragState {
 export default function SalesBoardClient({
   initialDeals,
   initialPropertyOptions,
+  hoverPropertyPhoto,
+  propertyCoverUrls,
 }: {
   initialDeals: Deal[];
   initialPropertyOptions: PropertyOption[];
+  // Settings → Sales Board view → "Show key property photo on hover".
+  hoverPropertyPhoto: boolean;
+  // Property id -> key photo URL. Empty when the option is off, and missing
+  // entries just mean that property has no key photo to preview.
+  propertyCoverUrls: Record<number, string>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1136,6 +1143,11 @@ export default function SalesBoardClient({
                         color={color}
                         showDescriptions={showDescriptions}
                         showNextAction={showNextAction}
+                        hoverPhotoUrl={
+                          hoverPropertyPhoto && deal.property_id != null
+                            ? propertyCoverUrls[deal.property_id] ?? null
+                            : null
+                        }
                         onDragActivate={beginCardDrag}
                         onOpen={(d) => setActiveDealId(d.id)}
                         onAlbums={(d) => router.push(`/photos?deal=${d.id}`)}

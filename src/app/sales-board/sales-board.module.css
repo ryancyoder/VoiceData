@@ -406,6 +406,42 @@
    cues the user that releasing now opens the link in a new tab. */
 .card.is-link-armed { box-shadow: 0 0 0 2px var(--col-color); }
 
+/* The property's key photo, previewed while a pointer hovers the card (see
+   Settings → Sales Board view). Fixed rather than absolute: the column body
+   scrolls, and an absolutely-positioned preview would be clipped by it. The
+   size here is the source of truth for the placement math in DealCard.tsx —
+   change both together. Never takes the pointer, so it can't interrupt a
+   click, drag, or the hover it's showing for. */
+.card-hover-photo {
+  position: fixed;
+  /* Above the board's own chrome (toolbar 10, column bits ≤20) but below the
+     drag ghost (50) and the modal overlay (40) — it's a board affordance, so
+     nothing that covers the board should ever have it floating on top. */
+  z-index: 30;
+  width: 260px;
+  height: 190px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.22);
+  pointer-events: none;
+  animation: card-hover-photo-in 0.12s ease-out;
+}
+.card-hover-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+@keyframes card-hover-photo-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-hover-photo { animation: none; }
+}
+
 /* ── Board / Table view toggle ────────────────────────────────────── */
 .view-toggle {
   display: inline-flex;
