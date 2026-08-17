@@ -1045,7 +1045,7 @@ export default function SalesBoardClient({
         <DealTable deals={activeDeals} onOpen={(d) => setActiveDealId(d.id)} />
       ) : (
       <div className={styles["board-wrap"]}>
-        <div className={styles.board}>
+        <div className={`${styles.board} ${hoverPhotoMode === "pane" ? styles["has-photo-pane"] : ""}`}>
           {STAGES.map((stage) => {
             const stageDeals = activeDeals.filter((d) => d.stage === stage);
             const stageTotal = stageDeals.reduce((sum, d) => sum + (d.value || 0), 0);

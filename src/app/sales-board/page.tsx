@@ -17,41 +17,68 @@ type RawProperty = {
   contacts: { last_name: string | null } | null;
 };
 
+type FallbackPhotoRow = Pick<DealPhoto, "media_type" | "storage_path" | "poster_path"> & {
+  property_id: number;
+};
+
 /**
- * Maps property id -> displayable URL of that property's key photo (its album
- * cover), for the deal-card hover preview. Resolved here rather than on hover
- * so the preview paints immediately; only the image bytes load lazily.
+ * Maps property id -> displayable URL of that property's key photo, for the
+ * deal-card hover preview. Resolved here rather than on hover so the preview
+ * paints immediately; only the image bytes load lazily.
  *
- * Cover ids are looked up in one batch query instead of per property. Photos
- * are keyed by their own id, not by property, because a cover is reached
- * through properties.cover_photo_id — deal_photos is a junction across
- * events/deals/properties, so embedding it risks PostgREST ambiguity (the same
- * reason /api/properties/[id]/cover uses two plain queries).
+ * Mirrors what the photo gallery shows on an album tile, which is
+ * `photos.find(id === coverPhotoId) ?? photos[0]` — so a property with photos
+ * but no cover chosen still previews something instead of reading as empty:
+ *
+ *   1. the explicit cover (properties.cover_photo_id), then
+ *   2. whatever the gallery would have fallen back to, via the
+ *      property_fallback_photos() RPC (see that function for the ordering, and
+ *      for why it groups by events.property_id rather than by the deal).
+ *
+ * The fallback lives in SQL because picking it in JS would mean pulling every
+ * event photo in the database to use one row per property.
+ *
+ * Covers are looked up by photo id in one batch query rather than embedded:
+ * deal_photos is a junction across events/deals/properties, so embedding it
+ * risks PostgREST ambiguity (the same reason /api/properties/[id]/cover uses
+ * two plain queries).
  */
 async function loadPropertyCoverUrls(properties: RawProperty[]): Promise<Record<number, string>> {
   const coverIds = [...new Set(properties.map((p) => p.cover_photo_id).filter((id): id is number => id != null))];
-  if (coverIds.length === 0) return {};
 
-  const { data, error } = await supabase
-    .from("deal_photos")
-    .select("id, storage_path, poster_path, media_type")
-    .in("id", coverIds);
-  // A failed cover lookup costs the hover preview, not the board — fall back to
-  // no previews rather than failing the whole page.
-  if (error) return {};
-
-  const photosById = new Map<number, Pick<DealPhoto, "media_type" | "storage_path" | "poster_path">>();
-  for (const photo of data ?? []) photosById.set(photo.id, photo);
+  const [coversRes, fallbackRes] = await Promise.all([
+    coverIds.length > 0
+      ? supabase.from("deal_photos").select("id, storage_path, poster_path, media_type").in("id", coverIds)
+      : Promise.resolve({ data: [], error: null }),
+    supabase.rpc("property_fallback_photos"),
+  ]);
 
   const urls: Record<number, string> = {};
-  for (const property of properties) {
-    if (property.cover_photo_id == null) continue;
-    const photo = photosById.get(property.cover_photo_id);
-    // A cover pointing at a deleted photo, or a video whose poster capture
-    // failed, has nothing renderable — leave those properties out entirely.
-    const url = photo ? dealThumbUrl(photo) : null;
-    if (url) urls[property.id] = url;
+
+  // Fallbacks first so an explicit cover always overwrites one. A failure in
+  // either lookup costs previews, not the board — the page still renders.
+  if (!fallbackRes.error) {
+    for (const row of (fallbackRes.data ?? []) as FallbackPhotoRow[]) {
+      const url = dealThumbUrl(row);
+      if (url) urls[row.property_id] = url;
+    }
   }
+
+  if (!coversRes.error) {
+    const photosById = new Map<number, Pick<DealPhoto, "media_type" | "storage_path" | "poster_path">>();
+    for (const photo of coversRes.data ?? []) photosById.set(photo.id, photo);
+
+    for (const property of properties) {
+      if (property.cover_photo_id == null) continue;
+      const photo = photosById.get(property.cover_photo_id);
+      // A cover pointing at a deleted photo, or at a video whose poster capture
+      // failed, has nothing renderable. Leave whatever the fallback found in
+      // place rather than blanking the property out.
+      const url = photo ? dealThumbUrl(photo) : null;
+      if (url) urls[property.id] = url;
+    }
+  }
+
   return urls;
 }
 

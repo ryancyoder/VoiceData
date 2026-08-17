@@ -9,7 +9,7 @@ import type { UiDeal } from "./DealCard";
 //
 // It holds the last hovered deal rather than clearing on pointer-leave, so it
 // stays useful while you read it. `deal` null means nothing has been hovered
-// yet this session; a hovered deal whose property has no key photo says so
+// yet this session; a hovered deal whose property has no photo at all says so
 // explicitly rather than silently keeping the previous photo up, which would
 // misattribute one property's photo to another deal.
 export default function PropertyPhotoPane({
@@ -33,7 +33,7 @@ export default function PropertyPhotoPane({
           <img src={url} alt={`Key photo for ${deal?.property?.address ?? deal?.deal_name ?? "property"}`} />
         ) : (
           <p className={styles["photo-pane-empty"]}>
-            {deal ? "No key photo set for this property." : "Hover a deal card to see its property photo."}
+            {deal ? "No photos for this property yet." : "Hover a deal card to see its property photo."}
           </p>
         )}
       </div>
