@@ -91,9 +91,10 @@ export default function SalesBoardViewSetting() {
         <span>
           <strong>Show key property photo on hover</strong>
           <span className={styles.toggleHint}>
-            Hovering a deal card shows that property&apos;s key photo — the album cover set in the photo
-            gallery. Deals whose property has no key photo set show nothing. Pointer only, so it never
-            interferes with touch.
+            Hovering a deal card shows that property&apos;s key photo — the same image the photo gallery
+            puts on the album tile. That&apos;s the cover you starred in the gallery, or, if you
+            haven&apos;t starred one, whichever photo the album falls back to. Only a property with no
+            photos at all shows nothing. Pointer only, so it never interferes with touch.
           </span>
         </span>
       </label>

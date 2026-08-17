@@ -308,6 +308,12 @@
 
 .board { display: flex; gap: 14px; min-height: 0; width: max-content; }
 
+/* Only when the wide-screen photo pane is present: span the full scroll
+   container so the pane has leftover width to grow into. Scoped to that case so
+   the board's sizing is untouched for everyone else — the stage columns are
+   fixed-width and never grow, so this only ever adds trailing slack. */
+.board.has-photo-pane { min-width: 100%; }
+
 .column {
   width: 378px;
   flex-shrink: 0;
@@ -447,9 +453,15 @@
    board's flex row, sitting after the last stage. Slightly wider than a stage
    column so the photo is worth the space it takes. Shares the column's shell
    (surface, border, radius, max-height) so it reads as part of the board. */
+/* Fills whatever horizontal space the stage columns leave over, rather than
+   taking a fixed slice. .board is width:max-content, which would size to
+   content and leave nothing to grow into — .has-photo-pane stretches it to the
+   scroll container so there's real slack for this to absorb. When the columns
+   already overflow (a screen too narrow for the whole board) there is no slack
+   and the pane settles at its flex-basis. */
 .photo-pane {
-  width: 420px;
-  flex-shrink: 0;
+  flex: 1 1 420px;
+  min-width: 420px;
   display: flex;
   flex-direction: column;
   background: var(--surface-2);
