@@ -84,6 +84,55 @@
   color: #fff;
 }
 
+/* Inline save state for cards that save on change instead of behind a button. */
+.saveNote {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* A checkbox view option: box on the left, label + explanation stacked beside it. */
+.toggleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.toggleRow input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.toggleRow input:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.toggleRow > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.toggleRow strong {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.toggleHint {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  max-width: 52ch;
+}
+.toggleError {
+  color: var(--danger, #c0392b);
+  font-size: 0.85rem;
+  margin: 8px 0 0;
+}
+
 .toolLink {
   flex: 0 0 auto;
   display: inline-block;

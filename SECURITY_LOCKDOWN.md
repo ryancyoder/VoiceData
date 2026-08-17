@@ -9,6 +9,11 @@
 > public-read. Security advisors now report only the expected
 > `rls_enabled_no_policy` INFO notices (RLS on + no policy = deny-all for anon).
 > The steps below are retained as the record and for rollback.
+>
+> **Read [section E](#e-expected-advisor-state--do-not-fix-these) before acting on
+> any RLS audit finding.** "RLS enabled but no policies" is the intended end state
+> here, not a bug. Adding policies for `anon`/`authenticated` — or disabling RLS —
+> would undo this entire lockdown.
 
 Originally the app shipped the public Supabase **anon key** to the browser and
 every table/bucket had "allow all" policies for `anon`, so anyone could read/
@@ -102,6 +107,63 @@ end $$;
 -- 4) Minor advisor fix: pin the function search_path.
 alter function public.plant_albums set search_path = public, pg_temp;
 ```
+
+## E. Expected advisor state — do not "fix" these
+
+Supabase's linter reports `rls_enabled_no_policy` (INFO) for **every** table in
+`public`. That is the deliberate outcome of step D.1, not an oversight:
+
+| | anon / authenticated | service_role (the app) |
+|---|---|---|
+| read | denied | allowed (bypasses RLS) |
+| insert / update / delete | denied | allowed (bypasses RLS) |
+
+RLS is enforced **per role, not per statement**. `service_role` bypasses it
+entirely, so there is no state in which reads succeed but writes fail for the
+app's own connection — both go through the same server-side client
+(`src/lib/supabaseClient.ts`). If reads are working in production, the
+service-role key is configured and writes work too.
+
+**A report that "RLS blocks all writes" is therefore a misreading of the
+advisor output.** Verify before acting on one — this probe rolls itself back:
+
+```sql
+do $$
+declare a text; b text;
+begin
+  begin set local role anon;         insert into public.properties default values; a := 'ALLOWED';
+  exception when others then a := SQLERRM; end; reset role;
+  begin set local role service_role; insert into public.properties default values; b := 'ALLOWED';
+  exception when others then b := SQLERRM; end; reset role;
+  raise exception E'anon: %\nservice_role: %', a, b;
+end $$;
+```
+
+Expected: anon → `new row violates row-level security policy`; service_role →
+past RLS (it fails only on a NOT NULL constraint). Last verified 2026-08-17.
+
+Applying either remedy the linter suggests — adding `anon`/`authenticated`
+policies, or `disable row level security` — would re-expose all 47 tables to the
+public anon key, which **is** shipped to the browser. Neither is wanted. The
+browser client is used only for `supabase.storage` uploads; no client-side code
+reads or writes tables, so no table needs an anon policy.
+
+### Follow-up fixes applied 2026-08-17
+
+Auditing the above surfaced two genuine issues — one of them the *opposite* of
+the reported problem:
+
+1. **`public.tasks` had a leftover `Allow all for authenticated and anon`
+   policy** granting role `public` (which includes anon) full read/write/delete
+   on every task row. It postdated the D.1 sweep, so it was the one table still
+   open. Dropped — `tasks` now matches the other 46.
+2. **`vector` extension moved out of `public`** into `extensions` (advisor 0014).
+   This required repointing `voicemap_match_nodes` and `voicemap_related_pages`,
+   which pinned `search_path = public, pg_temp` and use the pgvector `<=>`
+   operator and `vector(384)` cast; without the repoint both would fail with
+   `type "vector" does not exist`. Both verified returning rows afterward, and
+   the 268 node / 18 wiki embeddings are untouched. Existing `vector` columns
+   reference the type by OID and needed no rewrite.
 
 ## Rollback
 
