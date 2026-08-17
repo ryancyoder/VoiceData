@@ -272,6 +272,10 @@
 }
 /* Read-only Outlook overlay — hatched indigo, dashed, never intercepts clicks
    (pointer-events:none), sits under the app's own events. */
+/* The title sits bottom-right rather than top-left: a real event draws its own
+   name in the top-left of the same cell, and the two were landing on top of
+   each other. The import button keeps the top-right corner, so on a tall event
+   the two overlay bits are diagonally opposite. */
 .outlook-event {
   position: absolute;
   z-index: 1;
@@ -280,6 +284,10 @@
   border-radius: 5px;
   padding: 1px 4px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-end;
   border: 1px dashed rgba(99, 102, 241, 0.55);
   background: repeating-linear-gradient(
     45deg,
@@ -297,6 +305,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* max-width so a long title still ellipsises rather than forcing the flex
+     item wider than the event; text-align:right keeps the ellipsis on the left
+     side of the text, anchoring the readable part to the corner. */
+  max-width: 100%;
+  text-align: right;
 }
 .outlook-allday {
   position: absolute;

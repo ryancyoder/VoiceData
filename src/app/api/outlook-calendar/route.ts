@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import IcalExpander from "ical-expander";
-import { getSetting, OUTLOOK_ICS_KEY } from "@/lib/appSettings";
+import {
+  getSetting,
+  getNumberSetting,
+  OUTLOOK_ICS_KEY,
+  OUTLOOK_OPACITY_KEY,
+  OUTLOOK_OPACITY_DEFAULT,
+  OUTLOOK_OPACITY_MIN,
+  OUTLOOK_OPACITY_MAX,
+} from "@/lib/appSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +19,15 @@ export const dynamic = "force-dynamic";
 // the fetch is cached briefly rather than hit on every calendar navigation.
 export async function GET(req: NextRequest) {
   const debug = req.nextUrl.searchParams.get("debug") === "1";
-  const feedUrl = await getSetting(OUTLOOK_ICS_KEY);
+  // Returned on every path below (including the error ones) so the calendar
+  // picks the overlay opacity up from the fetch it already makes each week,
+  // rather than needing a second settings request.
+  const [feedUrl, opacity] = await Promise.all([
+    getSetting(OUTLOOK_ICS_KEY),
+    getNumberSetting(OUTLOOK_OPACITY_KEY, OUTLOOK_OPACITY_DEFAULT, OUTLOOK_OPACITY_MIN, OUTLOOK_OPACITY_MAX),
+  ]);
   if (!feedUrl) {
-    return NextResponse.json(debug ? { configured: false, note: "No feed URL saved in Settings." } : { configured: false, events: [] });
+    return NextResponse.json(debug ? { configured: false, opacity, note: "No feed URL saved in Settings." } : { configured: false, opacity, events: [] });
   }
 
   const startParam = req.nextUrl.searchParams.get("start");
@@ -36,17 +50,18 @@ export async function GET(req: NextRequest) {
   try {
     const res = await fetch(feedUrl, { next: { revalidate: debug ? 0 : 600 } });
     if (!res.ok) {
-      return NextResponse.json({ configured: true, error: `Feed returned HTTP ${res.status}`, feedHost, events: [] });
+      return NextResponse.json({ configured: true, opacity, error: `Feed returned HTTP ${res.status}`, feedHost, events: [] });
     }
     ics = await res.text();
   } catch {
-    return NextResponse.json({ configured: true, error: "Could not reach the calendar feed", feedHost, events: [] });
+    return NextResponse.json({ configured: true, opacity, error: "Could not reach the calendar feed", feedHost, events: [] });
   }
 
   if (debug) {
     const veventCount = (ics.match(/BEGIN:VEVENT/g) || []).length;
     return NextResponse.json({
       configured: true,
+      opacity,
       feedHost,
       fetchedBytes: ics.length,
       looksLikeIcs: ics.includes("BEGIN:VCALENDAR"),
@@ -61,7 +76,7 @@ export async function GET(req: NextRequest) {
     const expander = new IcalExpander({ ics, maxIterations: 2000, skipInvalidDates: true });
     expanded = expander.between(start, end);
   } catch {
-    return NextResponse.json({ configured: true, error: "Could not parse the calendar feed", feedHost, events: [] });
+    return NextResponse.json({ configured: true, opacity, error: "Could not parse the calendar feed", feedHost, events: [] });
   }
 
   type Occ = {
@@ -104,5 +119,5 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json({ configured: true, events });
+  return NextResponse.json({ configured: true, opacity, events });
 }

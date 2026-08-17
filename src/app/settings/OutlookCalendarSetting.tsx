@@ -1,15 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./settings.module.css";
 
+const OPACITY_DEFAULT = 100;
+// Dragging the slider fires a change per pixel; only the pause at the end is
+// worth a round trip.
+const OPACITY_SAVE_DEBOUNCE_MS = 400;
+
 // The published Outlook calendar .ics feed URL, overlaid read-only on the
-// Calendar. Stored server-side (it's a secret link) via /api/settings/outlook-ics.
+// Calendar, plus how strongly that overlay is drawn. Stored server-side (the
+// feed URL is a secret link) via /api/settings/outlook-ics.
 export default function OutlookCalendarSetting() {
   const [url, setUrl] = useState("");
+  const [opacity, setOpacity] = useState(OPACITY_DEFAULT);
   const [loaded, setLoaded] = useState(false);
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState("");
+  const opacityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -18,6 +26,7 @@ export default function OutlookCalendarSetting() {
       .then((d) => {
         if (active) {
           setUrl(d.url ?? "");
+          setOpacity(typeof d.opacity === "number" ? d.opacity : OPACITY_DEFAULT);
           setLoaded(true);
         }
       })
@@ -27,14 +36,23 @@ export default function OutlookCalendarSetting() {
     };
   }, []);
 
-  async function save() {
+  // Drop a debounced save that's still pending when the page goes away.
+  useEffect(() => {
+    return () => {
+      if (opacityTimerRef.current) clearTimeout(opacityTimerRef.current);
+    };
+  }, []);
+
+  // Sends only the named fields. The route leaves anything absent alone, so the
+  // slider never has to restate the feed URL (and can't blank it by omission).
+  async function post(patch: { url?: string; opacity?: number }) {
     setState("saving");
     setError("");
     try {
       const res = await fetch("/api/settings/outlook-ics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(patch),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -43,12 +61,26 @@ export default function OutlookCalendarSetting() {
         return;
       }
       setUrl(data.url ?? "");
+      if (typeof data.opacity === "number") setOpacity(data.opacity);
       setState("saved");
       setTimeout(() => setState("idle"), 2000);
     } catch {
       setError("Couldn't save");
       setState("idle");
     }
+  }
+
+  async function save() {
+    await post({ url });
+  }
+
+  function handleOpacityChange(next: number) {
+    setOpacity(next);
+    if (opacityTimerRef.current) clearTimeout(opacityTimerRef.current);
+    opacityTimerRef.current = setTimeout(() => {
+      opacityTimerRef.current = null;
+      void post({ opacity: next });
+    }, OPACITY_SAVE_DEBOUNCE_MS);
   }
 
   return (
@@ -81,6 +113,31 @@ export default function OutlookCalendarSetting() {
           Not connected yet — paste a feed URL and Save.
         </p>
       )}
+
+      {/* Saves on its own (debounced), unlike the feed URL above — there's
+          nothing to review before committing a slider. */}
+      <div className={styles.sliderRow}>
+        <label htmlFor="outlook-opacity">
+          <strong>Overlay strength</strong>
+          <span className={styles.toggleHint}>
+            How strongly Outlook events are drawn over your own. Turn it down when the overlay competes
+            with real events for attention.
+          </span>
+        </label>
+        <div className={styles.sliderControl}>
+          <input
+            id="outlook-opacity"
+            type="range"
+            min={10}
+            max={100}
+            step={5}
+            value={opacity}
+            disabled={!loaded}
+            onChange={(e) => handleOpacityChange(Number(e.target.value))}
+          />
+          <output htmlFor="outlook-opacity">{opacity}%</output>
+        </div>
+      </div>
     </div>
   );
 }
