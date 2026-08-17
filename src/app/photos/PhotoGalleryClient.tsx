@@ -830,17 +830,15 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
         </div>
         {propertyGroups.length > 0 && (
           <div className={styles["topbar-actions"]}>
-            {!activeProperty && (
-              <button
-                type="button"
-                className={styles["caption-toggle"]}
-                onClick={() => setBigTiles((v) => !v)}
-                aria-pressed={bigTiles}
-                title={bigTiles ? "Smaller tiles" : "Larger tiles"}
-              >
-                {bigTiles ? "⊟ Smaller" : "⊞ Larger"}
-              </button>
-            )}
+            <button
+              type="button"
+              className={styles["caption-toggle"]}
+              onClick={() => setBigTiles((v) => !v)}
+              aria-pressed={bigTiles}
+              title={bigTiles ? "Smaller tiles" : "Larger tiles"}
+            >
+              {bigTiles ? "⊟ Smaller" : "⊞ Larger"}
+            </button>
             <button
               type="button"
               className={`${styles["caption-toggle"]} ${showCaptions ? styles["is-active"] : ""}`}
