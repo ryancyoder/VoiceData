@@ -435,6 +435,10 @@ export default function CalendarClient({
   const [showOutlook, setShowOutlook] = usePersistentState("calendar.showOutlook", true);
   const [outlookEvents, setOutlookEvents] = useState<OutlookEvt[]>([]);
   const [outlookConfigured, setOutlookConfigured] = useState(false);
+  // How strongly to draw the overlay, 0–1 (Settings → Outlook calendar overlay
+  // → Overlay strength). Delivered with the feed itself so this costs no extra
+  // request. 1 until the first response lands, which is the pre-setting look.
+  const [outlookOpacity, setOutlookOpacity] = useState(1);
   useEffect(() => {
     let active = true;
     const params = new URLSearchParams({
@@ -447,6 +451,7 @@ export default function CalendarClient({
         if (!active) return;
         setOutlookConfigured(!!d.configured);
         setOutlookEvents(Array.isArray(d.events) ? d.events : []);
+        if (typeof d.opacity === "number") setOutlookOpacity(d.opacity / 100);
       })
       .catch(() => {
         /* keep whatever we last had on a transient error */
@@ -1633,6 +1638,7 @@ export default function CalendarClient({
                         height,
                         left: `${(lane / totalLanes) * 100}%`,
                         width: `${100 / totalLanes}%`,
+                        opacity: outlookOpacity,
                       }}
                       title={`${ev.title}${ev.location ? ` · ${ev.location}` : ""} — Outlook`}
                     >
@@ -1655,7 +1661,7 @@ export default function CalendarClient({
                       <div
                         key={`olad-${e.id}`}
                         className={styles["outlook-allday"]}
-                        style={{ top: i * 15 }}
+                        style={{ top: i * 15, opacity: outlookOpacity }}
                         title={`${e.title} — Outlook (all day)`}
                       >
                         {e.title}

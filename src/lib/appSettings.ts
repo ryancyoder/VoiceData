@@ -3,6 +3,15 @@ import { supabase } from "@/lib/supabaseClient";
 // Simple key/value app settings, stored in the app_settings table.
 export const OUTLOOK_ICS_KEY = "outlook_ics_url";
 
+// How strongly the read-only Outlook overlay is drawn on the Calendar, as a
+// percentage. The overlay competes with real events for attention, so this
+// dials it back. 100 = today's appearance, which is the default so the setting
+// changes nothing until it's deliberately turned down.
+export const OUTLOOK_OPACITY_KEY = "calendar_outlook_opacity";
+export const OUTLOOK_OPACITY_DEFAULT = 100;
+export const OUTLOOK_OPACITY_MIN = 10;
+export const OUTLOOK_OPACITY_MAX = 100;
+
 // Sales Board view option: hovering a deal card shows that deal's property
 // "key photo" (properties.cover_photo_id — the same album cover the deal modal
 // puts in its header). Off unless explicitly turned on.
@@ -35,6 +44,32 @@ export async function setSetting(key: string, value: string | null): Promise<{ e
 // which keeps every toggle opt-in rather than silently defaulting to on.
 export async function getFlagSetting(key: string): Promise<boolean> {
   return (await getSetting(key)) === "1";
+}
+
+// Numeric settings ride the same string column. Anything unparseable — an unset
+// key, a value left over from another shape — reads as the caller's fallback,
+// and everything is clamped, so a bad stored value can never produce an
+// out-of-range result downstream.
+export async function getNumberSetting(
+  key: string,
+  fallback: number,
+  min: number,
+  max: number
+): Promise<number> {
+  const raw = await getSetting(key);
+  const parsed = raw != null ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
+export async function setNumberSetting(
+  key: string,
+  value: number,
+  min: number,
+  max: number
+): Promise<{ error: string | null }> {
+  const clamped = Math.min(max, Math.max(min, Math.round(value)));
+  return setSetting(key, String(clamped));
 }
 
 export async function setFlagSetting(key: string, on: boolean): Promise<{ error: string | null }> {
