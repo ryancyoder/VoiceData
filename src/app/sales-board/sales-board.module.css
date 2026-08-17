@@ -442,6 +442,77 @@
   .card-hover-photo { animation: none; }
 }
 
+/* ── Wide-screen property photo pane ──────────────────────────────── */
+/* The "Wide screen" alternative to .card-hover-photo: a real column in the
+   board's flex row, sitting after the last stage. Slightly wider than a stage
+   column so the photo is worth the space it takes. Shares the column's shell
+   (surface, border, radius, max-height) so it reads as part of the board. */
+.photo-pane {
+  width: 420px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 100%;
+  overflow: hidden;
+}
+.photo-pane-head {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.photo-pane-title {
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+/* Takes the slack so the footer stays pinned to the bottom and the image is
+   centered in whatever height is left. min-height:0 lets it actually shrink
+   inside the flex column instead of overflowing it. */
+.photo-pane-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+/* contain, not cover: this is the one place the whole photo should be visible
+   rather than cropped to a tile. */
+.photo-pane-body img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  display: block;
+}
+.photo-pane-empty {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  text-align: center;
+  max-width: 28ch;
+  line-height: 1.5;
+}
+.photo-pane-foot {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+}
+.photo-pane-deal {
+  font-size: 0.85rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.photo-pane-addr {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Board / Table view toggle ────────────────────────────────────── */
 .view-toggle {
   display: inline-flex;
