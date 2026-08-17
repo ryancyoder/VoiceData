@@ -464,6 +464,28 @@
   overflow: hidden;
 }
 
+/* Always-visible way back to the album, pinned top-left over the photo. */
+.lightbox-back {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  left: calc(10px + env(safe-area-inset-left));
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 9px 15px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.lightbox-back:hover { background: rgba(0, 0, 0, 0.74); }
+
 .lightbox-image-wrap {
   position: relative;
   flex: 1;

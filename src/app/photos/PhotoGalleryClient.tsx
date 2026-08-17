@@ -1265,6 +1265,14 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           }}
         >
           <div className={styles["lightbox-panel"]}>
+            <button
+              type="button"
+              className={styles["lightbox-back"]}
+              aria-label="Back to album"
+              onClick={() => setActiveIndex(null)}
+            >
+              ‹ Back
+            </button>
             <div className={styles["lightbox-image-wrap"]}>
               {activePhoto.media_type === "video" ? (
                 <video
