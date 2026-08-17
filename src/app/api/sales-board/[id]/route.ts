@@ -36,6 +36,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.opportunity_link !== undefined) updates.opportunity_link = body.opportunity_link?.trim() || null;
   if (body.value !== undefined) updates.value = body.value;
   if (body.stage !== undefined) updates.stage = body.stage;
+  // Setting/clearing lost_at automatically flips the generated `status` column
+  // (Closed when lost, else by stage) — see the status generation expression —
+  // so a lost deal reads as Closed everywhere, not only where lost_at is checked.
   if (body.lost_at !== undefined) updates.lost_at = body.lost_at;
 
   if (Object.keys(updates).length === 0 && !contactProvided) {

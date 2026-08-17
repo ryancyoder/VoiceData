@@ -435,7 +435,8 @@ export default function SalesBoardClient({
     const lost = !deal.lost_at;
     const previous = deals;
     const lostAt = lost ? new Date().toISOString() : null;
-    setDeals((ds) => ds.map((d) => (d.id === deal.id ? { ...d, lost_at: lostAt } : d)));
+    const status: Deal["status"] = lost ? "Closed" : "Open";
+    setDeals((ds) => ds.map((d) => (d.id === deal.id ? { ...d, lost_at: lostAt, status } : d)));
     try {
       const res = await fetch(`/api/sales-board/${deal.id}`, {
         method: "PATCH",
