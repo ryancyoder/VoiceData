@@ -459,7 +459,7 @@
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  background: #000;
   border-radius: 0;
   overflow: hidden;
 }
@@ -503,18 +503,45 @@
 .lightbox-dims-chip b { font-weight: 650; }
 .lightbox-dims-chip span { color: #d4f7e0; font-variant-numeric: tabular-nums; }
 
+/* Controls float over the bottom of the photo so the image uses the full
+   screen. Translucent gradient + light-on-dark controls. */
 .lightbox-head {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  border-top: 1px solid var(--border);
+  gap: 8px 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: none;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.32) 65%, rgba(0, 0, 0, 0));
 }
+.lightbox-head .lightbox-title { color: #fff; }
+.lightbox-head .lightbox-nav,
+.lightbox-head .lightbox-cover,
+.lightbox-head .lightbox-annotate {
+  color: #f2f4f7;
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.lightbox-head .lightbox-close { color: #fff; }
+.lightbox-head .lightbox-caption-input {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+.lightbox-head .lightbox-caption-input::placeholder { color: rgba(255, 255, 255, 0.62); }
 .lightbox-head-main { min-width: 0; }
 .lightbox-title { font-size: 0.95rem; font-weight: 650; }
 .lightbox-meta { font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; }
-.lightbox-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.lightbox-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; overflow-x: auto; min-width: 0; -webkit-overflow-scrolling: touch; }
+.lightbox-actions > * { flex-shrink: 0; }
 
 .lightbox-nav {
   background: none;
