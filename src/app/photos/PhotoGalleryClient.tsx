@@ -9,6 +9,7 @@ import type { EventType } from "@/lib/events";
 import { fetchWithTimeout } from "@/lib/withTimeout";
 import { readClientExif } from "@/lib/clientExif";
 import { compressImage } from "@/lib/compressImage";
+import { usePersistentState } from "@/lib/usePersistentState";
 import PhotoAnnotator from "@/components/PhotoAnnotator";
 import EstimateGroupLinker from "./EstimateGroupLinker";
 import { refEventId } from "./refEventId";
@@ -103,7 +104,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // Overlay captions on the fronts of the images — a viewing preference,
   // persisted per browser.
   const [showCaptions, setShowCaptions] = useState(false);
-  const [bigTiles, setBigTiles] = useState(false);
+  const [bigTiles, setBigTiles] = usePersistentState("photos.bigTiles", false);
   // Deal whose Action section is currently a drag-over drop target (for the
   // "drag a photo into the Action section to make it the next action" gesture).
   const [dragOverDealId, setDragOverDealId] = useState<number | null>(null);
@@ -968,7 +969,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                           </span>
                         </div>
                         {activeProperty.referencePhotos.length > 0 ? (
-                          <div className={styles.grid}>
+                          <div className={`${styles.grid} ${bigTiles ? styles["grid-large"] : ""}`}>
                             {activeProperty.referencePhotos.map((photo) => {
                               runningIndex += 1;
                               const i = runningIndex;
@@ -1142,7 +1143,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                             {pasteFeedback && pasteFeedback.eventId === event.id && (
                               <div className={styles["event-paste-error"]}>{pasteFeedback.message}</div>
                             )}
-                            <div className={styles.grid}>
+                            <div className={`${styles.grid} ${bigTiles ? styles["grid-large"] : ""}`}>
                               {event.photos.map((photo) => {
                                 runningIndex += 1;
                                 const i = runningIndex;
