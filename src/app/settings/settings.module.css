@@ -127,6 +127,16 @@
   line-height: 1.45;
   max-width: 52ch;
 }
+/* A view option that only refines the one above it — indented, and visibly
+   inert while its parent option is off. */
+.toggleSub {
+  margin-top: 12px;
+  padding-left: 26px;
+}
+.toggleSub:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
 .toggleError {
   color: var(--danger, #c0392b);
   font-size: 0.85rem;

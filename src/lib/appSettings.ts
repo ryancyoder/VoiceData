@@ -5,8 +5,13 @@ export const OUTLOOK_ICS_KEY = "outlook_ics_url";
 
 // Sales Board view option: hovering a deal card shows that deal's property
 // "key photo" (properties.cover_photo_id — the same album cover the deal modal
-// puts in its header) as a floating preview. Off unless explicitly turned on.
+// puts in its header). Off unless explicitly turned on.
 export const SALES_BOARD_HOVER_PHOTO_KEY = "sales_board_hover_property_photo";
+
+// Where that preview is drawn. Off = a floating box beside the hovered card;
+// on = a full-height pane pinned after the last stage column. Only meaningful
+// while SALES_BOARD_HOVER_PHOTO_KEY is on.
+export const SALES_BOARD_HOVER_PHOTO_WIDE_KEY = "sales_board_hover_property_photo_wide";
 
 export async function getSetting(key: string): Promise<string | null> {
   const { data, error } = await supabase.from("app_settings").select("value").eq("key", key).maybeSingle();

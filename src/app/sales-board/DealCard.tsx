@@ -63,8 +63,14 @@ const DOUBLE_TAP_MS = 300;
 // browser won't block the new tab. Any drag past DRAG_THRESHOLD cancels it.
 const LONG_PRESS_MS = 550;
 
+// How the key-property-photo hover preview is presented (Settings → Sales
+// Board view): not at all, a floating box beside the card, or handed to the
+// board's wide-screen pane to draw.
+export type HoverPhotoMode = "off" | "floating" | "pane";
+
 // Key-property-photo hover preview (Settings → Sales Board view). Held back
-// briefly so sweeping the pointer across a column doesn't strobe previews.
+// briefly so sweeping the pointer across a column doesn't strobe previews —
+// in pane mode this also keeps the pane from thrashing on a passing cursor.
 const HOVER_PHOTO_DELAY_MS = 250;
 const HOVER_PHOTO_W = 260;
 const HOVER_PHOTO_H = 190;
@@ -91,7 +97,9 @@ export default function DealCard({
   color,
   showDescriptions,
   showNextAction,
+  hoverPhotoMode,
   hoverPhotoUrl,
+  onHoverPreview,
   onDragActivate,
   onOpen,
   onAlbums,
@@ -100,9 +108,16 @@ export default function DealCard({
   color: string;
   showDescriptions: boolean;
   showNextAction: boolean;
-  // The property's key photo, shown while a pointer hovers this card. Null when
-  // the view option is off or the property has no key photo set.
+  hoverPhotoMode: HoverPhotoMode;
+  // The property's key photo, drawn by this card in "floating" mode. Null when
+  // the property has no key photo set. Unused in "pane" mode — the board looks
+  // the URL up itself for whichever deal it was handed.
   hoverPhotoUrl: string | null;
+  // "pane" mode only: this card is now the one being hovered. Fires after the
+  // same delay the floating box waits out, and fires even when the property has
+  // no key photo, so the pane reflects the card under the pointer rather than
+  // stranding whatever it showed last.
+  onHoverPreview: (deal: UiDeal) => void;
   // Start dragging the given card element with the active pointer.
   onDragActivate: (card: HTMLElement, pointerId: number, clientX: number, clientY: number, deal: UiDeal) => void;
   onOpen: (deal: UiDeal) => void;
@@ -131,11 +146,17 @@ export default function DealCard({
   }
 
   function scheduleHoverPhoto(el: HTMLElement) {
-    if (!hoverPhotoUrl) return;
+    if (hoverPhotoMode === "off") return;
+    // Nothing to float and nothing to hand over — skip the timer entirely.
+    if (hoverPhotoMode === "floating" && !hoverPhotoUrl) return;
     clearHoverPhoto();
     hoverPhotoTimerRef.current = setTimeout(() => {
       hoverPhotoTimerRef.current = null;
-      setHoverPhotoPos(hoverPhotoPosition(el.getBoundingClientRect()));
+      if (hoverPhotoMode === "pane") {
+        onHoverPreview(deal);
+      } else {
+        setHoverPhotoPos(hoverPhotoPosition(el.getBoundingClientRect()));
+      }
     }, HOVER_PHOTO_DELAY_MS);
   }
 
@@ -403,7 +424,7 @@ export default function DealCard({
     {/* Rendered as the card's sibling, not its child, so .is-pressing's
         transform can never turn the card into this fixed box's containing
         block. Decorative — the card itself carries the accessible name. */}
-    {hoverPhotoUrl && hoverPhotoPos && (
+    {hoverPhotoMode === "floating" && hoverPhotoUrl && hoverPhotoPos && (
       <div
         className={styles["card-hover-photo"]}
         style={{ top: hoverPhotoPos.top, left: hoverPhotoPos.left }}

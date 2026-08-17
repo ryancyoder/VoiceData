@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./sales-board.module.css";
 import { STAGES, type Deal, type DealInput, type PropertyOption, type Stage } from "@/lib/salesBoard";
-import DealCard, { type UiDeal } from "./DealCard";
+import DealCard, { type UiDeal, type HoverPhotoMode } from "./DealCard";
+import PropertyPhotoPane from "./PropertyPhotoPane";
 import DealTable from "./DealTable";
 import DealModal from "./DealModal";
 import LostModal from "./LostModal";
@@ -214,12 +215,16 @@ export default function SalesBoardClient({
   initialDeals,
   initialPropertyOptions,
   hoverPropertyPhoto,
+  hoverPropertyPhotoWide,
   propertyCoverUrls,
 }: {
   initialDeals: Deal[];
   initialPropertyOptions: PropertyOption[];
   // Settings → Sales Board view → "Show key property photo on hover".
   hoverPropertyPhoto: boolean;
+  // …and its "Wide screen" sub-option: draw the preview in a pane after the
+  // last stage column instead of floating it beside the card.
+  hoverPropertyPhotoWide: boolean;
   // Property id -> key photo URL. Empty when the option is off, and missing
   // entries just mean that property has no key photo to preview.
   propertyCoverUrls: Record<number, string>;
@@ -246,6 +251,16 @@ export default function SalesBoardClient({
       setActiveDealId(dealId);
     }
   }
+  const hoverPhotoMode: HoverPhotoMode = !hoverPropertyPhoto
+    ? "off"
+    : hoverPropertyPhotoWide
+      ? "pane"
+      : "floating";
+  // Wide-screen mode: the deal the pane is currently showing. Held by id (not
+  // by object) so the pane follows edits to that deal, and deliberately not
+  // cleared on pointer-leave — a pane that blanked every time the cursor left a
+  // card would be empty most of the time.
+  const [panePreviewDealId, setPanePreviewDealId] = useState<number | null>(null);
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"board" | "table">("board");
   const [showDescriptions, setShowDescriptions] = useState(false);
@@ -1143,11 +1158,13 @@ export default function SalesBoardClient({
                         color={color}
                         showDescriptions={showDescriptions}
                         showNextAction={showNextAction}
+                        hoverPhotoMode={hoverPhotoMode}
                         hoverPhotoUrl={
                           hoverPropertyPhoto && deal.property_id != null
                             ? propertyCoverUrls[deal.property_id] ?? null
                             : null
                         }
+                        onHoverPreview={(d) => setPanePreviewDealId(d.id)}
                         onDragActivate={beginCardDrag}
                         onOpen={(d) => setActiveDealId(d.id)}
                         onAlbums={(d) => router.push(`/photos?deal=${d.id}`)}
@@ -1158,6 +1175,13 @@ export default function SalesBoardClient({
               </div>
             );
           })}
+
+          {hoverPhotoMode === "pane" && (
+            <PropertyPhotoPane
+              deal={panePreviewDealId != null ? deals.find((d) => d.id === panePreviewDealId) ?? null : null}
+              coverUrls={propertyCoverUrls}
+            />
+          )}
         </div>
       </div>
       )}

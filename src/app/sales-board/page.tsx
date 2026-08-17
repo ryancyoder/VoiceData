@@ -1,7 +1,11 @@
 import { supabase } from "@/lib/supabaseClient";
 import { dealThumbUrl, type Deal, type DealPhoto, type PropertyOption } from "@/lib/salesBoard";
 import { mapRawDealEvents, DEAL_EVENTS_SELECT } from "@/lib/dealEvents";
-import { getFlagSetting, SALES_BOARD_HOVER_PHOTO_KEY } from "@/lib/appSettings";
+import {
+  getFlagSetting,
+  SALES_BOARD_HOVER_PHOTO_KEY,
+  SALES_BOARD_HOVER_PHOTO_WIDE_KEY,
+} from "@/lib/appSettings";
 import SalesBoardClient from "./SalesBoardClient";
 
 export const dynamic = "force-dynamic";
@@ -52,15 +56,17 @@ async function loadPropertyCoverUrls(properties: RawProperty[]): Promise<Record<
 }
 
 export default async function SalesBoardPage() {
-  const [dealsRes, propertiesRes, nextActionsRes, hoverPropertyPhoto] = await Promise.all([
-    supabase.from("Sales Board").select(DEAL_EVENTS_SELECT).order("created_at", { ascending: true }),
-    supabase
-      .from("properties")
-      .select("id, address, cover_photo_id, contacts(last_name)")
-      .order("address", { ascending: true }),
-    supabase.from("tasks").select("deal_id, title").eq("is_next_action", true),
-    getFlagSetting(SALES_BOARD_HOVER_PHOTO_KEY),
-  ]);
+  const [dealsRes, propertiesRes, nextActionsRes, hoverPropertyPhoto, hoverPropertyPhotoWide] =
+    await Promise.all([
+      supabase.from("Sales Board").select(DEAL_EVENTS_SELECT).order("created_at", { ascending: true }),
+      supabase
+        .from("properties")
+        .select("id, address, cover_photo_id, contacts(last_name)")
+        .order("address", { ascending: true }),
+      supabase.from("tasks").select("deal_id, title").eq("is_next_action", true),
+      getFlagSetting(SALES_BOARD_HOVER_PHOTO_KEY),
+      getFlagSetting(SALES_BOARD_HOVER_PHOTO_WIDE_KEY),
+    ]);
 
   if (dealsRes.error) {
     throw new Error(`Failed to load Sales Board: ${dealsRes.error.message}`);
@@ -94,6 +100,7 @@ export default async function SalesBoardPage() {
       initialDeals={deals}
       initialPropertyOptions={propertyOptions}
       hoverPropertyPhoto={hoverPropertyPhoto}
+      hoverPropertyPhotoWide={hoverPropertyPhotoWide}
       propertyCoverUrls={propertyCoverUrls}
     />
   );
