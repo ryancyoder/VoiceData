@@ -48,6 +48,10 @@ export default function CommandPalette() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [flash, setFlash] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // After a ⌘↵ flag, the search filter auto-clears shortly so you can type the
+  // next deal name without backspacing the old one. Held in a ref so repeated
+  // flags reset the countdown instead of stacking timers.
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -156,6 +160,10 @@ export default function CommandPalette() {
   }
 
   function close() {
+    if (clearTimerRef.current) {
+      clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = null;
+    }
     setOpen(false);
   }
 
@@ -183,6 +191,10 @@ export default function CommandPalette() {
       // Tell any open Sales Board to update its list live (the palette is a
       // separate component, so it can't touch the board's state directly).
       window.dispatchEvent(new CustomEvent("voicedata:deal-flagged", { detail: { id, flagged: next } }));
+      // Clear the filter a beat later so the next deal name can be typed
+      // fresh, without backspacing the one just flagged.
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = setTimeout(() => setQuery(""), 1000);
     } catch {
       setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, flagged: !next } : d)));
       setFlash(`Couldn't ${next ? "flag" : "unflag"} "${item.label}" — try again`);
@@ -239,7 +251,15 @@ export default function CommandPalette() {
               <input
                 ref={inputRef}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  // A key press means the user is driving the filter again —
+                  // cancel any pending auto-clear so it can't wipe new input.
+                  if (clearTimerRef.current) {
+                    clearTimeout(clearTimerRef.current);
+                    clearTimerRef.current = null;
+                  }
+                  setQuery(e.target.value);
+                }}
                 onKeyDown={onKeyDown}
                 placeholder="Search deals, properties, and photo albums…"
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400 dark:text-zinc-100"
