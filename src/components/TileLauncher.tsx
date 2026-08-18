@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAGES, type Deal, type Stage } from "@/lib/salesBoard";
 import styles from "./tileLauncher.module.css";
@@ -62,37 +62,43 @@ export default function TileLauncher() {
   const [deals, setDeals] = useState<Deal[] | null>(null);
   const [dealsError, setDealsError] = useState<string | null>(null);
   const [loadingDeals, setLoadingDeals] = useState(false);
+  // Guards against a second fetch while one is already in flight. A ref (not
+  // the loadingDeals state) so it's read synchronously — an effect-driven load
+  // would cancel its own in-flight request when setLoadingDeals re-triggered it.
+  const loadingRef = useRef(false);
 
-  // Lazily load the board once the user first drills into the Sales Board
-  // branch — the Launch Pad itself costs nothing until then.
-  useEffect(() => {
-    if (screen.level === "home" || deals !== null || loadingDeals) return;
-    let active = true;
+  // Lazily load the board the first time the user drills into the Sales Board
+  // branch — the Launch Pad itself costs nothing until then. Called imperatively
+  // (not from an effect) so nothing tears down the request mid-flight.
+  function loadDeals() {
+    if (deals !== null || loadingRef.current) return;
+    loadingRef.current = true;
     setLoadingDeals(true);
     setDealsError(null);
     fetch("/api/sales-board")
       .then((r) => r.json())
       .then((d) => {
-        if (!active) return;
         if (d.error) throw new Error(d.error);
         setDeals(d.deals ?? []);
       })
       .catch((err) => {
-        if (active) setDealsError(err instanceof Error ? err.message : "Couldn't load deals");
+        setDealsError(err instanceof Error ? err.message : "Couldn't load deals");
       })
       .finally(() => {
-        if (active) setLoadingDeals(false);
+        loadingRef.current = false;
+        setLoadingDeals(false);
       });
-    return () => {
-      active = false;
-    };
-  }, [screen.level, deals, loadingDeals]);
+  }
 
   const activeDeals = (deals ?? []).filter(isActive);
 
   function openMainView(view: MainView) {
-    if (view.drill === "sales") setScreen({ level: "stages" });
-    else if (view.href) router.push(view.href);
+    if (view.drill === "sales") {
+      loadDeals();
+      setScreen({ level: "stages" });
+    } else if (view.href) {
+      router.push(view.href);
+    }
   }
 
   const title =
