@@ -118,9 +118,11 @@ export default async function SalesBoardPage() {
     contactLastName: p.contacts?.last_name ?? null,
   }));
 
-  // Skipped entirely when the view option is off, so the board costs exactly
-  // what it did before for anyone not using the preview.
-  const propertyCoverUrls = hoverPropertyPhoto ? await loadPropertyCoverUrls(rawProperties) : {};
+  // Loaded unconditionally: the hover preview gates on its setting, but the
+  // Tile view is photo-first and needs a cover for every property regardless.
+  // It's one batched id lookup plus one RPC — cheap for a single business's
+  // pipeline — and both features read from the same map.
+  const propertyCoverUrls = await loadPropertyCoverUrls(rawProperties);
 
   return (
     <SalesBoardClient

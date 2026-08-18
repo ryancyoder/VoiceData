@@ -9,6 +9,7 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import DealCard, { type UiDeal, type HoverPhotoMode } from "./DealCard";
 import PropertyPhotoPane from "./PropertyPhotoPane";
 import DealTable from "./DealTable";
+import DealTiles from "./DealTiles";
 import DealModal from "./DealModal";
 import LostModal from "./LostModal";
 import PropertyPicker from "./PropertyPicker";
@@ -283,7 +284,7 @@ export default function SalesBoardClient({
   // card would be empty most of the time.
   const [panePreviewDealId, setPanePreviewDealId] = useState<number | null>(null);
   const [lostModalOpen, setLostModalOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"board" | "table">("board");
+  const [viewMode, setViewMode] = useState<"board" | "table" | "tile">("board");
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
   // Each column defaults to sorting by its own stage's date, nearest (earliest)
@@ -839,6 +840,14 @@ export default function SalesBoardClient({
             </button>
             <button
               type="button"
+              className={`${styles["view-toggle-btn"]} ${viewMode === "tile" ? styles["is-active"] : ""}`}
+              onClick={() => setViewMode("tile")}
+              title="Photo tile view of all deals"
+            >
+              Tiles
+            </button>
+            <button
+              type="button"
               className={`${styles["view-toggle-btn"]} ${viewMode === "table" ? styles["is-active"] : ""}`}
               onClick={() => setViewMode("table")}
               title="Table view of all deals"
@@ -1097,6 +1106,8 @@ export default function SalesBoardClient({
 
       {viewMode === "table" ? (
         <DealTable deals={activeDeals} onOpen={(d) => setActiveDealId(d.id)} />
+      ) : viewMode === "tile" ? (
+        <DealTiles deals={activeDeals} coverUrls={propertyCoverUrls} onOpen={(d) => setActiveDealId(d.id)} />
       ) : (
       <div className={styles["board-wrap"]}>
         <div className={`${styles.board} ${hoverPhotoMode === "pane" ? styles["has-photo-pane"] : ""}`}>
