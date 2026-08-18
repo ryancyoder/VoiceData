@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 // style, is simpler and feels faster than a debounced server search.
 export async function GET() {
   const [dealsRes, propertiesRes, eventsRes, photosRes] = await Promise.all([
-    supabase.from("Sales Board").select("id, deal_name, company, stage, lost_at, property_id").order("deal_name"),
+    supabase.from("Sales Board").select("id, deal_name, company, stage, lost_at, flagged, property_id").order("deal_name"),
     supabase.from("properties").select("id, address, contacts(first_name, last_name)").order("address"),
     supabase.from("events").select("id, property_id"),
     // Just the linkage columns needed to decide which property each photo's
@@ -33,6 +33,7 @@ export async function GET() {
     id: d.id,
     label: d.deal_name,
     subtitle: [d.company, d.lost_at ? "Lost" : d.stage].filter(Boolean).join(" · ") || null,
+    flagged: !!d.flagged,
     property_id: d.property_id ?? null,
   }));
 

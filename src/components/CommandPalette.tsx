@@ -7,6 +7,7 @@ interface SearchDeal {
   id: number;
   label: string;
   subtitle: string | null;
+  flagged: boolean;
 }
 
 interface SearchProperty {
@@ -23,6 +24,8 @@ interface ResultItem {
   label: string;
   subtitle: string | null;
   href: string;
+  dealId?: number;
+  flagged?: boolean;
 }
 
 const MAX_PER_TYPE = 8;
@@ -43,6 +46,7 @@ export default function CommandPalette() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [flash, setFlash] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -72,6 +76,7 @@ export default function CommandPalette() {
     if (open) {
       setQuery("");
       setActiveIndex(0);
+      setFlash(null);
     }
   }
 
@@ -108,7 +113,15 @@ export default function CommandPalette() {
     const dealResults: ResultItem[] = deals
       .filter((d) => matches(d.label, d.subtitle))
       .slice(0, MAX_PER_TYPE)
-      .map((d) => ({ key: `deal-${d.id}`, type: "deal", label: d.label, subtitle: d.subtitle, href: `/sales-board?deal=${d.id}` }));
+      .map((d) => ({
+        key: `deal-${d.id}`,
+        type: "deal" as const,
+        label: d.label,
+        subtitle: d.subtitle,
+        href: `/sales-board?deal=${d.id}`,
+        dealId: d.id,
+        flagged: d.flagged,
+      }));
 
     const propertyResults: ResultItem[] = properties
       .filter((p) => matches(p.label, p.subtitle))
@@ -139,6 +152,7 @@ export default function CommandPalette() {
   if (query !== lastQueryProcessed) {
     setLastQueryProcessed(query);
     setActiveIndex(0);
+    setFlash(null);
   }
 
   function close() {
@@ -148,6 +162,30 @@ export default function CommandPalette() {
   function select(item: ResultItem) {
     close();
     router.push(item.href);
+  }
+
+  // Flag a deal as a loose end (⌘/Ctrl+Enter) without leaving the palette, so
+  // you can flag several in a row. Only sets the flag on (never unflags here).
+  async function flagDeal(item: ResultItem) {
+    if (item.type !== "deal" || item.dealId == null) return;
+    if (item.flagged) {
+      setFlash(`"${item.label}" is already a loose end`);
+      return;
+    }
+    const id = item.dealId;
+    setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, flagged: true } : d)));
+    setFlash(`🚩 Flagged "${item.label}" as a loose end`);
+    try {
+      const res = await fetch(`/api/sales-board/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flagged: true }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, flagged: false } : d)));
+      setFlash(`Couldn't flag "${item.label}" — try again`);
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -160,7 +198,12 @@ export default function CommandPalette() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const item = results[activeIndex];
-      if (item) select(item);
+      if (!item) return;
+      if ((e.metaKey || e.ctrlKey) && item.type === "deal") {
+        flagDeal(item);
+      } else {
+        select(item);
+      }
     }
   }
 
@@ -228,13 +271,29 @@ export default function CommandPalette() {
                           i === activeIndex ? "bg-zinc-100 dark:bg-zinc-800" : ""
                         }`}
                       >
-                        <span className="text-sm text-zinc-900 dark:text-zinc-100">{item.label}</span>
+                        <span className="text-sm text-zinc-900 dark:text-zinc-100">
+                          {item.type === "deal" && item.flagged && (
+                            <span title="Loose end" className="mr-1">
+                              🚩
+                            </span>
+                          )}
+                          {item.label}
+                        </span>
                         {item.subtitle && <span className="text-xs text-zinc-500 dark:text-zinc-400">{item.subtitle}</span>}
                       </button>
                     </div>
                   ))}
                 </>
               )}
+            </div>
+
+            <div className="flex items-center gap-2 border-t border-zinc-200 px-4 py-2 text-[0.7rem] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+              <span className="truncate">
+                {flash ??
+                  (results[activeIndex]?.type === "deal"
+                    ? "↵ open  ·  ⌘↵ flag as loose end"
+                    : "↵ open")}
+              </span>
             </div>
           </div>
         </div>
