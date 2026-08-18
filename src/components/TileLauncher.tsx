@@ -48,6 +48,14 @@ function contactName(d: Deal): string {
   return [c.first_name, c.last_name].filter(Boolean).join(" ");
 }
 
+// A short monogram for a deal's square tile — its name's first two initials,
+// falling back to the first two characters.
+function monogram(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return name.trim().slice(0, 2).toUpperCase();
+}
+
 // A deal is "active" (shown) unless it's lost — but a flagged deal (loose end)
 // stays visible regardless. Mirrors the Sales Board's own activeDeals filter.
 function isActive(d: Deal): boolean {
@@ -138,11 +146,15 @@ export default function TileLauncher() {
               className={styles.tile}
               onClick={() => openMainView(view)}
             >
-              <span className={styles.tileIcon} aria-hidden="true">
-                {view.icon}
+              <span className={styles.tileTop}>
+                <span className={styles.tileIcon} aria-hidden="true">
+                  {view.icon}
+                </span>
+                {view.drill && <span className={styles.tileMore} aria-hidden="true">›</span>}
               </span>
-              <span className={styles.tileLabel}>{view.label}</span>
-              {view.drill && <span className={styles.tileMore} aria-hidden="true">›</span>}
+              <span className={styles.tileCaption}>
+                <span className={styles.tileName}>{view.label}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -156,14 +168,30 @@ export default function TileLauncher() {
               <button
                 key={stage}
                 type="button"
-                className={`${styles.tile} ${styles.stageTile}`}
+                className={styles.tile}
                 style={{ ["--tile-color" as string]: STAGE_COLOR[stage] }}
                 onClick={() => setScreen({ level: "deals", stage })}
               >
-                <span className={styles.stageDot} aria-hidden="true" />
-                <span className={styles.tileLabel}>{stage}</span>
-                <span className={styles.tileCount}>
-                  {count == null ? "…" : `${count} deal${count === 1 ? "" : "s"}`}
+                <span className={styles.tileTop}>
+                  <span className={styles.tileGlyph} aria-hidden="true">
+                    {stage
+                      .split(/\s+/)
+                      .map((w) => w[0])
+                      .join("")
+                      .slice(0, 3)
+                      .toUpperCase()}
+                  </span>
+                  {count != null && (
+                    <span className={styles.tileBadge}>
+                      {count} deal{count === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </span>
+                <span className={styles.tileCaption}>
+                  <span className={styles.tileName}>{stage}</span>
+                  <span className={styles.tileSub}>
+                    {count == null ? "…" : `${count} deal${count === 1 ? "" : "s"}`}
+                  </span>
                 </span>
               </button>
             );
@@ -208,25 +236,30 @@ function StageDeals({
     <div className={styles.grid}>
       {sorted.map((d) => {
         const contact = contactName(d);
+        const sub = contact || d.property?.address || "";
         return (
           <button
             key={d.id}
             type="button"
-            className={`${styles.tile} ${styles.dealTile}`}
+            className={styles.tile}
             style={{ ["--tile-color" as string]: STAGE_COLOR[stage] }}
             onClick={() => onOpenDeal(d.id)}
           >
-            <span className={styles.dealName}>
+            <span className={styles.tileTop}>
+              <span className={styles.tileGlyph} aria-hidden="true">
+                {monogram(d.deal_name)}
+              </span>
               {d.flagged && (
-                <span className={styles.dealFlag} title="Loose end">
+                <span className={styles.tileFlag} title="Loose end">
                   🚩
                 </span>
               )}
-              {d.deal_name}
+              {!!d.value && <span className={styles.tileBadge}>{currency.format(d.value)}</span>}
             </span>
-            {!!d.value && <span className={styles.dealValue}>{currency.format(d.value)}</span>}
-            {contact && <span className={styles.dealMeta}>{contact}</span>}
-            {d.property?.address && <span className={styles.dealMeta}>{d.property.address}</span>}
+            <span className={styles.tileCaption}>
+              <span className={styles.tileName}>{d.deal_name}</span>
+              {sub && <span className={styles.tileSub}>{sub}</span>}
+            </span>
           </button>
         );
       })}

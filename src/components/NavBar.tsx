@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTileMode } from "@/lib/useTileMode";
 
 const NAV_ITEMS = [
   { href: "/sales-board", label: "Sales Board" },
@@ -25,6 +26,12 @@ const NAV_ITEMS = [
 
 export default function NavBar() {
   const pathname = usePathname();
+  const { tileMode } = useTileMode();
+
+  // Tile mode navigates entirely through the Launch Pad's tiles, so the top
+  // nav is redundant — hide it. (The launcher's own back/breadcrumb and the
+  // browser back button cover movement between screens.)
+  if (tileMode) return null;
 
   return (
     <nav className="sticky top-0 z-30 flex items-center gap-3 overflow-x-auto border-b border-zinc-200 bg-white/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/80 sm:px-6 dark:border-zinc-800 dark:bg-zinc-950/95 dark:supports-[backdrop-filter]:bg-zinc-950/80">

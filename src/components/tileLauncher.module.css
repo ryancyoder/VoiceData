@@ -1,10 +1,12 @@
 .launcher {
   --tl-bg: #f3f5f7;
   --tl-surface: #ffffff;
+  --tl-surface-2: #f8f9fb;
   --tl-border: #e2e5ea;
   --tl-text: #12161c;
   --tl-muted: #5b6472;
   --tl-accent: #1f6f6d;
+  --tl-radius: 14px;
   --tl-shadow: 0 1px 2px rgba(20, 24, 30, 0.06), 0 4px 14px rgba(20, 24, 30, 0.06);
 
   flex: 1;
@@ -21,6 +23,7 @@
   .launcher {
     --tl-bg: #0b0e13;
     --tl-surface: #161a21;
+    --tl-surface-2: #1b212a;
     --tl-border: #262c36;
     --tl-text: #e7eaef;
     --tl-muted: #9099a8;
@@ -66,27 +69,26 @@
   margin: 0;
 }
 
+/* Large album-style grid: fewer, bigger square tiles per row. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: clamp(12px, 2vw, 20px);
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
   align-content: start;
 }
 
+/* The tile card mirrors the photo gallery's album tile: bordered, rounded,
+   a square image/color area on top, a caption below. */
 .tile {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 8px;
   text-align: left;
-  min-height: 130px;
-  padding: 18px;
+  padding: 0;
   border: 1px solid var(--tl-border);
-  border-radius: 16px;
+  border-radius: var(--tl-radius);
+  overflow: hidden;
   background: var(--tl-surface);
-  color: var(--tl-text);
   box-shadow: var(--tl-shadow);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
@@ -101,70 +103,86 @@
   outline-offset: 2px;
 }
 
+/* Square top area — the album tiles' 1:1 image well. */
+.tileTop {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--tile-color, var(--tl-accent)) 26%, var(--tl-surface-2)),
+    var(--tl-surface-2)
+  );
+}
 .tileIcon {
-  font-size: 2.2rem;
+  font-size: clamp(2.6rem, 7vw, 4rem);
   line-height: 1;
 }
-.tileLabel {
-  font-size: 1.02rem;
-  font-weight: 700;
+.tileGlyph {
+  font-size: clamp(2.2rem, 6vw, 3.4rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--tile-color, var(--tl-accent)) 78%, var(--tl-text));
+}
+
+/* Count / value badge, bottom-right over the square — matches .album-badge. */
+.tileBadge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  background: rgba(10, 12, 16, 0.72);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 20px;
   line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 .tileMore {
   position: absolute;
-  top: 14px;
-  right: 16px;
-  font-size: 1.3rem;
+  top: 8px;
+  right: 12px;
+  font-size: 1.5rem;
   font-weight: 700;
-  color: var(--tl-muted);
+  color: color-mix(in srgb, var(--tile-color, var(--tl-accent)) 70%, var(--tl-muted));
+}
+.tileFlag {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 1.1rem;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }
 
-/* Stage tiles */
-.stageTile {
-  justify-content: space-between;
-  min-height: 120px;
-  border-left: 5px solid var(--tile-color, var(--tl-border));
+/* Caption below the square — matches .thumb-caption. */
+.tileCaption {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-.stageDot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--tile-color, var(--tl-accent));
-}
-.tileCount {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--tl-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Deal tiles */
-.dealTile {
-  min-height: 110px;
-  gap: 5px;
-  border-top: 4px solid var(--tile-color, var(--tl-border));
-}
-.dealName {
-  font-size: 0.98rem;
+.tileName {
+  font-size: 0.92rem;
   font-weight: 700;
   line-height: 1.25;
-}
-.dealFlag {
-  margin-right: 4px;
-}
-.dealValue {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--tl-accent);
-  font-variant-numeric: tabular-nums;
-}
-.dealMeta {
-  font-size: 0.78rem;
-  color: var(--tl-muted);
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tileSub {
+  font-size: 0.76rem;
+  color: var(--tl-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tileValue {
+  color: var(--tl-accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .empty,
