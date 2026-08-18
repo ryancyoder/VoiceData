@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./sales-board.module.css";
@@ -252,6 +252,26 @@ export default function SalesBoardClient({
       setActiveDealId(dealId);
     }
   }
+  // The command palette (a separate global component) can flag deals as loose
+  // ends via ⌘↵. It can't reach this board's in-memory state, so it announces
+  // each flag on a window event; mirror it here so an already-open board's
+  // Loose ends panel updates live instead of showing a stale list.
+  useEffect(() => {
+    function onFlagged(e: Event) {
+      const detail = (e as CustomEvent<{ id: number; flagged: boolean }>).detail;
+      if (!detail) return;
+      setDeals((ds) =>
+        ds.map((d) =>
+          d.id === detail.id
+            ? { ...d, flagged: detail.flagged, status: detail.flagged ? "Open" : d.status }
+            : d
+        )
+      );
+    }
+    window.addEventListener("voicedata:deal-flagged", onFlagged);
+    return () => window.removeEventListener("voicedata:deal-flagged", onFlagged);
+  }, []);
+
   const hoverPhotoMode: HoverPhotoMode = !hoverPropertyPhoto
     ? "off"
     : hoverPropertyPhotoWide

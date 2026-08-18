@@ -182,6 +182,9 @@ export default function CommandPalette() {
         body: JSON.stringify({ flagged: true }),
       });
       if (!res.ok) throw new Error();
+      // Tell any open Sales Board to update its list live (the palette is a
+      // separate component, so it can't touch the board's state directly).
+      window.dispatchEvent(new CustomEvent("voicedata:deal-flagged", { detail: { id, flagged: true } }));
     } catch {
       setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, flagged: false } : d)));
       setFlash(`Couldn't flag "${item.label}" — try again`);
