@@ -4,6 +4,7 @@ import StageDefaultsEditor from "./StageDefaultsEditor";
 import KeyboardShortcuts from "./KeyboardShortcuts";
 import OutlookCalendarSetting from "./OutlookCalendarSetting";
 import SalesBoardViewSetting from "./SalesBoardViewSetting";
+import TileModeSetting from "./TileModeSetting";
 import styles from "./settings.module.css";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export default async function SettingsPage() {
         <h1>Settings</h1>
         <p>Planning &amp; forecast configuration.</p>
       </div>
+      <TileModeSetting />
       <StageDefaultsEditor initialDefaults={defaults} />
       <SalesBoardViewSetting />
       <OutlookCalendarSetting />

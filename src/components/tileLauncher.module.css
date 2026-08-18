@@ -1,0 +1,178 @@
+.launcher {
+  --tl-bg: #f3f5f7;
+  --tl-surface: #ffffff;
+  --tl-border: #e2e5ea;
+  --tl-text: #12161c;
+  --tl-muted: #5b6472;
+  --tl-accent: #1f6f6d;
+  --tl-shadow: 0 1px 2px rgba(20, 24, 30, 0.06), 0 4px 14px rgba(20, 24, 30, 0.06);
+
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tl-bg);
+  color: var(--tl-text);
+  padding: 20px clamp(16px, 4vw, 48px) 48px;
+  overflow-y: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .launcher {
+    --tl-bg: #0b0e13;
+    --tl-surface: #161a21;
+    --tl-border: #262c36;
+    --tl-text: #e7eaef;
+    --tl-muted: #9099a8;
+    --tl-accent: #5eead4;
+    --tl-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.35);
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  min-height: 40px;
+}
+.brand {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--tl-muted);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 14px;
+  border: 1px solid var(--tl-border);
+  border-radius: 999px;
+  background: var(--tl-surface);
+  color: var(--tl-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.back:hover {
+  border-color: var(--tl-accent);
+  color: var(--tl-accent);
+}
+.title {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: clamp(12px, 2vw, 20px);
+  align-content: start;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  text-align: left;
+  min-height: 130px;
+  padding: 18px;
+  border: 1px solid var(--tl-border);
+  border-radius: 16px;
+  background: var(--tl-surface);
+  color: var(--tl-text);
+  box-shadow: var(--tl-shadow);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.tile:hover {
+  transform: translateY(-3px);
+  border-color: var(--tile-color, var(--tl-accent));
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.16);
+}
+.tile:focus-visible {
+  outline: 2px solid var(--tl-accent);
+  outline-offset: 2px;
+}
+
+.tileIcon {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+.tileLabel {
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.tileMore {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--tl-muted);
+}
+
+/* Stage tiles */
+.stageTile {
+  justify-content: space-between;
+  min-height: 120px;
+  border-left: 5px solid var(--tile-color, var(--tl-border));
+}
+.stageDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--tile-color, var(--tl-accent));
+}
+.tileCount {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--tl-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Deal tiles */
+.dealTile {
+  min-height: 110px;
+  gap: 5px;
+  border-top: 4px solid var(--tile-color, var(--tl-border));
+}
+.dealName {
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.dealFlag {
+  margin-right: 4px;
+}
+.dealValue {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--tl-accent);
+  font-variant-numeric: tabular-nums;
+}
+.dealMeta {
+  font-size: 0.78rem;
+  color: var(--tl-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty,
+.error {
+  padding: 40px 4px;
+  font-size: 0.9rem;
+  color: var(--tl-muted);
+}
+.error {
+  color: #dc2626;
+}

@@ -5,6 +5,8 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { TableSchema } from "@/lib/db";
 import MicButton from "@/components/MicButton";
 import SchemaPanel from "@/components/SchemaPanel";
+import TileLauncher from "@/components/TileLauncher";
+import { useTileMode } from "@/lib/useTileMode";
 
 interface DisplayTurn {
   role: "user" | "assistant";
@@ -27,6 +29,10 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const rawMessages = useRef<MessageParam[]>([]);
+  // Tile mode replaces the home page with the Launch Pad (a full-screen tile
+  // navigator). Read from a localStorage mirror first so it doesn't flash the
+  // chat UI before the server flag confirms.
+  const { tileMode } = useTileMode();
 
   function speak(text: string) {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -81,6 +87,8 @@ export default function Home() {
   }
 
   const busy = status !== "idle";
+
+  if (tileMode) return <TileLauncher />;
 
   return (
     <div className="flex min-h-full flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">

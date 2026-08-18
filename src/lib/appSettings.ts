@@ -12,6 +12,12 @@ export const OUTLOOK_OPACITY_DEFAULT = 100;
 export const OUTLOOK_OPACITY_MIN = 10;
 export const OUTLOOK_OPACITY_MAX = 100;
 
+// Tile mode: turns the home page into a full-screen "Launch Pad" of tiles and
+// navigates the app by drilling through tiles (Launch Pad → a view → its
+// sub-sections → an item). Off unless explicitly turned on. Also mirrored to
+// localStorage client-side so the launcher reacts instantly without a round trip.
+export const TILE_MODE_KEY = "app_tile_mode";
+
 // Sales Board view option: hovering a deal card shows that deal's property
 // "key photo" (properties.cover_photo_id — the same album cover the deal modal
 // puts in its header). Off unless explicitly turned on.
