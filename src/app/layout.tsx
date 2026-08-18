@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import CommandPalette from "@/components/CommandPalette";
 import NavBar from "@/components/NavBar";
+import TileModeHomeButton from "@/components/TileModeHomeButton";
 import QuickAddTask from "@/components/QuickAddTask";
 import QuickAddEvent from "@/components/QuickAddEvent";
 import CameraCapture from "@/components/CameraCapture";
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <NavBar />
         {children}
+        <TileModeHomeButton />
         <CommandPalette />
         <QuickAddTask />
         <QuickAddEvent />
