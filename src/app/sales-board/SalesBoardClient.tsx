@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./sales-board.module.css";
 import { STAGES, type Deal, type DealInput, type PropertyOption, type Stage } from "@/lib/salesBoard";
+import { usePersistentState } from "@/lib/usePersistentState";
 import DealCard, { type UiDeal, type HoverPhotoMode } from "./DealCard";
 import PropertyPhotoPane from "./PropertyPhotoPane";
 import DealTable from "./DealTable";
@@ -272,6 +273,10 @@ export default function SalesBoardClient({
     Object.fromEntries(STAGES.map((s) => [s, STAGE_DATE[s] ? "date_asc" : ""]))
   );
   const [columnCollapsedState, setColumnCollapsedState] = useState<Record<string, boolean>>({});
+  // The Lead column is a toggleable panel: "leads" (deals in the Lead stage) or
+  // "loose" (flagged deals — loose ends — across all stages). Room to add more
+  // lists later.
+  const [leadPanelView, setLeadPanelView] = usePersistentState<"leads" | "loose">("salesboard.leadPanel", "leads");
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
   const [addSubmitting, setAddSubmitting] = useState(false);
@@ -414,7 +419,13 @@ export default function SalesBoardClient({
       dragStateRef.current = null;
 
       if (targetColumn) {
-        moveDeal(dealId, targetColumn.dataset.stage as Stage);
+        if (targetColumn.dataset.flagDrop) {
+          // Dropped into the "Loose ends" view → flag it (leave the stage alone).
+          const d = deals.find((x) => x.id === dealId);
+          if (d && !d.flagged) void handleToggleFlag(d);
+        } else {
+          moveDeal(dealId, targetColumn.dataset.stage as Stage);
+        }
       }
     }
 
@@ -1070,7 +1081,11 @@ export default function SalesBoardClient({
       <div className={styles["board-wrap"]}>
         <div className={`${styles.board} ${hoverPhotoMode === "pane" ? styles["has-photo-pane"] : ""}`}>
           {STAGES.map((stage) => {
-            const stageDeals = activeDeals.filter((d) => d.stage === stage);
+            const isLeadPanel = stage === "Lead";
+            const looseView = isLeadPanel && leadPanelView === "loose";
+            const stageDeals = looseView
+              ? activeDeals.filter((d) => d.flagged)
+              : activeDeals.filter((d) => d.stage === stage);
             const stageTotal = stageDeals.reduce((sum, d) => sum + (d.value || 0), 0);
             const color = STAGE_COLORS[stage];
             const collapsed = !!columnCollapsedState[stage];
@@ -1085,6 +1100,7 @@ export default function SalesBoardClient({
                   style={{ ["--col-color" as string]: color }}
                   data-column
                   data-stage={stage}
+                  data-flag-drop={looseView ? "1" : undefined}
                 >
                   <button
                     type="button"
@@ -1107,6 +1123,7 @@ export default function SalesBoardClient({
                 style={{ ["--col-color" as string]: color }}
                 data-column
                 data-stage={stage}
+                data-flag-drop={looseView ? "1" : undefined}
               >
                 <div className={styles["column-head"]}>
                   <div className={styles["column-head-top"]}>
@@ -1119,7 +1136,26 @@ export default function SalesBoardClient({
                       ‹
                     </button>
                     <span className={styles["column-dot"]} />
-                    <span className={styles["column-title"]}>{stage}</span>
+                    {isLeadPanel ? (
+                      <div className={styles["lead-panel-toggle"]}>
+                        <button
+                          type="button"
+                          className={leadPanelView === "leads" ? styles["is-active"] : ""}
+                          onClick={() => setLeadPanelView("leads")}
+                        >
+                          Leads
+                        </button>
+                        <button
+                          type="button"
+                          className={leadPanelView === "loose" ? styles["is-active"] : ""}
+                          onClick={() => setLeadPanelView("loose")}
+                        >
+                          Loose ends
+                        </button>
+                      </div>
+                    ) : (
+                      <span className={styles["column-title"]}>{stage}</span>
+                    )}
                     <span className={styles["column-count"]}>{stageDeals.length}</span>
                   </div>
                   <div className={styles["column-sort-group"]}>
