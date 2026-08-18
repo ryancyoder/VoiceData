@@ -164,30 +164,28 @@ export default function CommandPalette() {
     router.push(item.href);
   }
 
-  // Flag a deal as a loose end (⌘/Ctrl+Enter) without leaving the palette, so
-  // you can flag several in a row. Only sets the flag on (never unflags here).
+  // Toggle a deal's loose-end flag (⌘/Ctrl+Enter) without leaving the palette,
+  // so you can flag (or unflag) several in a row. Pressing it again on a deal
+  // that's already flagged removes the flag.
   async function flagDeal(item: ResultItem) {
     if (item.type !== "deal" || item.dealId == null) return;
-    if (item.flagged) {
-      setFlash(`"${item.label}" is already a loose end`);
-      return;
-    }
     const id = item.dealId;
-    setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, flagged: true } : d)));
-    setFlash(`🚩 Flagged "${item.label}" as a loose end`);
+    const next = !item.flagged;
+    setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, flagged: next } : d)));
+    setFlash(next ? `🚩 Flagged "${item.label}" as a loose end` : `Removed the loose-end flag on "${item.label}"`);
     try {
       const res = await fetch(`/api/sales-board/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ flagged: true }),
+        body: JSON.stringify({ flagged: next }),
       });
       if (!res.ok) throw new Error();
       // Tell any open Sales Board to update its list live (the palette is a
       // separate component, so it can't touch the board's state directly).
-      window.dispatchEvent(new CustomEvent("voicedata:deal-flagged", { detail: { id, flagged: true } }));
+      window.dispatchEvent(new CustomEvent("voicedata:deal-flagged", { detail: { id, flagged: next } }));
     } catch {
-      setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, flagged: false } : d)));
-      setFlash(`Couldn't flag "${item.label}" — try again`);
+      setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, flagged: !next } : d)));
+      setFlash(`Couldn't ${next ? "flag" : "unflag"} "${item.label}" — try again`);
     }
   }
 
@@ -294,7 +292,9 @@ export default function CommandPalette() {
               <span className="truncate">
                 {flash ??
                   (results[activeIndex]?.type === "deal"
-                    ? "↵ open  ·  ⌘↵ flag as loose end"
+                    ? results[activeIndex]?.flagged
+                      ? "↵ open  ·  ⌘↵ remove loose-end flag"
+                      : "↵ open  ·  ⌘↵ flag as loose end"
                     : "↵ open")}
               </span>
             </div>
