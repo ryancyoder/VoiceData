@@ -287,7 +287,8 @@ export default function SalesBoardClient({
     toastTimerRef.current = setTimeout(() => setToast(null), 5000);
   }
 
-  const activeDeals = deals.filter((d) => !d.lost_at);
+  // Flagged deals stay on the board even if lost/won — a flag reopens them.
+  const activeDeals = deals.filter((d) => !d.lost_at || d.flagged);
   const lostCount = deals.length - activeDeals.length;
   const totalValue = activeDeals.reduce((sum, d) => sum + (d.value || 0), 0);
   const closedValue = activeDeals
@@ -450,6 +451,28 @@ export default function SalesBoardClient({
     } catch (err) {
       setDeals(previous);
       showToast(`Couldn't delete "${deal.deal_name}" — ${err instanceof Error ? err.message : "try again"}`);
+    }
+  }
+
+  async function handleToggleFlag(deal: Deal) {
+    const flagged = !deal.flagged;
+    const previous = deals;
+    // Flagging forces status Open (the generated column) — mirror that locally.
+    setDeals((ds) => ds.map((d) => (d.id === deal.id ? { ...d, flagged, status: flagged ? "Open" : d.status } : d)));
+    try {
+      const res = await fetch(`/api/sales-board/${deal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flagged }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update");
+      setDeals((ds) => ds.map((d) => (d.id === deal.id ? { ...d, ...data.deal } : d)));
+      showToast(flagged ? `Flagged "${deal.deal_name}"` : `Unflagged "${deal.deal_name}"`);
+    } catch (err) {
+      setDeals(previous);
+      showToast(`Couldn't update "${deal.deal_name}" — ${err instanceof Error ? err.message : "try again"}`);
+      throw err;
     }
   }
 
@@ -1203,6 +1226,7 @@ export default function SalesBoardClient({
           onSave={handleSaveDeal}
           onDelete={handleDeleteDeal}
           onToggleLost={handleToggleLost}
+          onToggleFlag={handleToggleFlag}
           onUploadPhoto={handleUploadPhoto}
           onUploadReferencePhoto={handleUploadReferencePhoto}
           onDeletePhoto={handleDeletePhoto}

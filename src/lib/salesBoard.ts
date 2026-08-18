@@ -193,6 +193,10 @@ export interface Deal {
   value: number | null;
   stage: Stage;
   status: "Open" | "Closed";
+  // A "loose end to tie up" marker, independent of stage. A flagged deal always
+  // reads as Open (reopens a closed/won/lost deal — see the status generated
+  // column) and stays visible on the board regardless of lost/won.
+  flagged: boolean;
   lost_at: string | null;
   proposal_pdf_path: string | null;
   // Backs the "Proposal link" field. (Column keeps its historical name; the
@@ -294,6 +298,7 @@ export interface DealInput {
   value?: number | null;
   stage?: Stage;
   lost_at?: string | null;
+  flagged?: boolean;
   aspire_link?: string | null;
   opportunity_link?: string | null;
 }

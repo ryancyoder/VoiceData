@@ -45,6 +45,7 @@ interface DealModalProps {
   onSave: (id: number, updates: Partial<DealInput>) => Promise<void>;
   onDelete: (deal: Deal) => void;
   onToggleLost: (deal: Deal) => Promise<void>;
+  onToggleFlag: (deal: Deal) => Promise<void>;
   onUploadPhoto: (dealId: number, file: File) => Promise<void>;
   onUploadReferencePhoto: (propertyId: number, file: File) => Promise<void>;
   onDeletePhoto: (dealId: number, photoId: number) => Promise<void>;
@@ -262,6 +263,7 @@ export default function DealModal({
   onSave,
   onDelete,
   onToggleLost,
+  onToggleFlag,
   onUploadPhoto,
   onUploadReferencePhoto,
   onDeletePhoto,
@@ -355,6 +357,7 @@ export default function DealModal({
   });
   const [saving, setSaving] = useState(false);
   const [lostBusy, setLostBusy] = useState(false);
+  const [flagBusy, setFlagBusy] = useState(false);
   const [error, setError] = useState("");
   // The modal opens read-only; the fields (and Save) unlock via the header
   // lock toggle, so a deal can't be edited by accident just from viewing it.
@@ -944,6 +947,16 @@ export default function DealModal({
       onClose();
     } finally {
       setLostBusy(false);
+    }
+  }
+
+  // Flagging is a quick toggle — keep the modal open so the state change is seen.
+  async function handleToggleFlag() {
+    setFlagBusy(true);
+    try {
+      await onToggleFlag(deal);
+    } finally {
+      setFlagBusy(false);
     }
   }
 
@@ -1984,6 +1997,15 @@ export default function DealModal({
 
           <div className={styles["modal-actions"]}>
             <div className={styles["modal-actions-left"]}>
+              <button
+                type="button"
+                className={`${styles["modal-flag"]} ${deal.flagged ? styles["is-flagged"] : ""}`}
+                disabled={flagBusy}
+                onClick={handleToggleFlag}
+                title="Flag a loose end to tie up (keeps the stage; reopens if closed)"
+              >
+                {deal.flagged ? "🚩 Unflag" : "⚑ Flag"}
+              </button>
               <button type="button" className={styles["modal-delete"]} onClick={() => onDelete(deal)}>
                 Delete deal
               </button>

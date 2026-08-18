@@ -373,6 +373,11 @@ export default function DealCard({
     >
       <div className={styles["card-top"]}>
         <div className={styles["card-name"]}>
+          {deal.flagged && (
+            <span className={styles["card-flag"]} title="Flagged — loose end to tie up">
+              🚩
+            </span>
+          )}
           {deal.deal_name}
           {showDescriptions && deal.proposal_description && (
             <span className={styles["card-name-desc"]}> — {deal.proposal_description}</span>
