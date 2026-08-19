@@ -721,35 +721,67 @@ async function findGridHits(page: Page, needle: string): Promise<GridHit[]> {
   }
 }
 
-// Click the tagged cell and treat a URL change as success. Grids wire
-// navigation to single or double click depending on the renderer, so try both.
+// Click the tagged cell and treat either outcome as success: the current tab
+// navigating, or the app opening the proposal in a new tab — grids do both,
+// depending on the renderer. Single click first, double click as the retry.
 async function openGridHit(page: Page, hit: GridHit): Promise<AspireSearchResult> {
   if (hit.href) {
     return { ok: true, url: resolveHref(hit.href, page.url()), title: hit.rowText };
   }
   const cell = page.locator(`[data-aspire-hit="${hit.index}"]`).first();
   const before = page.url();
-  const navigated = async (timeout: number) =>
+  const navigated = (timeout: number) =>
     page
       .waitForFunction((previous: string) => window.location.href !== previous, before, { timeout })
       .then(() => true)
       .catch(() => false);
+  // Armed before the click so a fast popup can't slip through the gap.
+  let popup: Page | null = null;
+  page
+    .context()
+    .waitForEvent("page", { timeout: NAVIGATION_TIMEOUT_MS })
+    .then((p) => {
+      popup = p;
+    })
+    .catch(() => {});
+  const settle = async (timeout: number): Promise<"nav" | "popup" | "none"> => {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      if (popup) return "popup";
+      if (await navigated(500)) return "nav";
+    }
+    return "none";
+  };
 
   await cell.click({ timeout: 5_000 }).catch(() => {});
-  if (!(await navigated(8_000))) {
+  let outcome = await settle(8_000);
+  if (outcome === "none") {
     await cell.dblclick({ timeout: 5_000 }).catch(() => {});
-    if (!(await navigated(NAVIGATION_TIMEOUT_MS))) {
-      return {
-        ok: false,
-        code: "navigation_failed",
-        message:
-          `Found the row for #${hit.rowText.slice(0, 30)} but neither clicking nor double-clicking ` +
-          `its number cell navigated, and the row has no link to read.`,
-      };
-    }
+    outcome = await settle(NAVIGATION_TIMEOUT_MS);
   }
-  await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
-  return { ok: true, url: page.url(), title: hit.rowText };
+  if (outcome === "none") {
+    return {
+      ok: false,
+      code: "navigation_failed",
+      message:
+        `Found the row for #${hit.rowText.slice(0, 30)} but neither clicking nor double-clicking ` +
+        `its number cell navigated, and the row has no link to read.`,
+    };
+  }
+
+  const landed = outcome === "popup" && popup ? popup : page;
+  await landed.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => {});
+  await landed.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
+  const url = landed.url();
+  if (outcome === "popup") await (landed as Page).close().catch(() => {});
+  if (!/^https?:/i.test(url)) {
+    return {
+      ok: false,
+      code: "navigation_failed",
+      message: `The proposal opened but its URL never resolved (got "${url.slice(0, 40)}")`,
+    };
+  }
+  return { ok: true, url, title: hit.rowText };
 }
 
 async function runSearch(page: Page, options: AspireSearchOptions): Promise<AspireSearchResult> {
