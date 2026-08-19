@@ -535,7 +535,29 @@ async function describeResults(page: Page, needle: string): Promise<string> {
             const text = (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 60);
             return `<${el.tagName.toLowerCase()}${cls ? `.${cls}` : ""}${href ? ` href=${href}` : ""}> "${text}"`;
           });
-        return `rows matching "${rowSelector}": ${rows}; elements containing the number: ${hits.join(" | ") || "none"}`;
+        // What state the search left the page in — the part that tells a "the
+        // search ran and found nothing" apart from "the search never ran".
+        // A grid that answered shows either rows or its empty-state banner;
+        // a page that ignored the keystrokes shows neither, and an input
+        // whose value is empty says the typing itself didn't stick.
+        const gridRows = document.querySelectorAll(
+          '[class*="ag-row"]:not([class*="ag-header"]), [role="row"], tbody tr'
+        ).length;
+        const active = document.activeElement as HTMLInputElement | null;
+        const inputValues = Array.from(document.querySelectorAll("input"))
+          .filter((el) => el.value && el.type !== "checkbox")
+          .slice(0, 4)
+          .map((el) => `"${el.value.slice(0, 24)}"${el === active ? " (focused)" : ""}`);
+        const bodyText = (document.body.innerText || "").replace(/\s+/g, " ").trim();
+        const emptyState = /no (rows|results|records|matches|data)/i.exec(bodyText)?.[0] ?? null;
+        return (
+          `url=${location.pathname}${location.search}; ` +
+          `rows matching "${rowSelector}": ${rows}; grid-ish rows on page: ${gridRows}; ` +
+          `empty-state text: ${emptyState ? `"${emptyState}"` : "none"}; ` +
+          `inputs holding text: ${inputValues.join(", ") || "none"}; ` +
+          `elements containing the number: ${hits.join(" | ") || "none"}; ` +
+          `page text starts: "${bodyText.slice(0, 180)}"`
+        );
       },
       { rowSelector: RESULT_ROW, needleText: needle }
     );
