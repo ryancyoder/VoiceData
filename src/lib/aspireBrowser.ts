@@ -135,8 +135,34 @@ interface AcquiredBrowser {
 // only part of the package (the entry point and some of lib/), so the require
 // succeeded and then threw on a missing internal file. See the forced
 // outputFileTracingIncludes in next.config.ts, which guarantees the rest.
+// Browserless runs its Chrome at 800x600 and, tested against the live
+// service, ignores every post-connection way of changing that — newContext
+// viewport, setViewportSize, and a direct CDP Emulation override all left the
+// page at 800x600. What it does honour is a window size passed as a launch
+// argument on the connection URL, so append one there. Both the v2 `launch`
+// JSON parameter and the legacy bare flag are set; each version ignores the
+// other's. Only touches browserless hosts — an arbitrary CDP endpoint gets
+// its URL passed through untouched.
+function withWindowSize(endpoint: string | undefined): string | undefined {
+  if (!endpoint) return endpoint;
+  try {
+    const url = new URL(endpoint);
+    if (!/browserless/i.test(url.hostname)) return endpoint;
+    const size = `--window-size=${VIEWPORT.width},${VIEWPORT.height}`;
+    if (!url.searchParams.has("launch")) {
+      url.searchParams.set("launch", JSON.stringify({ args: [size] }));
+    }
+    if (!url.searchParams.has(size.split("=")[0])) {
+      url.searchParams.set("--window-size", `${VIEWPORT.width},${VIEWPORT.height}`);
+    }
+    return url.toString();
+  } catch {
+    return endpoint;
+  }
+}
+
 async function acquireBrowser(): Promise<AcquiredBrowser | { error: string }> {
-  const endpoint = process.env.ASPIRE_BROWSER_WS_ENDPOINT?.trim();
+  const endpoint = withWindowSize(process.env.ASPIRE_BROWSER_WS_ENDPOINT?.trim());
   if (endpoint) {
     // Browserless/Browserbase-style remote Chromium speaks CDP; a
     // `playwright run-server` endpoint speaks Playwright's own protocol.

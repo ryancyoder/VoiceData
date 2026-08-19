@@ -73,13 +73,17 @@ Browserless runs its Chrome at 800x600 and ignores attempts to change it —
 `Emulation.setDeviceMetricsOverride` were all tried against the live service
 and all left the page reporting 800x600 (the same code does work against a
 CDP-connected Chromium you launch yourself, so this is the provider, not
-Playwright). Browserless takes a window size as a launch argument on the
-connection URL instead, if it ever proves necessary.
+Playwright). What Browserless honours is a window size passed as a launch
+argument on the connection URL, so the driver appends
+`--window-size=1920,1080` (both the v2 `launch` JSON parameter and the legacy
+bare flag) to any browserless host automatically. That matters because at
+800px Aspire's *nav* search box isn't merely hidden — it never renders.
 
-It hasn't so far, and the reason matters: at 800px Aspire's *nav* search box
-isn't merely hidden, it never renders — but a page-level search box is
-unaffected by nav width. Choosing a page whose search box always exists beats
-fighting the window size, which is why `ASPIRE_SEARCH_URL` exists.
+`ASPIRE_SEARCH_URL` still exists for pointing the flow at a page-level search
+box instead, but note the trade found in practice: the opportunities grid's
+search respects whatever filters the grid has saved, so a filtered-out
+proposal returns zero rows there while the nav search finds it. The nav
+search is the default for a reason.
 
 ## Pointing at a different search page
 
