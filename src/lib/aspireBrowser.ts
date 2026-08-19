@@ -544,6 +544,88 @@ async function describeResults(page: Page, needle: string): Promise<string> {
   }
 }
 
+// True once any element's text contains the number. Deliberately not tied to
+// RESULT_ROW: whether results appeared and whether our row selector describes
+// them are separate questions, and conflating them made a markup mismatch
+// read as "no results".
+async function resultsAppeared(page: Page, needle: string, timeout: number): Promise<boolean> {
+  return page
+    .waitForFunction(
+      (needleText: string) => {
+        // Text nodes only, skipping script/style: body.textContent includes
+        // script source, and Angular apps embed serialized state there — a
+        // needle "found" in a JSON blob is not a result on screen.
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            const tag = node.parentElement?.tagName;
+            return tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT"
+              ? NodeFilter.FILTER_REJECT
+              : NodeFilter.FILTER_ACCEPT;
+          },
+        });
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (node.nodeValue?.includes(needleText)) return true;
+        }
+        return false;
+      },
+      needle,
+      { timeout }
+    )
+    .then(() => true)
+    .catch(() => false);
+}
+
+// One-line description of the input the search text went into — which matters
+// on a page with a dozen inputs, where "typed it somewhere" isn't evidence.
+async function describeInput(input: ReturnType<Page["locator"]>): Promise<string> {
+  return input
+    .evaluate((el: HTMLInputElement) => {
+      const bits = [el.type || "text"];
+      if (el.name) bits.push(`name=${el.name}`);
+      if (el.id) bits.push(`id=${el.id}`);
+      const placeholder = el.getAttribute("placeholder");
+      if (placeholder) bits.push(`placeholder="${placeholder.slice(0, 30)}"`);
+      const aria = el.getAttribute("aria-label");
+      if (aria) bits.push(`aria-label="${aria.slice(0, 30)}"`);
+      return `input[${bits.join(" ")}]`;
+    })
+    .catch(() => "unknown input");
+}
+
+// Anchors with a real href whose own text carries the proposal number —
+// innermost matches only, so an ancestor wrapping the whole row doesn't
+// drown out the link itself. Skips javascript: and fragment-only hrefs,
+// which are click handlers wearing an <a> tag.
+async function findResultLinks(page: Page, needle: string): Promise<{ href: string; text: string }[]> {
+  try {
+    return await page.evaluate((needleText: string) => {
+      return Array.from(document.querySelectorAll("a[href]"))
+        .filter((el) => {
+          const href = el.getAttribute("href") || "";
+          if (!href || href.startsWith("#") || href.startsWith("javascript:")) return false;
+          return (el.textContent || "").includes(needleText);
+        })
+        .slice(0, 6)
+        .map((el) => ({
+          href: el.getAttribute("href") || "",
+          text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80),
+        }));
+    }, needle);
+  } catch {
+    return [];
+  }
+}
+
+// Resolve a (possibly relative) href against the page, falling back to the
+// Aspire origin if the page's own URL can't serve as a base.
+function resolveHref(href: string, pageUrl: string): string {
+  try {
+    return new URL(href, pageUrl).toString();
+  } catch {
+    return new URL(href, ASPIRE_BASE_URL).toString();
+  }
+}
+
 async function runSearch(page: Page, options: AspireSearchOptions): Promise<AspireSearchResult> {
   const { proposalNumber, resultIndex } = options;
 
@@ -566,27 +648,27 @@ async function runSearch(page: Page, options: AspireSearchOptions): Promise<Aspi
   }
   await input.click();
   await input.fill("");
-  // Typed rather than filled: the result list filters on keystrokes, so a
+  // Typed rather than filled: a live filter listens for keystrokes, and a
   // single programmatic value-set can leave a debounced filter unfired.
   await input.pressSequentially(proposalNumber, { delay: 40 });
 
-  // Results filter live as you type — no Enter, no search button — so this
-  // waits for the list to contain the number rather than for a navigation.
-  try {
-    await page.waitForFunction(
-      ({ selector, needle }: { selector: string; needle: string }) =>
-        Array.from(document.querySelectorAll(selector)).some((el) =>
-          (el.textContent || "").replace(/\s+/g, " ").includes(needle)
-        ),
-      { selector: RESULT_ROW, needle: proposalNumber },
-      { timeout: RESULT_TIMEOUT_MS }
-    );
-  } catch {
+  // The nav box filters live as you type; a page-level search (the
+  // opportunities grid) sits inert until Enter runs it. Give the live filter
+  // a few seconds, and if nothing surfaced, press Enter and wait properly —
+  // in production the typed number produced no element containing it at all
+  // until this distinction was drawn.
+  let appeared = await resultsAppeared(page, proposalNumber, 5_000);
+  if (!appeared) {
+    await input.press("Enter");
+    appeared = await resultsAppeared(page, proposalNumber, RESULT_TIMEOUT_MS);
+  }
+  if (!appeared) {
     return {
       ok: false,
       code: "no_match",
       message:
-        `Aspire's search returned nothing for "${proposalNumber}". ` +
+        `Aspire's search returned nothing for "${proposalNumber}" ` +
+        `(typed into ${await describeInput(input)}, then pressed Enter). ` +
         `[${await describeResults(page, proposalNumber)}]`,
     };
   }
@@ -601,6 +683,27 @@ async function runSearch(page: Page, options: AspireSearchOptions): Promise<Aspi
   const matches = exact.length > 0 ? exact : loose;
 
   if (matches.length === 0) {
+    // Results are on the page (the number's there) but the configured row
+    // selector doesn't describe them — the shape of a search page we haven't
+    // mapped, like the opportunities grid. If those results are real links,
+    // their href IS the answer: no row selectors, no clicking, no waiting on
+    // a navigation. The nav dropdown needed the click path only because its
+    // rows have no href.
+    const links = await findResultLinks(page, proposalNumber);
+    if (links.length === 1) {
+      return { ok: true, url: resolveHref(links[0].href, page.url()), title: links[0].text };
+    }
+    if (links.length > 1) {
+      if (resultIndex !== undefined && links[resultIndex]) {
+        return { ok: true, url: resolveHref(links[resultIndex].href, page.url()), title: links[resultIndex].text };
+      }
+      return {
+        ok: false,
+        code: "ambiguous",
+        message: `${links.length} Aspire links matched #${proposalNumber} — pick the right one`,
+        candidates: links.map((l, index) => ({ index, title: l.text, subtitle: l.href })),
+      };
+    }
     return {
       ok: false,
       code: "no_match",
