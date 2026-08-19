@@ -66,6 +66,20 @@ Chromium at install time.
 The route is `runtime = "nodejs"` with `maxDuration = 90`; a cold Aspire load
 plus the debounced search plus the proposal page's own load can take a while.
 
+## Pointing at a different search page
+
+The nav search box is the confirmed click path, but it lives in a nav that
+collapses. `ASPIRE_SEARCH_URL` moves the whole flow to any page with a search
+box — `/app/opportunities/search` has one that's always on screen — and the
+four `ASPIRE_*_SELECTOR` variables adapt the driver to that page's markup.
+
+Don't guess those selectors. Set `ASPIRE_SEARCH_URL` alone and run it once:
+the failure reports how many rows the current row selector matched and, for
+every element whose text contains the proposal number, its tag, classes, and
+`href`. That's enough to read the right selectors off directly — and if the
+rows turn out to be real links, the URL is available without clicking at all,
+which would make this whole flow considerably simpler.
+
 ## When it fails
 
 Headless failures are invisible by default, so each one lands in three places:

@@ -20,10 +20,17 @@ import {
 // PrimeNG input with a stable `name`, and results are `.search-result` rows
 // whose title anchor has no id or href — an Angular click handler, not a link —
 // so the only thing to match on is the visible text.
-const SEARCH_INPUT = 'input[name="searchAspire"]';
-const RESULT_ROW = ".search-result";
-const RESULT_TITLE = "a.pointer:not(.result-sub-name)";
-const RESULT_SUBTITLE = "a.result-sub-name";
+const SEARCH_INPUT = process.env.ASPIRE_SEARCH_INPUT_SELECTOR?.trim() || 'input[name="searchAspire"]';
+const RESULT_ROW = process.env.ASPIRE_RESULT_ROW_SELECTOR?.trim() || ".search-result";
+const RESULT_TITLE = process.env.ASPIRE_RESULT_TITLE_SELECTOR?.trim() || "a.pointer:not(.result-sub-name)";
+const RESULT_SUBTITLE = process.env.ASPIRE_RESULT_SUB_SELECTOR?.trim() || "a.result-sub-name";
+
+// Where the driver goes to search. The default is the app root, whose nav
+// search box is the confirmed click path — but that box collapses when the nav
+// is tight, so ASPIRE_SEARCH_URL can point at a page with a search box that's
+// always on screen (e.g. /app/opportunities/search) without a code change.
+// A different page means different markup, hence the selector overrides above.
+const SEARCH_URL = process.env.ASPIRE_SEARCH_URL?.trim() || ASPIRE_BASE_URL;
 
 const PAGE_LOAD_TIMEOUT_MS = 30_000;
 const SIGNED_IN_TIMEOUT_MS = 20_000;
@@ -197,18 +204,24 @@ async function persistSession(context: BrowserContext): Promise<void> {
   }
 }
 
-// Signed in means the app shell rendered, which is not the same as the search
-// box being on screen: Aspire collapses it behind an icon at narrow widths, and
-// treating that as "not signed in" sent a perfectly good session back through
-// the login flow. Existence in the DOM is the signal; making it visible is
-// runSearch's job.
+// Being signed out is what's actually detectable: Aspire redirects to /login.
+// Everything else — the search box's visibility, or even its presence, which
+// varies by which page ASPIRE_SEARCH_URL points at — is a question about that
+// page's markup, not about the session. Judging the session by the search box
+// is what sent a working login back around the login flow.
+//
+// Waits for either signal to settle so a slow app boot isn't read as signed
+// out, then decides on the URL alone.
 async function isSignedIn(page: Page, timeout: number): Promise<boolean> {
-  try {
-    await page.waitForSelector(SEARCH_INPUT, { state: "attached", timeout });
-    return true;
-  } catch {
-    return false;
-  }
+  await page
+    .waitForFunction(
+      (selector: string) =>
+        document.querySelector(selector) !== null || /\/login/i.test(window.location.pathname),
+      SEARCH_INPUT,
+      { timeout }
+    )
+    .catch(() => {});
+  return !/\/login/i.test(new URL(page.url()).pathname);
 }
 
 // What the login page actually contains, for when the selectors miss. Aspire's
@@ -414,6 +427,40 @@ async function describePage(page: Page): Promise<string> {
   }
 }
 
+// When nothing matched, report what the page actually holds: how many rows the
+// configured row selector found, and — more useful — every element whose text
+// contains the number, with its tag, classes, and whether it's a real link.
+// On a page whose markup isn't known yet that's enough to read the right
+// selectors straight off one failed run, instead of guessing at them.
+async function describeResults(page: Page, needle: string): Promise<string> {
+  try {
+    return await page.evaluate(
+      ({ rowSelector, needleText }: { rowSelector: string; needleText: string }) => {
+        const rows = document.querySelectorAll(rowSelector).length;
+        const hits = Array.from(document.querySelectorAll("a, div, td, span, li"))
+          .filter((el) => {
+            if (!(el.textContent || "").includes(needleText)) return false;
+            // Keep the innermost matches; an ancestor chain all "contains" it.
+            return !Array.from(el.children).some((child) =>
+              (child.textContent || "").includes(needleText)
+            );
+          })
+          .slice(0, 6)
+          .map((el) => {
+            const cls = (el.getAttribute("class") || "").split(/\s+/).filter(Boolean).slice(0, 3).join(".");
+            const href = el.getAttribute("href");
+            const text = (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 60);
+            return `<${el.tagName.toLowerCase()}${cls ? `.${cls}` : ""}${href ? ` href=${href}` : ""}> "${text}"`;
+          });
+        return `rows matching "${rowSelector}": ${rows}; elements containing the number: ${hits.join(" | ") || "none"}`;
+      },
+      { rowSelector: RESULT_ROW, needleText: needle }
+    );
+  } catch {
+    return "couldn't read the results";
+  }
+}
+
 async function runSearch(page: Page, options: AspireSearchOptions): Promise<AspireSearchResult> {
   const { proposalNumber, resultIndex } = options;
 
@@ -455,7 +502,9 @@ async function runSearch(page: Page, options: AspireSearchOptions): Promise<Aspi
     return {
       ok: false,
       code: "no_match",
-      message: `Aspire's search returned nothing for "${proposalNumber}"`,
+      message:
+        `Aspire's search returned nothing for "${proposalNumber}". ` +
+        `[${await describeResults(page, proposalNumber)}]`,
     };
   }
   await page.waitForTimeout(DEBOUNCE_SETTLE_MS);
@@ -469,7 +518,13 @@ async function runSearch(page: Page, options: AspireSearchOptions): Promise<Aspi
   const matches = exact.length > 0 ? exact : loose;
 
   if (matches.length === 0) {
-    return { ok: false, code: "no_match", message: `No Aspire result matched proposal #${proposalNumber}` };
+    return {
+      ok: false,
+      code: "no_match",
+      message:
+        `No Aspire result matched proposal #${proposalNumber}. ` +
+        `[${await describeResults(page, proposalNumber)}]`,
+    };
   }
 
   let chosen = matches[0];
@@ -538,7 +593,7 @@ export async function searchAspireProposal(options: AspireSearchOptions): Promis
     page = await context.newPage();
     await page.setViewportSize(VIEWPORT);
     page.setDefaultTimeout(RESULT_TIMEOUT_MS);
-    await page.goto(ASPIRE_BASE_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
+    await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
 
     if (!(await isSignedIn(page, hadSession ? SIGNED_IN_TIMEOUT_MS : 5_000))) {
       const login = await logIn(page);
@@ -549,6 +604,12 @@ export async function searchAspireProposal(options: AspireSearchOptions): Promis
           message: login.message,
         };
       }
+    }
+
+    // A fresh login lands wherever Aspire sends it, which isn't necessarily the
+    // page the search runs on.
+    if (SEARCH_URL !== ASPIRE_BASE_URL && !page.url().startsWith(SEARCH_URL)) {
+      await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
     }
 
     const result = await runSearch(page, options);
