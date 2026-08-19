@@ -20,7 +20,14 @@ import {
 // PrimeNG input with a stable `name`, and results are `.search-result` rows
 // whose title anchor has no id or href — an Angular click handler, not a link —
 // so the only thing to match on is the visible text.
-const SEARCH_INPUT = process.env.ASPIRE_SEARCH_INPUT_SELECTOR?.trim() || 'input[name="searchAspire"]';
+// The nav search box has a stable `name`; a page-level search box (AG Grid's
+// quick filter on /app/opportunities/search, say) has no name or id at all, so
+// the fallbacks match on the things such an input does carry. First match in
+// DOM order wins, and ASPIRE_SEARCH_INPUT_SELECTOR overrides the lot.
+const SEARCH_INPUT =
+  process.env.ASPIRE_SEARCH_INPUT_SELECTOR?.trim() ||
+  'input[name="searchAspire"], input[type="search"], input[placeholder*="search" i], ' +
+    'input[aria-label*="search" i], input[class*="search" i]';
 const RESULT_ROW = process.env.ASPIRE_RESULT_ROW_SELECTOR?.trim() || ".search-result";
 const RESULT_TITLE = process.env.ASPIRE_RESULT_TITLE_SELECTOR?.trim() || "a.pointer:not(.result-sub-name)";
 const RESULT_SUBTITLE = process.env.ASPIRE_RESULT_SUB_SELECTOR?.trim() || "a.result-sub-name";
@@ -473,9 +480,24 @@ async function describePage(page: Page): Promise<string> {
         return rect.width > 0 && rect.height > 0;
       };
       const target = document.querySelector(selector);
-      const inputs = Array.from(document.querySelectorAll("input")).map(
-        (el) => `${el.name || el.id || el.type}${onScreen(el) ? "" : " (hidden)"}`
-      );
+      // Everything an input carries that a selector could key on. The
+      // previous version printed only name-or-id-or-type, which reduced a
+      // page-level search box to the bare word "text" — true, and useless.
+      const inputs = Array.from(document.querySelectorAll("input"))
+        .slice(0, 12)
+        .map((el) => {
+          const bits = [el.type || "text"];
+          if (el.name) bits.push(`name=${el.name}`);
+          if (el.id) bits.push(`id=${el.id}`);
+          const placeholder = el.getAttribute("placeholder");
+          if (placeholder) bits.push(`placeholder="${placeholder.slice(0, 30)}"`);
+          const aria = el.getAttribute("aria-label");
+          if (aria) bits.push(`aria-label="${aria.slice(0, 30)}"`);
+          const cls = (el.getAttribute("class") || "").split(/\s+/).filter(Boolean).slice(0, 2).join(".");
+          if (cls) bits.push(`class=${cls}`);
+          if (!onScreen(el)) bits.push("hidden");
+          return `input[${bits.join(" ")}]`;
+        });
       return (
         `page=${location.origin + location.pathname}; ` +
         `viewport=${window.innerWidth}x${window.innerHeight}; ` +

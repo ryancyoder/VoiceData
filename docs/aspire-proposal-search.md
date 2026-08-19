@@ -66,6 +66,21 @@ Chromium at install time.
 The route is `runtime = "nodejs"` with `maxDuration = 90`; a cold Aspire load
 plus the debounced search plus the proposal page's own load can take a while.
 
+### A note on window size
+
+Browserless runs its Chrome at 800x600 and ignores attempts to change it —
+`browser.newContext({ viewport })`, `page.setViewportSize`, and a direct CDP
+`Emulation.setDeviceMetricsOverride` were all tried against the live service
+and all left the page reporting 800x600 (the same code does work against a
+CDP-connected Chromium you launch yourself, so this is the provider, not
+Playwright). Browserless takes a window size as a launch argument on the
+connection URL instead, if it ever proves necessary.
+
+It hasn't so far, and the reason matters: at 800px Aspire's *nav* search box
+isn't merely hidden, it never renders — but a page-level search box is
+unaffected by nav width. Choosing a page whose search box always exists beats
+fighting the window size, which is why `ASPIRE_SEARCH_URL` exists.
+
 ## Pointing at a different search page
 
 The nav search box is the confirmed click path, but it lives in a nav that
