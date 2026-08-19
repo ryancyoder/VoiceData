@@ -674,6 +674,84 @@ function resolveHref(href: string, pageUrl: string): string {
   }
 }
 
+// Grid results carry the proposal number in a plain cell — production showed
+// it as <span.number-cell-component>"19982" — with the row's link (if any)
+// living in a sibling cell. Find cells whose text IS the number, climb to the
+// row each belongs to, and report what that row offers: an href somewhere in
+// the row, or the cell itself to click. Each matched cell is tagged with a
+// data attribute so a locator can click precisely the element the scan found.
+interface GridHit {
+  index: number;
+  rowText: string;
+  href: string | null;
+}
+
+async function findGridHits(page: Page, needle: string): Promise<GridHit[]> {
+  try {
+    return await page.evaluate((needleText: string) => {
+      const exact = (el: Element) => {
+        const t = (el.textContent || "").trim();
+        return t === needleText || t === `#${needleText}`;
+      };
+      const rowOf = (el: Element) =>
+        el.closest('[class*="ag-row"]:not([class*="ag-header"]), [role="row"], tr');
+      const seenRows = new Set<Element>();
+      const hits: { index: number; rowText: string; href: string | null }[] = [];
+      const cells = Array.from(document.querySelectorAll("span, div, td, a")).filter(
+        (el) => exact(el) && !Array.from(el.children).some(exact)
+      );
+      for (const cell of cells) {
+        const row = rowOf(cell);
+        if (row && seenRows.has(row)) continue;
+        if (row) seenRows.add(row);
+        const index = hits.length;
+        cell.setAttribute("data-aspire-hit", String(index));
+        const link = (row ?? cell).querySelector("a[href]");
+        const href = link?.getAttribute("href") || null;
+        hits.push({
+          index,
+          rowText: ((row ?? cell).textContent || "").replace(/\s+/g, " ").trim().slice(0, 80),
+          href: href && !href.startsWith("#") && !href.startsWith("javascript:") ? href : null,
+        });
+      }
+      return hits;
+    }, needle);
+  } catch {
+    return [];
+  }
+}
+
+// Click the tagged cell and treat a URL change as success. Grids wire
+// navigation to single or double click depending on the renderer, so try both.
+async function openGridHit(page: Page, hit: GridHit): Promise<AspireSearchResult> {
+  if (hit.href) {
+    return { ok: true, url: resolveHref(hit.href, page.url()), title: hit.rowText };
+  }
+  const cell = page.locator(`[data-aspire-hit="${hit.index}"]`).first();
+  const before = page.url();
+  const navigated = async (timeout: number) =>
+    page
+      .waitForFunction((previous: string) => window.location.href !== previous, before, { timeout })
+      .then(() => true)
+      .catch(() => false);
+
+  await cell.click({ timeout: 5_000 }).catch(() => {});
+  if (!(await navigated(8_000))) {
+    await cell.dblclick({ timeout: 5_000 }).catch(() => {});
+    if (!(await navigated(NAVIGATION_TIMEOUT_MS))) {
+      return {
+        ok: false,
+        code: "navigation_failed",
+        message:
+          `Found the row for #${hit.rowText.slice(0, 30)} but neither clicking nor double-clicking ` +
+          `its number cell navigated, and the row has no link to read.`,
+      };
+    }
+  }
+  await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
+  return { ok: true, url: page.url(), title: hit.rowText };
+}
+
 async function runSearch(page: Page, options: AspireSearchOptions): Promise<AspireSearchResult> {
   const { proposalNumber, resultIndex } = options;
 
@@ -750,6 +828,21 @@ async function runSearch(page: Page, options: AspireSearchOptions): Promise<Aspi
         code: "ambiguous",
         message: `${links.length} Aspire links matched #${proposalNumber} — pick the right one`,
         candidates: links.map((l, index) => ({ index, title: l.text, subtitle: l.href })),
+      };
+    }
+
+    // No anchor carries the number itself — grid territory. Cells hold the
+    // number; the row holds the way in.
+    const hits = await findGridHits(page, proposalNumber);
+    if (hits.length === 1) return openGridHit(page, hits[0]);
+    if (hits.length > 1) {
+      const picked = resultIndex !== undefined ? hits.find((h) => h.index === resultIndex) : undefined;
+      if (picked) return openGridHit(page, picked);
+      return {
+        ok: false,
+        code: "ambiguous",
+        message: `${hits.length} rows matched #${proposalNumber} — pick the right one`,
+        candidates: hits.map((h) => ({ index: h.index, title: h.rowText, subtitle: "" })),
       };
     }
     return {
