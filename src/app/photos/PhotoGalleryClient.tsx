@@ -45,6 +45,9 @@ export interface GalleryEvent {
   // photos are per-deal now, not per-property — synthetic reference groups
   // (which have no deal) carry null.
   dealNextActionPhotoId: number | null;
+  // The deal's appointment_date ("YYYY-MM-DD"), or null — feeds the albums
+  // view's sort-by-nearest-appointment option.
+  dealAppointmentDate: string | null;
   // A synthetic group holding a deal's event-less Site_Plan_Image photos
   // (uploaded from the estimator). Rendered with a SITE PLAN badge and no
   // calendar link / add controls, since it isn't a real calendar event.
@@ -64,6 +67,7 @@ interface DealGroup {
   // The deal's ⚡ next-action photo (a deal_photos id), or null. Only real
   // deals (dealId != null) can carry one.
   nextActionPhotoId: number | null;
+  appointmentDate: string | null;
   events: GalleryEvent[];
 }
 
@@ -74,6 +78,28 @@ interface PropertyGroup {
   coverPhotoId: number | null;
   referencePhotos: DealPhoto[];
   deals: DealGroup[];
+}
+
+// The property's "nearest" appointment across its deals: the soonest one
+// today-or-later when any exists, otherwise the most recent past one. Sorting
+// compares plain "YYYY-MM-DD" strings, which order correctly as text.
+function nearestAppointment(property: PropertyGroup): { date: string; upcoming: boolean } | null {
+  const dates = property.deals
+    .map((d) => d.appointmentDate)
+    .filter((d): d is string => Boolean(d))
+    .sort();
+  if (dates.length === 0) return null;
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const upcoming = dates.find((d) => d >= todayStr);
+  if (upcoming) return { date: upcoming, upcoming: true };
+  return { date: dates[dates.length - 1], upcoming: false };
+}
+
+function formatAppointmentShort(date: string): string {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function flattenPropertyPhotos(property: PropertyGroup): DealPhoto[] {
@@ -170,6 +196,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           dealName: event.dealName ?? "No deal yet",
           dealStage: event.dealStage,
           nextActionPhotoId: event.dealNextActionPhotoId,
+          appointmentDate: event.dealAppointmentDate,
           events: [],
         });
       }
@@ -209,12 +236,37 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       return next;
     });
   }
+  // How the album grid is ordered. "name" is the long-standing alphabetical
+  // order; "appointment" floats the property you're visiting next to the top:
+  // upcoming appointments soonest-first, then past-only properties newest
+  // first, then properties with no appointment at all (alphabetical within
+  // each band). Persisted so the choice survives reloads.
+  const [albumSort, setAlbumSort] = usePersistentState<"name" | "appointment">("photos_album_sort", "name");
   const visiblePropertyGroups = useMemo(() => {
-    if (selectedStages.size === STAGES.length) return propertyGroups;
-    return propertyGroups.filter((p) =>
-      p.deals.some((d) => d.dealStage != null && selectedStages.has(d.dealStage as Stage))
-    );
-  }, [propertyGroups, selectedStages]);
+    const filtered =
+      selectedStages.size === STAGES.length
+        ? propertyGroups
+        : propertyGroups.filter((p) =>
+            p.deals.some((d) => d.dealStage != null && selectedStages.has(d.dealStage as Stage))
+          );
+    if (albumSort !== "appointment") return filtered;
+    const band = (p: PropertyGroup) => {
+      const appt = nearestAppointment(p);
+      if (!appt) return { rank: 2, key: "" };
+      return { rank: appt.upcoming ? 0 : 1, key: appt.date };
+    };
+    return [...filtered].sort((a, b) => {
+      const ba = band(a);
+      const bb = band(b);
+      if (ba.rank !== bb.rank) return ba.rank - bb.rank;
+      if (ba.key !== bb.key) {
+        // Upcoming: soonest first (ascending). Past: most recent first
+        // (descending). ISO date strings compare correctly as text.
+        return ba.rank === 1 ? bb.key.localeCompare(ba.key) : ba.key.localeCompare(bb.key);
+      }
+      return a.propertyLabel.localeCompare(b.propertyLabel);
+    });
+  }, [propertyGroups, selectedStages, albumSort]);
 
   const [activePropertyKey, setActivePropertyKey] = useState<string | null>(() => {
     // ?photo=<id> opens the album that contains a specific photo and (via the
@@ -501,6 +553,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       propertyContactLastName: null,
       propertyCoverPhotoId: property?.coverPhotoId ?? null,
       dealNextActionPhotoId: deal.nextActionPhotoId,
+      dealAppointmentDate: deal.appointmentDate,
     }));
   }
 
@@ -581,6 +634,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       propertyContactLastName: null,
       propertyCoverPhotoId: property?.coverPhotoId ?? null,
       dealNextActionPhotoId: null,
+      dealAppointmentDate: null,
     }));
   }
 
@@ -712,6 +766,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
           propertyContactLastName: null,
           propertyCoverPhotoId: coverPhotoId,
           dealNextActionPhotoId: null,
+          dealAppointmentDate: null,
         },
       ];
     });
@@ -830,6 +885,21 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
         </div>
         {propertyGroups.length > 0 && (
           <div className={styles["topbar-actions"]}>
+            {!activeProperty && (
+              <button
+                type="button"
+                className={`${styles["caption-toggle"]} ${albumSort === "appointment" ? styles["is-active"] : ""}`}
+                onClick={() => setAlbumSort((v) => (v === "appointment" ? "name" : "appointment"))}
+                aria-pressed={albumSort === "appointment"}
+                title={
+                  albumSort === "appointment"
+                    ? "Sorting by nearest appointment — click for A→Z"
+                    : "Sort albums by nearest appointment date"
+                }
+              >
+                {albumSort === "appointment" ? "📅 By appointment" : "🔤 A→Z"}
+              </button>
+            )}
             <button
               type="button"
               className={styles["caption-toggle"]}
@@ -894,6 +964,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
               const cover = photos.find((p) => p.id === property.coverPhotoId) ?? photos[0];
               const coverThumb = dealThumbUrl(cover);
               const dealCount = property.deals.filter((d) => d.dealId != null).length;
+              const appt = nearestAppointment(property);
               return (
                 <button key={property.key} type="button" className={styles.album} onClick={() => openAlbum(property.key)}>
                   <span className={styles["thumb-image-wrap"]}>
@@ -910,6 +981,9 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                   <span className={styles["thumb-caption"]}>
                     <span className={styles["thumb-caption-name"]}>{property.propertyLabel}</span>
                     <span className={styles["thumb-caption-stage"]}>
+                      {albumSort === "appointment" && appt
+                        ? `📅 ${formatAppointmentShort(appt.date)}${appt.upcoming ? "" : " (past)"} · `
+                        : ""}
                       {dealCount} deal{dealCount === 1 ? "" : "s"}
                     </span>
                   </span>
