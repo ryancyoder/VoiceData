@@ -211,12 +211,31 @@ async function persistSession(context: BrowserContext): Promise<void> {
 // is what sent a working login back around the login flow.
 //
 // Waits for either signal to settle so a slow app boot isn't read as signed
-// out, then decides on the URL alone.
+// out, then decides on the URL alone. Correct only BEFORE a login attempt,
+// where sitting on /login is a final answer — after submitting credentials it
+// is not, so use waitForLoginToLand for that.
 async function isSignedIn(page: Page, timeout: number): Promise<boolean> {
   await page
     .waitForFunction(
       (selector: string) =>
         document.querySelector(selector) !== null || /\/login/i.test(window.location.pathname),
+      SEARCH_INPUT,
+      { timeout }
+    )
+    .catch(() => {});
+  return !/\/login/i.test(new URL(page.url()).pathname);
+}
+
+// After submitting credentials, /login is where the page sits while the login
+// is still in flight — the button reads "Logging in…" — so it means "not
+// finished yet", not "signed out". This waits for the page to actually leave
+// the login route. Reusing the pre-login check here made the run give up the
+// instant it submitted, mid-request, and call a login in progress a failure.
+async function waitForLoginToLand(page: Page, timeout: number): Promise<boolean> {
+  await page
+    .waitForFunction(
+      (selector: string) =>
+        !/\/login/i.test(window.location.pathname) || document.querySelector(selector) !== null,
       SEARCH_INPUT,
       { timeout }
     )
@@ -357,12 +376,14 @@ async function logIn(page: Page): Promise<{ ok: true } | { ok: false; message: s
 
     await submitForm(pass);
 
-    if (await isSignedIn(page, LOGIN_TIMEOUT_MS)) return { ok: true };
+    if (await waitForLoginToLand(page, LOGIN_TIMEOUT_MS)) return { ok: true };
+    // Deliberately not naming a cause. The page's own shape is below — a code
+    // field means verification, a still-filled form means the credentials or
+    // the company code were rejected, a "Logging in…" button means it simply
+    // ran out of time. Guessing MFA here has been wrong every time so far.
     return {
       ok: false,
-      message:
-        "Filled in the login but Aspire's search box never appeared — it may be asking for an MFA code. " +
-        `[${await describeLoginPage(page)}]`,
+      message: `Aspire stayed on the login page. [${await describeLoginPage(page)}]`,
     };
   } catch (err) {
     return { ok: false, message: `Aspire login failed: ${briefError(err)} [${await describeLoginPage(page)}]` };
