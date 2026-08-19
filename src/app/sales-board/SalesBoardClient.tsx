@@ -486,6 +486,12 @@ export default function SalesBoardClient({
     }
   }
 
+  // /api/aspire-search already wrote the resolved URL onto the row — this just
+  // keeps the board's in-memory copy from lagging a page reload behind.
+  function handleAspireLinkResolved(dealId: number, url: string) {
+    setDeals((ds) => ds.map((d) => (d.id === dealId ? { ...d, aspire_link: url } : d)));
+  }
+
   async function handleToggleFlag(deal: Deal) {
     const flagged = !deal.flagged;
     const previous = deals;
@@ -1303,6 +1309,7 @@ export default function SalesBoardClient({
           onDeleteAttachment={handleDeleteAttachment}
           onUploadCorrespondence={handleUploadCorrespondence}
           onLogCorrespondence={handleLogCorrespondence}
+          onAspireLinkResolved={handleAspireLinkResolved}
           onDeleteCorrespondence={handleDeleteCorrespondence}
         />
       )}

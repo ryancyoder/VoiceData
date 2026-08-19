@@ -23,6 +23,9 @@ import { fetchWithTimeout } from "@/lib/withTimeout";
 import { MILESTONES, formatMilestoneDate } from "@/app/next-actions/DealTimeline";
 
 const PARSE_ASPIRE_TIMEOUT_MS = 25000;
+// Driving Aspire's search headlessly is slow by nature — page load, a
+// debounced result list, a click, then the proposal page's own load.
+const FIND_ASPIRE_TIMEOUT_MS = 95000;
 const ADD_TASK_TIMEOUT_MS = 15000;
 
 // Display for a logged call/email/text touchpoint in the Correspondence list.
@@ -31,6 +34,14 @@ const CHANNEL_META: Record<"call" | "email" | "text", { icon: string; label: str
   email: { icon: "✉️", label: "Emailed" },
   text: { icon: "💬", label: "Texted" },
 };
+
+// One row of Aspire's search dropdown, as returned by /api/aspire-search when
+// a proposal number matched more than one result.
+interface AspireCandidate {
+  index: number;
+  title: string;
+  subtitle: string;
+}
 
 const EMPTY_INLINE_TASK_FORM = { title: "", context: "" as TaskContext | "", start_date: "", duration_hours: "", is_next_action: false };
 
@@ -55,6 +66,9 @@ interface DealModalProps {
   onDeleteAttachment: (dealId: number, attachmentId: number) => Promise<void>;
   onUploadCorrespondence: (dealId: number, file: File, parentId?: number) => Promise<void>;
   onLogCorrespondence: (dealId: number, channel: "call" | "email" | "text") => Promise<void>;
+  // Called once a proposal's Aspire URL is resolved, so the board's copy of the
+  // deal picks up the link the search route just cached on the row.
+  onAspireLinkResolved: (dealId: number, url: string) => void;
   onDeleteCorrespondence: (dealId: number, correspondenceId: number) => Promise<void>;
 }
 
@@ -273,6 +287,7 @@ export default function DealModal({
   onDeleteAttachment,
   onUploadCorrespondence,
   onLogCorrespondence,
+  onAspireLinkResolved,
   onDeleteCorrespondence,
 }: DealModalProps) {
   const router = useRouter();
@@ -285,6 +300,13 @@ export default function DealModal({
   const [pdfBusy, setPdfBusy] = useState(false);
   const [parsingAspire, setParsingAspire] = useState(false);
   const [aspireParseError, setAspireParseError] = useState("");
+  // "Find in Aspire" (next to the proposal number): resolves the proposal's
+  // Aspire URL through the headless-search route, then opens it.
+  const [findingAspire, setFindingAspire] = useState(false);
+  const [aspireFindError, setAspireFindError] = useState("");
+  // Populated only when a proposal number matched more than one Aspire result,
+  // so the search can't pick for us — the user clicks the right one.
+  const [aspireCandidates, setAspireCandidates] = useState<AspireCandidate[]>([]);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<number | null>(null);
   const [attachmentPasteError, setAttachmentPasteError] = useState("");
@@ -835,6 +857,67 @@ export default function DealModal({
     );
   }
 
+  // Opens the deal's Aspire proposal page. Aspire has no URL pattern to jump
+  // to — the only way in is typing the number into its search box and clicking
+  // the result — so the first click runs that path server-side in a headless
+  // browser (/api/aspire-search), which caches the URL it lands on onto the
+  // deal. Every click after that is just an open.
+  async function handleFindInAspire({ resultIndex, refresh }: { resultIndex?: number; refresh?: boolean } = {}) {
+    const known = form.aspire_link.trim();
+    if (known && !refresh && resultIndex === undefined) {
+      window.open(known, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const proposalNumber = form.proposal_number.trim();
+    if (!proposalNumber) return;
+
+    // Safari blocks window.open() once an await has intervened, so the tab is
+    // claimed up front and pointed at the URL when it arrives.
+    const tab = window.open("", "_blank");
+    setFindingAspire(true);
+    setAspireFindError("");
+    if (resultIndex !== undefined) setAspireCandidates([]);
+    try {
+      const res = await fetchWithTimeout(
+        "/api/aspire-search",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dealId: deal.id, proposalNumber, resultIndex, refresh }),
+        },
+        FIND_ASPIRE_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        if (Array.isArray(data.candidates) && data.candidates.length > 0) {
+          setAspireCandidates(data.candidates as AspireCandidate[]);
+        }
+        throw new Error(data.error || "Couldn't find that proposal in Aspire");
+      }
+
+      setForm((f) => ({ ...f, aspire_link: data.url }));
+      onAspireLinkResolved(deal.id, data.url);
+      setAspireCandidates([]);
+      if (data.saveError) {
+        setAspireFindError(`Opened it, but couldn't save the link for next time: ${data.saveError}`);
+      }
+      if (tab) tab.location.href = data.url;
+      else window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      tab?.close();
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Timed out searching Aspire — try again"
+          : err instanceof Error
+            ? err.message
+            : "Couldn't find that proposal in Aspire";
+      setAspireFindError(message);
+    } finally {
+      setFindingAspire(false);
+    }
+  }
+
   async function handleParseAspire() {
     const link = form.aspire_link.trim();
     if (!link) return;
@@ -1307,7 +1390,62 @@ export default function DealModal({
             <h3 className={styles["deal-section-title"]}>Proposal &amp; dates</h3>
           <div className={styles["card-edit-field"]}>
             <label htmlFor="dm-proposal-number">Proposal #</label>
-            <input id="dm-proposal-number" autoComplete="off" value={form.proposal_number} onChange={(e) => set("proposal_number", e.target.value)} />
+            <div className={styles["aspire-link-row"]}>
+              <input id="dm-proposal-number" autoComplete="off" value={form.proposal_number} onChange={(e) => set("proposal_number", e.target.value)} />
+              {form.proposal_number.trim() && (
+                <button
+                  type="button"
+                  className={styles["aspire-parse-btn"]}
+                  disabled={findingAspire}
+                  title={
+                    form.aspire_link.trim()
+                      ? "Open this proposal in Aspire"
+                      : "Search Aspire for this proposal number and open it"
+                  }
+                  onClick={() => handleFindInAspire()}
+                >
+                  {findingAspire
+                    ? "Searching Aspire…"
+                    : form.aspire_link.trim()
+                      ? "Open in Aspire ↗"
+                      : "Find in Aspire"}
+                </button>
+              )}
+              {form.proposal_number.trim() && form.aspire_link.trim() && (
+                <button
+                  type="button"
+                  className={styles["aspire-parse-btn"]}
+                  disabled={findingAspire}
+                  title="Search Aspire again and replace the saved link"
+                  aria-label="Re-find this proposal in Aspire"
+                  onClick={() => handleFindInAspire({ refresh: true })}
+                >
+                  ↻
+                </button>
+              )}
+            </div>
+            {aspireCandidates.length > 0 && (
+              <div className={styles["aspire-candidates"]}>
+                <span className={styles["aspire-candidates-label"]}>
+                  More than one Aspire result matched — which one?
+                </span>
+                {aspireCandidates.map((candidate) => (
+                  <button
+                    key={candidate.index}
+                    type="button"
+                    className={styles["aspire-candidate"]}
+                    disabled={findingAspire}
+                    onClick={() => handleFindInAspire({ resultIndex: candidate.index })}
+                  >
+                    <span className={styles["aspire-candidate-title"]}>{candidate.title}</span>
+                    {candidate.subtitle && (
+                      <span className={styles["aspire-candidate-sub"]}>{candidate.subtitle}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            {aspireFindError && <div className={styles["card-edit-error"]}>{aspireFindError}</div>}
           </div>
           {/* Key dates, grouped and ordered by the pipeline stage each one
               belongs to: Lead → Propose → Sent → Sold → Project Management. */}

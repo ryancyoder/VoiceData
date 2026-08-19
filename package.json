@@ -25,6 +25,7 @@
     "next": "16.3.0",
     "openai": "^7.4.0",
     "pdf-parse": "^2.4.5",
+    "playwright-core": "^1.62.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-konva": "^19.2.3",

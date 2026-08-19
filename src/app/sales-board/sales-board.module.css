@@ -1118,6 +1118,32 @@
 .aspire-parse-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .aspire-parse-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Aspire search picked up more than one result for a proposal number — the
+   rows below the Proposal # field let the user say which one is the deal. */
+.aspire-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.aspire-candidates-label { font-size: 0.8125rem; color: var(--text-muted); }
+.aspire-candidate {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+  cursor: pointer;
+}
+.aspire-candidate:hover:not(:disabled) { border-color: var(--accent); }
+.aspire-candidate:disabled { opacity: 0.5; cursor: not-allowed; }
+.aspire-candidate-title { font-size: 0.9rem; }
+.aspire-candidate-sub { font-size: 0.8125rem; color: var(--text-muted); }
+
 /* "Open ↗" button beside a URL field — opens the link in a new tab. */
 .open-link-btn {
   display: inline-flex;
