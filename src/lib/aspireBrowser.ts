@@ -1,4 +1,4 @@
-import type { Browser, BrowserContext, Page } from "playwright-core";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import {
   ASPIRE_BASE_URL,
   loadAspireSession,
@@ -75,20 +75,18 @@ function leadingNumber(title: string): string | null {
 
 // ─── Browser acquisition ─────────────────────────────────────────────────
 
-type PlaywrightModule = typeof import("playwright-core");
-
 interface AcquiredBrowser {
   browser: Browser;
 }
 
+// playwright-core is imported statically rather than with a dynamic import().
+// Next treats it as an external package, so it's `require`d at runtime rather
+// than bundled, and the deploy-time file tracer decides what to copy into the
+// serverless function by walking imports. Behind a dynamic import it traced
+// only part of the package (the entry point and some of lib/), so the require
+// succeeded and then threw on a missing internal file. See the forced
+// outputFileTracingIncludes in next.config.ts, which guarantees the rest.
 async function acquireBrowser(): Promise<AcquiredBrowser | { error: string }> {
-  let chromium: PlaywrightModule["chromium"];
-  try {
-    ({ chromium } = await import("playwright-core"));
-  } catch {
-    return { error: "playwright-core isn't installed on this deployment" };
-  }
-
   const endpoint = process.env.ASPIRE_BROWSER_WS_ENDPOINT?.trim();
   if (endpoint) {
     // Browserless/Browserbase-style remote Chromium speaks CDP; a
