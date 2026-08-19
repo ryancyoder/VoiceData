@@ -99,6 +99,25 @@ every element whose text contains the proposal number, its tag, classes, and
 rows turn out to be real links, the URL is available without clicking at all,
 which would make this whole flow considerably simpler.
 
+## Watching a run live
+
+While a search is running, the button area shows a **👁 Watch live** link
+(and `/admin/aspire-session` shows the same during its "Test session").
+Opening it shows the robot's actual browser in real time — Browserless's
+"live URL" feature, requested over CDP (`Browserless.liveURL`) at the start
+of each run, parked in `app_settings` for the frontend to poll
+(`/api/aspire-live`), and cleared when the run ends. On a non-Browserless
+endpoint, or a plan without the feature, the request fails silently and the
+run proceeds unwatched.
+
+The live view is interactive, which turns the verification-code dead end into
+a ten-second assist: when Aspire challenges the login with a code, the run
+posts that ask next to the link and holds the door open for two minutes while
+you open the live view and type the code from your phone. The session cookies
+saved after a success remember the device, so this should be a once-per-device
+event. (This is also why the search route's `maxDuration` is 300 seconds and
+the frontend's timeout matches.)
+
 ## When it fails
 
 Headless failures are invisible by default, so each one lands in three places:

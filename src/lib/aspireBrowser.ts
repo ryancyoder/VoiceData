@@ -3,6 +3,7 @@ import {
   ASPIRE_BASE_URL,
   loadAspireSession,
   saveAspireSession,
+  writeLiveView,
   type AspireCookie,
 } from "@/lib/aspireSession";
 
@@ -48,6 +49,9 @@ const VIEWPORT = { width: 1920, height: 1080 };
 const LOGIN_TIMEOUT_MS = 30_000;
 const RESULT_TIMEOUT_MS = 15_000;
 const NAVIGATION_TIMEOUT_MS = 25_000;
+// How long to hold the door open when Aspire asks for a verification code and
+// a live view is available for the user to type it into.
+const MFA_WAIT_MS = 120_000;
 // Results filter live as you type and the filter is debounced, so the first
 // row to appear isn't necessarily the last: wait out one more debounce window
 // after a match shows up before reading the list.
@@ -240,6 +244,41 @@ async function forceViewport(context: BrowserContext, page: Page): Promise<strin
   return measure();
 }
 
+// ─── Live view ───────────────────────────────────────────────────────────
+
+export interface LiveViewHandle {
+  // Update the message shown next to the Watch-live link.
+  note: (text: string) => Promise<void>;
+  end: () => Promise<void>;
+}
+
+// Ask Browserless for its live URL — a page a human can open to watch and
+// interact with this very browser session — and park it for the frontend.
+// The CDP command is Browserless-specific: any other endpoint (or a plan
+// without the feature) throws, and the run simply proceeds unwatched.
+async function startLiveView(page: Page): Promise<LiveViewHandle | null> {
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    const send = cdp.send.bind(cdp) as (method: string, params?: object) => Promise<unknown>;
+    const result = (await send("Browserless.liveURL", { timeout: MFA_WAIT_MS + 180_000 })) as {
+      liveURL?: string;
+    };
+    if (!result?.liveURL) return null;
+    const startedAt = new Date().toISOString();
+    await writeLiveView({ url: result.liveURL, note: null, startedAt });
+    return {
+      note: async (text: string) => {
+        await writeLiveView({ url: result.liveURL as string, note: text, startedAt });
+      },
+      end: async () => {
+        await writeLiveView(null);
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Session ─────────────────────────────────────────────────────────────
 
 function cookieDomain(): string {
@@ -350,7 +389,7 @@ async function describeLoginPage(page: Page): Promise<string> {
 // Aspire sessions expire, so a stored cookie jar is only a fast path. When it
 // no longer works, log in again with the configured credentials rather than
 // failing the search.
-async function logIn(page: Page): Promise<{ ok: true } | { ok: false; message: string }> {
+async function logIn(page: Page, live: LiveViewHandle | null): Promise<{ ok: true } | { ok: false; message: string }> {
   const username = process.env.ASPIRE_USERNAME?.trim();
   const password = process.env.ASPIRE_PASSWORD;
   if (!username || !password) {
@@ -450,10 +489,47 @@ async function logIn(page: Page): Promise<{ ok: true } | { ok: false; message: s
     await submitForm(pass);
 
     if (await waitForLoginToLand(page, LOGIN_TIMEOUT_MS)) return { ok: true };
-    // Deliberately not naming a cause. The page's own shape is below — a code
-    // field means verification, a still-filled form means the credentials or
-    // the company code were rejected, a "Logging in…" button means it simply
-    // ran out of time. Guessing MFA here has been wrong every time so far.
+
+    // Detected, not guessed: a one-time-code field or verification wording on
+    // the page. Careful with the heuristic — the login form's own companyCode
+    // field means any name*="code" test would always fire.
+    const verificationAsked = await page
+      .evaluate(() => {
+        const codeField = document.querySelector(
+          'input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i]'
+        );
+        const text = (document.body.innerText || "").slice(0, 2000);
+        return codeField !== null || /verification code|verify (it'?s )?you|enter the code/i.test(text);
+      })
+      .catch(() => false);
+
+    // A verification prompt is only fatal when nobody can answer it. With a
+    // live view running, the human can: surface the ask next to the Watch-live
+    // link and hold the door open while they type the code into the session.
+    // The cookies saved after a success remember the device, so this should be
+    // a once-per-device event, not a routine.
+    if (verificationAsked && live) {
+      await live.note(
+        "Aspire is asking for a verification code — open the live view and enter it. Waiting up to 2 minutes."
+      );
+      if (await waitForLoginToLand(page, MFA_WAIT_MS)) return { ok: true };
+      return {
+        ok: false,
+        message:
+          "Aspire asked for a verification code and none was entered in the live view within 2 minutes.",
+      };
+    }
+    if (verificationAsked) {
+      return {
+        ok: false,
+        message:
+          "Aspire is asking for a verification code, which a headless run can't answer on its own. " +
+          "Run it again and use the Watch-live link to type the code, or paste a fresh session at /admin/aspire-session.",
+      };
+    }
+    // Otherwise, deliberately not naming a cause — the page's own shape is
+    // below: a still-filled form means the credentials or company code were
+    // rejected; a "Logging in…" button means it simply ran out of time.
     return {
       ok: false,
       message: `Aspire stayed on the login page. [${await describeLoginPage(page)}]`,
@@ -944,16 +1020,18 @@ export async function searchAspireProposal(options: AspireSearchOptions): Promis
   const { browser } = acquired;
   const { context, ownsContext } = await openContext(browser);
   let page: Page | null = null;
+  let live: LiveViewHandle | null = null;
 
   try {
     const hadSession = await applyStoredSession(context);
     page = await context.newPage();
     await forceViewport(context, page);
+    live = await startLiveView(page);
     page.setDefaultTimeout(RESULT_TIMEOUT_MS);
     await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
 
     if (!(await isSignedIn(page, hadSession ? SIGNED_IN_TIMEOUT_MS : 5_000))) {
-      const login = await logIn(page);
+      const login = await logIn(page, live);
       if (!login.ok) {
         return {
           ok: false,
@@ -975,6 +1053,7 @@ export async function searchAspireProposal(options: AspireSearchOptions): Promis
   } catch (err) {
     return { ok: false, code: "unexpected", message: briefError(err) };
   } finally {
+    await live?.end().catch(() => {});
     await page?.close().catch(() => {});
     if (ownsContext) await context.close().catch(() => {});
     // Closes a locally launched browser; disconnects from a remote one.
@@ -991,10 +1070,12 @@ export async function checkAspireSession(): Promise<{ ok: boolean; message: stri
   const { browser } = acquired;
   const { context, ownsContext } = await openContext(browser);
   let page: Page | null = null;
+  let live: LiveViewHandle | null = null;
   try {
     const hadSession = await applyStoredSession(context);
     page = await context.newPage();
     await forceViewport(context, page);
+    live = await startLiveView(page);
     await page.goto(ASPIRE_BASE_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
     const signedIn = await isSignedIn(page, SIGNED_IN_TIMEOUT_MS);
     if (signedIn) await persistSession(context);
@@ -1009,6 +1090,7 @@ export async function checkAspireSession(): Promise<{ ok: boolean; message: stri
   } catch (err) {
     return { ok: false, message: briefError(err) };
   } finally {
+    await live?.end().catch(() => {});
     await page?.close().catch(() => {});
     if (ownsContext) await context.close().catch(() => {});
     await browser.close().catch(() => {});

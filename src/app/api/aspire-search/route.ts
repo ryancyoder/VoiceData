@@ -5,9 +5,12 @@ import { recordAspireFailure, clearAspireFailure } from "@/lib/aspireSession";
 
 // A headless browser is a Node.js thing, and driving Aspire's search takes
 // well past a default serverless slice — the click path is fill → debounce →
-// wait for results → click → wait for the proposal page to load.
+// wait for results → click → wait for the proposal page to load. The budget
+// also has to cover the verification-code pause: when Aspire challenges the
+// login, the run holds the door open up to two minutes while the user types
+// the code into the live view.
 export const runtime = "nodejs";
-export const maxDuration = 90;
+export const maxDuration = 300;
 
 // Which HTTP status each failure deserves. `ambiguous` is a 409 because the
 // caller can resolve it by re-posting with a resultIndex; the rest are either

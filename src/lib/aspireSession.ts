@@ -17,6 +17,7 @@ export const ASPIRE_BASE_URL = (process.env.ASPIRE_BASE_URL || "https://cloud.yo
 
 export const ASPIRE_SESSION_KEY = "aspire_session_state";
 export const ASPIRE_LAST_ERROR_KEY = "aspire_search_last_error";
+export const ASPIRE_LIVE_VIEW_KEY = "aspire_live_view";
 
 // scrypt needs a salt. It's fixed (not secret — a salt never is) because the
 // value has to derive the same key on every serverless invocation, and the
@@ -199,6 +200,39 @@ export function parseCookieInput(input: string, defaultDomain: string): AspireCo
     .filter((c): c is AspireCookie => c !== null);
 }
 
+// ─── Live view ───────────────────────────────────────────────────────────
+//
+// While a headless run is in progress, Browserless can hand out a "live URL" —
+// a page a human opens to watch (and interact with) the robot's browser in
+// real time. The URL is parked here so the frontend can poll for it and show
+// a "Watch live" link while the search spinner runs. `note` carries a message
+// for the human ("type the verification code"), and startedAt bounds staleness
+// so a crashed run's link doesn't linger.
+
+export interface AspireLiveView {
+  url: string;
+  note: string | null;
+  startedAt: string;
+}
+
+const LIVE_VIEW_MAX_AGE_MS = 5 * 60_000;
+
+export async function writeLiveView(view: AspireLiveView | null): Promise<void> {
+  await setSetting(ASPIRE_LIVE_VIEW_KEY, view ? JSON.stringify(view) : null);
+}
+
+export async function readLiveView(): Promise<AspireLiveView | null> {
+  const stored = await getSetting(ASPIRE_LIVE_VIEW_KEY);
+  if (!stored) return null;
+  try {
+    const parsed = JSON.parse(stored) as AspireLiveView;
+    if (Date.now() - new Date(parsed.startedAt).getTime() > LIVE_VIEW_MAX_AGE_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Readiness ───────────────────────────────────────────────────────────
 
 export interface AspireSessionStatus {
@@ -210,6 +244,7 @@ export interface AspireSessionStatus {
   browserConfigured: boolean;
   credentialsConfigured: boolean;
   lastError: AspireFailure | null;
+  liveView: AspireLiveView | null;
 }
 
 // Everything /admin/aspire-session needs to say whether a search would work
@@ -227,5 +262,6 @@ export async function aspireSessionStatus(): Promise<AspireSessionStatus> {
     ),
     credentialsConfigured: Boolean(process.env.ASPIRE_USERNAME?.trim() && process.env.ASPIRE_PASSWORD),
     lastError: await readAspireFailure(),
+    liveView: await readLiveView(),
   };
 }

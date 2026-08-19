@@ -124,6 +124,18 @@ export default function AspireSessionClient({ initialStatus }: { initialStatus: 
               ? "ASPIRE_USERNAME / ASPIRE_PASSWORD are set — expired sessions re-authenticate on their own."
               : "No ASPIRE_USERNAME / ASPIRE_PASSWORD, so an expired session has to be re-pasted here by hand."}
           </Flag>
+          {status.liveView && (
+            <li className="flex items-start gap-2 text-sm">
+              <span aria-hidden>👁</span>
+              <span className="text-zinc-700 dark:text-zinc-300">
+                A run is in progress —{" "}
+                <a href={status.liveView.url} target="_blank" rel="noopener noreferrer" className="underline">
+                  watch it live
+                </a>
+                {status.liveView.note ? ` — ${status.liveView.note}` : ""}
+              </span>
+            </li>
+          )}
           <li className="text-xs text-zinc-500 dark:text-zinc-400">Aspire: {status.baseUrl}</li>
         </ul>
       </section>

@@ -1118,6 +1118,17 @@
 .aspire-parse-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .aspire-parse-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Live view of a running Aspire search: a Browserless page where the user can
+   watch (and, when Aspire asks for a verification code, type into) the
+   robot's browser. Shown under the Proposal # field while the search runs. */
+.aspire-live-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.aspire-live-note { font-size: 0.8125rem; color: var(--text-muted); }
+
 /* Aspire search picked up more than one result for a proposal number — the
    rows below the Proposal # field let the user say which one is the deal. */
 .aspire-candidates {

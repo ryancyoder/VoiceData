@@ -24,8 +24,10 @@ import { MILESTONES, formatMilestoneDate } from "@/app/next-actions/DealTimeline
 
 const PARSE_ASPIRE_TIMEOUT_MS = 25000;
 // Driving Aspire's search headlessly is slow by nature — page load, a
-// debounced result list, a click, then the proposal page's own load.
-const FIND_ASPIRE_TIMEOUT_MS = 95000;
+// debounced result list, a click, then the proposal page's own load — and the
+// budget also covers the verification-code pause, where the run waits up to
+// two minutes for a code to be typed into the live view.
+const FIND_ASPIRE_TIMEOUT_MS = 300000;
 const ADD_TASK_TIMEOUT_MS = 15000;
 
 // Display for a logged call/email/text touchpoint in the Correspondence list.
@@ -307,6 +309,10 @@ export default function DealModal({
   // Populated only when a proposal number matched more than one Aspire result,
   // so the search can't pick for us — the user clicks the right one.
   const [aspireCandidates, setAspireCandidates] = useState<AspireCandidate[]>([]);
+  // While a search runs, the backend parks a Browserless live-view URL — a
+  // page where the user can watch (and type into) the robot's browser. Polled
+  // here so the "Watch live" link appears as soon as the run has one.
+  const [aspireLiveView, setAspireLiveView] = useState<{ url: string; note: string | null } | null>(null);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<number | null>(null);
   const [attachmentPasteError, setAttachmentPasteError] = useState("");
@@ -392,6 +398,31 @@ export default function DealModal({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+
+  // Poll for the run's live-view link only while a search is actually running;
+  // the backend clears the value when the run ends.
+  useEffect(() => {
+    if (!findingAspire) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/aspire-live");
+        const data = await res.json();
+        if (active) setAspireLiveView(data.live ?? null);
+      } catch {
+        // A missed poll just delays the link a beat.
+      }
+    };
+    void poll();
+    const id = setInterval(poll, 2500);
+    return () => {
+      active = false;
+      clearInterval(id);
+      // The run is over (or was abandoned) — drop the link with it. Cleanup
+      // runs outside the render pass, so this doesn't cascade.
+      setAspireLiveView(null);
+    };
+  }, [findingAspire]);
 
   // Load this deal's estimate (if any) to show Open-vs-Create.
   useEffect(() => {
@@ -1424,6 +1455,21 @@ export default function DealModal({
                 </button>
               )}
             </div>
+            {findingAspire && aspireLiveView && (
+              <div className={styles["aspire-live-row"]}>
+                <a
+                  className={styles["open-link-btn"]}
+                  href={aspireLiveView.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  👁 Watch live
+                </a>
+                <span className={styles["aspire-live-note"]}>
+                  {aspireLiveView.note || "See what the search is doing in Aspire right now"}
+                </span>
+              </div>
+            )}
             {aspireCandidates.length > 0 && (
               <div className={styles["aspire-candidates"]}>
                 <span className={styles["aspire-candidates-label"]}>
