@@ -202,6 +202,37 @@ async function isSignedIn(page: Page, timeout: number): Promise<boolean> {
   }
 }
 
+// What the login page actually contains, for when the selectors miss. Aspire's
+// login markup isn't documented anywhere we control and this runs headless, so
+// without this a failure is just "click timed out" and the next attempt is
+// another guess. Field names and button labels only — never a typed value.
+async function describeLoginPage(page: Page): Promise<string> {
+  try {
+    const shape = await page.evaluate(() => {
+      const visible = (el: Element) => {
+        const rect = (el as HTMLElement).getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const inputs = Array.from(document.querySelectorAll("input"))
+        .filter(visible)
+        .map((el) => `input[type=${el.type || "text"}${el.name ? ` name=${el.name}` : ""}${el.id ? ` id=${el.id}` : ""}]`);
+      const buttons = Array.from(document.querySelectorAll("button, input[type=submit], a[role=button]"))
+        .filter(visible)
+        .map((el) => {
+          const label = (el.textContent || (el as HTMLInputElement).value || "").replace(/\s+/g, " ").trim();
+          return label ? `"${label.slice(0, 40)}"` : `<${el.tagName.toLowerCase()} unlabeled>`;
+        });
+      return { url: location.origin + location.pathname, inputs, buttons };
+    });
+    return (
+      `page=${shape.url}; visible inputs: ${shape.inputs.join(", ") || "none"}; ` +
+      `visible buttons: ${shape.buttons.join(", ") || "none"}`
+    );
+  } catch {
+    return "couldn't read the login page";
+  }
+}
+
 // Aspire sessions expire, so a stored cookie jar is only a fast path. When it
 // no longer works, log in again with the configured credentials rather than
 // failing the search.
@@ -217,40 +248,60 @@ async function logIn(page: Page): Promise<{ ok: true } | { ok: false; message: s
     };
   }
 
-  // Aspire's login markup isn't documented anywhere we control, so the
-  // selectors are overridable; the defaults cover the usual email + password
-  // + submit shape.
+  // Overridable, since Aspire's login markup isn't ours; the defaults cover the
+  // usual email + password + submit shape. Hidden matches are filtered out —
+  // login pages routinely carry an off-screen form whose submit button can
+  // never be clicked, and `.first()` on its own would sit there until timeout.
   const userSelector =
     process.env.ASPIRE_LOGIN_USER_SELECTOR?.trim() ||
     'input[type="email"], input[name="username" i], input[id*="user" i], input[name*="email" i]';
   const passSelector = process.env.ASPIRE_LOGIN_PASS_SELECTOR?.trim() || 'input[type="password"]';
   const submitSelector =
-    process.env.ASPIRE_LOGIN_SUBMIT_SELECTOR?.trim() || 'button[type="submit"], input[type="submit"]';
+    process.env.ASPIRE_LOGIN_SUBMIT_SELECTOR?.trim() ||
+    'button[type="submit"], input[type="submit"], button:has-text("Sign in"), button:has-text("Log in")';
+
+  // Submits exactly once: click the button when there's a clickable one, and
+  // otherwise press Enter in the field we just filled. Doing both would
+  // double-submit — on a two-step login that carries the first submit through
+  // to the second screen's button and skips past the password entirely.
+  async function submitForm(filled: ReturnType<Page["locator"]>): Promise<void> {
+    const button = page.locator(submitSelector).filter({ visible: true }).first();
+    if (await button.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      try {
+        await button.click({ timeout: 5_000 });
+        return;
+      } catch {
+        // Visible but not actionable (covered, disabled, animating) — Enter
+        // is the more reliable path from here.
+      }
+    }
+    await filled.press("Enter");
+  }
 
   try {
-    const user = page.locator(userSelector).first();
+    const user = page.locator(userSelector).filter({ visible: true }).first();
     await user.waitFor({ state: "visible", timeout: 10_000 });
     await user.fill(username);
 
-    const pass = page.locator(passSelector).first();
+    const pass = page.locator(passSelector).filter({ visible: true }).first();
     // Some tenants split login across two steps (username, then password), so
     // submit once if the password field isn't on screen yet.
     if (!(await pass.isVisible().catch(() => false))) {
-      await page.locator(submitSelector).first().click();
-      await pass.waitFor({ state: "visible", timeout: 10_000 });
+      await submitForm(user);
+      await pass.waitFor({ state: "visible", timeout: 15_000 });
     }
     await pass.fill(password);
-    await page.locator(submitSelector).first().click();
+    await submitForm(pass);
 
     if (await isSignedIn(page, LOGIN_TIMEOUT_MS)) return { ok: true };
     return {
       ok: false,
       message:
-        "Signed in but Aspire's search box never appeared — the login may need MFA, or the login " +
-        "selectors need overriding (ASPIRE_LOGIN_*_SELECTOR).",
+        "Filled in the login but Aspire's search box never appeared — it may be asking for an MFA code. " +
+        `[${await describeLoginPage(page)}]`,
     };
   } catch (err) {
-    return { ok: false, message: `Aspire login failed: ${briefError(err)}` };
+    return { ok: false, message: `Aspire login failed: ${briefError(err)} [${await describeLoginPage(page)}]` };
   }
 }
 
