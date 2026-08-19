@@ -811,11 +811,13 @@ async function runSearch(page: Page, options: AspireSearchOptions): Promise<Aspi
   await input.pressSequentially(proposalNumber, { delay: 40 });
 
   // The nav box filters live as you type; a page-level search (the
-  // opportunities grid) sits inert until Enter runs it. Give the live filter
-  // a few seconds, and if nothing surfaced, press Enter and wait properly —
-  // in production the typed number produced no element containing it at all
-  // until this distinction was drawn.
-  let appeared = await resultsAppeared(page, proposalNumber, 5_000);
+  // opportunities grid) sits inert until Enter runs it — in production the
+  // typed number produced no element containing it at all until this
+  // distinction was drawn. On a configured search page, skip straight to
+  // Enter: it's confirmed Enter-driven, and waiting out a live-filter window
+  // first was five dead seconds on every search. The default nav flow keeps
+  // the window so live results aren't disturbed by an Enter press.
+  let appeared = SEARCH_URL !== ASPIRE_BASE_URL ? false : await resultsAppeared(page, proposalNumber, 5_000);
   if (!appeared) {
     await input.press("Enter");
     appeared = await resultsAppeared(page, proposalNumber, RESULT_TIMEOUT_MS);
