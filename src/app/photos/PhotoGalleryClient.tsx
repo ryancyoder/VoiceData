@@ -144,6 +144,20 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   // keyed by property key rather than folded into `events`, since the
   // cover choice lives on the property row, not any individual event.
   const [coverOverrides, setCoverOverrides] = useState<Map<string, number | null>>(new Map());
+  // Sections (event groups, Site Plan, Actions, General reference) collapsed by
+  // the user, keyed by the section's event id — globally unique, so state can
+  // safely outlive switching albums. Collapse hides via CSS rather than
+  // unmounting: the lightbox's index bookkeeping (runningIndex ↔
+  // flattenPropertyPhotos order) depends on every photo staying in the render.
+  const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
+  function toggleSection(id: number) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   // Optimistic overlay of a deal's next-action photo id (keyed by deal id) so
   // the ⚡ badge updates the moment a jobsite photo is marked, before the
   // server moves it into the Action section on the next load.
@@ -1017,9 +1031,35 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                         onDrop={(e) => handleDropOnReference(e)}
                       >
                         <div className={styles["event-group-header"]}>
+                          <button
+                            type="button"
+                            className={styles["event-collapse-btn"]}
+                            onClick={() => toggleSection(refEventId(activeProperty.propertyId!))}
+                            aria-expanded={!collapsedSections.has(refEventId(activeProperty.propertyId!))}
+                            aria-label={
+                              collapsedSections.has(refEventId(activeProperty.propertyId!))
+                                ? "Expand General reference"
+                                : "Collapse General reference"
+                            }
+                          >
+                            {collapsedSections.has(refEventId(activeProperty.propertyId!)) ? "▸" : "▾"}
+                          </button>
                           <span className={styles["event-type-badge"]}>REFERENCE</span>
-                          <span className={styles["event-group-name"]}>General reference</span>
-                          <span className={styles["event-group-date"]}>property photos — drag a photo here to add one</span>
+                          <button
+                            type="button"
+                            className={styles["event-group-name-btn"]}
+                            onClick={() => toggleSection(refEventId(activeProperty.propertyId!))}
+                          >
+                            <span className={styles["event-group-name"]}>General reference</span>
+                          </button>
+                          {collapsedSections.has(refEventId(activeProperty.propertyId!)) ? (
+                            <span className={styles["event-group-date"]}>
+                              {activeProperty.referencePhotos.length} photo
+                              {activeProperty.referencePhotos.length === 1 ? "" : "s"} hidden
+                            </span>
+                          ) : (
+                            <span className={styles["event-group-date"]}>property photos — drag a photo here to add one</span>
+                          )}
                           <span className={styles["event-add-actions"]}>
                             <label className={styles["event-add-btn"]}>
                               + Add
@@ -1041,7 +1081,11 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                           </span>
                         </div>
                         {activeProperty.referencePhotos.length > 0 ? (
-                          <div className={`${styles.grid} ${bigTiles ? styles["grid-large"] : ""}`}>
+                          <div
+                            className={`${styles.grid} ${bigTiles ? styles["grid-large"] : ""} ${
+                              collapsedSections.has(refEventId(activeProperty.propertyId!)) ? styles["section-collapsed"] : ""
+                            }`}
+                          >
                             {activeProperty.referencePhotos.map((photo) => {
                               runningIndex += 1;
                               const i = runningIndex;
@@ -1100,7 +1144,11 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                             })}
                           </div>
                         ) : (
-                          <div className={styles["reference-empty"]}>
+                          <div
+                            className={`${styles["reference-empty"]} ${
+                              collapsedSections.has(refEventId(activeProperty.propertyId!)) ? styles["section-collapsed"] : ""
+                            }`}
+                          >
                             No reference photos yet — add general property photos here.
                           </div>
                         )}
@@ -1156,22 +1204,52 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                             }
                           >
                             <div className={styles["event-group-header"]}>
+                              <button
+                                type="button"
+                                className={styles["event-collapse-btn"]}
+                                onClick={() => toggleSection(event.id)}
+                                aria-expanded={!collapsedSections.has(event.id)}
+                                aria-label={collapsedSections.has(event.id) ? "Expand section" : "Collapse section"}
+                              >
+                                {collapsedSections.has(event.id) ? "▸" : "▾"}
+                              </button>
                               {event.isSitePlan ? (
                                 <>
                                   <span className={styles["event-type-badge"]}>SITE PLAN</span>
-                                  <span className={styles["event-group-name"]}>Site Plan</span>
+                                  <button type="button" className={styles["event-group-name-btn"]} onClick={() => toggleSection(event.id)}>
+                                    <span className={styles["event-group-name"]}>Site Plan</span>
+                                  </button>
+                                  {collapsedSections.has(event.id) && (
+                                    <span className={styles["event-group-date"]}>
+                                      {event.photos.length} photo{event.photos.length === 1 ? "" : "s"} hidden
+                                    </span>
+                                  )}
                                   <span className={styles["event-group-date"]}>from the estimator</span>
                                 </>
                               ) : event.isActionSection ? (
                                 <>
                                   <span className={styles["event-type-badge"]}>ACTION</span>
-                                  <span className={styles["event-group-name"]}>Actions</span>
+                                  <button type="button" className={styles["event-group-name-btn"]} onClick={() => toggleSection(event.id)}>
+                                    <span className={styles["event-group-name"]}>Actions</span>
+                                  </button>
+                                  {collapsedSections.has(event.id) && (
+                                    <span className={styles["event-group-date"]}>
+                                      {event.photos.length} photo{event.photos.length === 1 ? "" : "s"} hidden
+                                    </span>
+                                  )}
                                   <span className={styles["event-group-date"]}>tap ⚡ to set the next action</span>
                                 </>
                               ) : (
                                 <>
                                   {event.event_type && <span className={styles["event-type-badge"]}>{event.event_type}</span>}
-                                  <span className={styles["event-group-name"]}>{event.name ?? "Site visit"}</span>
+                                  <button type="button" className={styles["event-group-name-btn"]} onClick={() => toggleSection(event.id)}>
+                                    <span className={styles["event-group-name"]}>{event.name ?? "Site visit"}</span>
+                                  </button>
+                                  {collapsedSections.has(event.id) && (
+                                    <span className={styles["event-group-date"]}>
+                                      {event.photos.length} photo{event.photos.length === 1 ? "" : "s"} hidden
+                                    </span>
+                                  )}
                                   <span className={styles["event-group-date"]}>
                                     {new Date(event.start_time).toLocaleDateString("en-US", {
                                       month: "short",
@@ -1215,7 +1293,11 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
                             {pasteFeedback && pasteFeedback.eventId === event.id && (
                               <div className={styles["event-paste-error"]}>{pasteFeedback.message}</div>
                             )}
-                            <div className={`${styles.grid} ${bigTiles ? styles["grid-large"] : ""}`}>
+                            <div
+                              className={`${styles.grid} ${bigTiles ? styles["grid-large"] : ""} ${
+                                collapsedSections.has(event.id) ? styles["section-collapsed"] : ""
+                              }`}
+                            >
                               {event.photos.map((photo) => {
                                 runningIndex += 1;
                                 const i = runningIndex;

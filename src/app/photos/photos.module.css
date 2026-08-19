@@ -438,6 +438,31 @@
 .thumb-caption-name { font-size: 0.78rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thumb-caption-stage { font-size: 0.68rem; color: var(--text-muted); }
 
+/* Collapsible album sections. Collapse hides the grid with display:none
+   rather than unmounting it — the lightbox's photo indexes are counted off
+   the render, so every photo has to stay in the tree. */
+.section-collapsed { display: none !important; }
+.event-collapse-btn {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.event-collapse-btn:hover { color: var(--text); }
+.event-group-name-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
 .lightbox-overlay {
   position: fixed;
   inset: 0;
