@@ -167,6 +167,46 @@ async function acquireBrowser(): Promise<AcquiredBrowser | { error: string }> {
   }
 }
 
+// Getting a usable window size out of a remote browser is the fiddly part.
+// A context created with an explicit viewport is the well-supported path, so
+// try that first; a provider that won't allow a fresh context falls back to
+// the default one, where the size has to be forced onto each page instead.
+async function openContext(browser: Browser): Promise<{ context: BrowserContext; ownsContext: boolean }> {
+  try {
+    return { context: await browser.newContext({ viewport: VIEWPORT }), ownsContext: true };
+  } catch {
+    const existing = browser.contexts()[0];
+    if (existing) return { context: existing, ownsContext: false };
+    return { context: await browser.newContext(), ownsContext: true };
+  }
+}
+
+// Belt and braces on top of that: Browserless runs its Chrome at 800x600 and
+// ignored setViewportSize, and Aspire doesn't merely hide its search box at
+// that width — it never renders it. So set the size, read back what the page
+// actually got, and if it didn't take, drive it through CDP directly.
+// Returns the size in force, which callers put in their diagnostics: guessing
+// at the viewport is what made this take three rounds to spot.
+async function forceViewport(context: BrowserContext, page: Page): Promise<string> {
+  await page.setViewportSize(VIEWPORT).catch(() => {});
+  const measure = () => page.evaluate(() => `${window.innerWidth}x${window.innerHeight}`).catch(() => "unknown");
+
+  if ((await measure()) === `${VIEWPORT.width}x${VIEWPORT.height}`) return `${VIEWPORT.width}x${VIEWPORT.height}`;
+
+  try {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: VIEWPORT.width,
+      height: VIEWPORT.height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  } catch {
+    // Nothing more to try — the measured size below tells the caller.
+  }
+  return measure();
+}
+
 // ─── Session ─────────────────────────────────────────────────────────────
 
 function cookieDomain(): string {
@@ -602,17 +642,13 @@ export async function searchAspireProposal(options: AspireSearchOptions): Promis
   }
 
   const { browser } = acquired;
-  // A remote Chromium hands back a live default context; a freshly launched
-  // one has none, so create it (and only then own closing it).
-  const existing = browser.contexts()[0];
-  const context = existing ?? (await browser.newContext());
-  const ownsContext = !existing;
+  const { context, ownsContext } = await openContext(browser);
   let page: Page | null = null;
 
   try {
     const hadSession = await applyStoredSession(context);
     page = await context.newPage();
-    await page.setViewportSize(VIEWPORT);
+    await forceViewport(context, page);
     page.setDefaultTimeout(RESULT_TIMEOUT_MS);
     await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
 
@@ -653,14 +689,12 @@ export async function checkAspireSession(): Promise<{ ok: boolean; message: stri
   if ("error" in acquired) return { ok: false, message: acquired.error };
 
   const { browser } = acquired;
-  const existing = browser.contexts()[0];
-  const context = existing ?? (await browser.newContext());
-  const ownsContext = !existing;
+  const { context, ownsContext } = await openContext(browser);
   let page: Page | null = null;
   try {
     const hadSession = await applyStoredSession(context);
     page = await context.newPage();
-    await page.setViewportSize(VIEWPORT);
+    await forceViewport(context, page);
     await page.goto(ASPIRE_BASE_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
     const signedIn = await isSignedIn(page, SIGNED_IN_TIMEOUT_MS);
     if (signedIn) await persistSession(context);
