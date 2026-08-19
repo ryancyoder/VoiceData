@@ -31,7 +31,12 @@ Chromium, and the URL it lands on is cached on the deal.
 3. **Driver** — `src/lib/aspireBrowser.ts`. Loads the stored session, opens
    Aspire, fills `input[name="searchAspire"]`, waits out the live-filter
    debounce, picks the row whose title starts `#<proposal number>`, clicks it,
-   waits for the navigation, and reads `page.url()`.
+   waits for the navigation, and reads `page.url()`. The page is sized to
+   1920x1080 first: headless Chromium's 1280x720 default is narrow enough that
+   Aspire's nav collapses and hides the search box, and "signed in" is
+   therefore tested by the search box existing in the DOM, not by it being on
+   screen. If it's present but hidden, the driver clicks the collapsed search
+   icon before giving up.
 4. **Session** — `src/lib/aspireSession.ts`. Cookies encrypted with AES-256-GCM
    under `ASPIRE_SESSION_SECRET`, stored in the existing `app_settings` table.
 

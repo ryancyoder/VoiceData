@@ -27,6 +27,10 @@ const RESULT_SUBTITLE = "a.result-sub-name";
 
 const PAGE_LOAD_TIMEOUT_MS = 30_000;
 const SIGNED_IN_TIMEOUT_MS = 20_000;
+// Headless Chromium defaults to 1280x720, narrow enough that Aspire's nav
+// collapses and folds the search box away behind an icon. A desktop-sized
+// window keeps the search box on screen where the click path expects it.
+const VIEWPORT = { width: 1920, height: 1080 };
 const LOGIN_TIMEOUT_MS = 30_000;
 const RESULT_TIMEOUT_MS = 15_000;
 const NAVIGATION_TIMEOUT_MS = 25_000;
@@ -193,9 +197,14 @@ async function persistSession(context: BrowserContext): Promise<void> {
   }
 }
 
+// Signed in means the app shell rendered, which is not the same as the search
+// box being on screen: Aspire collapses it behind an icon at narrow widths, and
+// treating that as "not signed in" sent a perfectly good session back through
+// the login flow. Existence in the DOM is the signal; making it visible is
+// runSearch's job.
 async function isSignedIn(page: Page, timeout: number): Promise<boolean> {
   try {
-    await page.waitForSelector(SEARCH_INPUT, { state: "visible", timeout });
+    await page.waitForSelector(SEARCH_INPUT, { state: "attached", timeout });
     return true;
   } catch {
     return false;
@@ -362,6 +371,49 @@ async function readCandidates(page: Page): Promise<AspireCandidate[]> {
   return candidates;
 }
 
+// The search box exists but is off screen. Aspire is a PrimeNG app, so the
+// collapsed control is an icon button — try the usual ways one is marked up,
+// then re-check. Only ever clicks something that looks like a search control.
+const SEARCH_TOGGLE =
+  '[aria-label*="search" i], [title*="search" i], .pi-search, .fa-search, [class*="search-icon" i], [class*="searchIcon" i]';
+
+async function revealSearchBox(page: Page): Promise<boolean> {
+  const input = page.locator(SEARCH_INPUT).first();
+  const toggles = page.locator(SEARCH_TOGGLE).filter({ visible: true });
+  const count = Math.min(await toggles.count().catch(() => 0), 3);
+  for (let i = 0; i < count; i++) {
+    await toggles.nth(i).click({ timeout: 3_000 }).catch(() => {});
+    if (await input.isVisible({ timeout: 2_000 }).catch(() => false)) return true;
+  }
+  return false;
+}
+
+// Page shape for when the search box can't be found — the counterpart to
+// describeLoginPage, but it also reports elements that exist while hidden,
+// which is exactly the distinction that matters here.
+async function describePage(page: Page): Promise<string> {
+  try {
+    return await page.evaluate((selector: string) => {
+      const onScreen = (el: Element) => {
+        const rect = (el as HTMLElement).getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const target = document.querySelector(selector);
+      const inputs = Array.from(document.querySelectorAll("input")).map(
+        (el) => `${el.name || el.id || el.type}${onScreen(el) ? "" : " (hidden)"}`
+      );
+      return (
+        `page=${location.origin + location.pathname}; ` +
+        `viewport=${window.innerWidth}x${window.innerHeight}; ` +
+        `search box: ${target ? (onScreen(target) ? "visible" : "in DOM but hidden") : "not in DOM"}; ` +
+        `inputs: ${inputs.slice(0, 12).join(", ") || "none"}`
+      );
+    }, SEARCH_INPUT);
+  } catch {
+    return "couldn't read the page";
+  }
+}
+
 async function runSearch(page: Page, options: AspireSearchOptions): Promise<AspireSearchResult> {
   const { proposalNumber, resultIndex } = options;
 
@@ -369,11 +421,18 @@ async function runSearch(page: Page, options: AspireSearchOptions): Promise<Aspi
   try {
     await input.waitFor({ state: "visible", timeout: 10_000 });
   } catch {
-    return {
-      ok: false,
-      code: "search_unavailable",
-      message: `Aspire's search box (${SEARCH_INPUT}) wasn't on the page — the selector may have changed`,
-    };
+    // In the DOM but not on screen: Aspire (a PrimeNG app) tucks the search
+    // behind an icon when the header is tight. Click the icon and try again
+    // before giving up.
+    const revealed = await revealSearchBox(page);
+    if (!revealed) {
+      return {
+        ok: false,
+        code: "search_unavailable",
+        message:
+          `Aspire's search box (${SEARCH_INPUT}) never became visible. [${await describePage(page)}]`,
+      };
+    }
   }
   await input.click();
   await input.fill("");
@@ -477,6 +536,7 @@ export async function searchAspireProposal(options: AspireSearchOptions): Promis
   try {
     const hadSession = await applyStoredSession(context);
     page = await context.newPage();
+    await page.setViewportSize(VIEWPORT);
     page.setDefaultTimeout(RESULT_TIMEOUT_MS);
     await page.goto(ASPIRE_BASE_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
 
@@ -518,6 +578,7 @@ export async function checkAspireSession(): Promise<{ ok: boolean; message: stri
   try {
     const hadSession = await applyStoredSession(context);
     page = await context.newPage();
+    await page.setViewportSize(VIEWPORT);
     await page.goto(ASPIRE_BASE_URL, { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
     const signedIn = await isSignedIn(page, SIGNED_IN_TIMEOUT_MS);
     if (signedIn) await persistSession(context);
