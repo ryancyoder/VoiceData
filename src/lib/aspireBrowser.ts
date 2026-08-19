@@ -62,6 +62,16 @@ export interface AspireSearchOptions {
   resultIndex?: number;
 }
 
+// Playwright appends a multi-line "Call log:" dump to connection errors —
+// useful in a terminal, unreadable in the small red line under a form field.
+// Keep the first sentence or two; the full text is still in the server log.
+function briefError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const beforeCallLog = raw.split(/\n?Call log:/)[0];
+  const collapsed = beforeCallLog.replace(/\s+/g, " ").trim();
+  return collapsed.length > 300 ? `${collapsed.slice(0, 297)}…` : collapsed;
+}
+
 function squish(text: string | null | undefined): string {
   return (text || "").replace(/\s+/g, " ").trim();
 }
@@ -99,7 +109,7 @@ async function acquireBrowser(): Promise<AcquiredBrowser | { error: string }> {
           : await chromium.connectOverCDP(endpoint, { timeout: PAGE_LOAD_TIMEOUT_MS });
       return { browser };
     } catch (err) {
-      return { error: `Couldn't connect to the remote browser: ${(err as Error).message}` };
+      return { error: `Couldn't connect to the remote browser: ${briefError(err)}` };
     }
   }
 
@@ -117,7 +127,7 @@ async function acquireBrowser(): Promise<AcquiredBrowser | { error: string }> {
   } catch (err) {
     return {
       error:
-        `Couldn't start a headless browser (${(err as Error).message}). Set ASPIRE_BROWSER_WS_ENDPOINT ` +
+        `Couldn't start a headless browser (${briefError(err)}). Set ASPIRE_BROWSER_WS_ENDPOINT ` +
         `to a remote Chromium, or ASPIRE_BROWSER_EXECUTABLE to a local Chrome binary.`,
     };
   }
@@ -217,7 +227,7 @@ async function logIn(page: Page): Promise<{ ok: true } | { ok: false; message: s
         "selectors need overriding (ASPIRE_LOGIN_*_SELECTOR).",
     };
   } catch (err) {
-    return { ok: false, message: `Aspire login failed: ${(err as Error).message}` };
+    return { ok: false, message: `Aspire login failed: ${briefError(err)}` };
   }
 }
 
@@ -369,7 +379,7 @@ export async function searchAspireProposal(options: AspireSearchOptions): Promis
     if (result.ok) await persistSession(context);
     return result;
   } catch (err) {
-    return { ok: false, code: "unexpected", message: (err as Error).message };
+    return { ok: false, code: "unexpected", message: briefError(err) };
   } finally {
     await page?.close().catch(() => {});
     if (ownsContext) await context.close().catch(() => {});
@@ -404,7 +414,7 @@ export async function checkAspireSession(): Promise<{ ok: boolean; message: stri
           : "No stored session, and Aspire didn't sign in on its own.",
     };
   } catch (err) {
-    return { ok: false, message: (err as Error).message };
+    return { ok: false, message: briefError(err) };
   } finally {
     await page?.close().catch(() => {});
     if (ownsContext) await context.close().catch(() => {});
