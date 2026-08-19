@@ -85,6 +85,27 @@ function leadingNumber(title: string): string | null {
 
 // ─── Browser acquisition ─────────────────────────────────────────────────
 
+// A 401 from the remote browser is almost always the endpoint value itself —
+// a key that got clipped when it was copied, a line break pasted into the
+// middle of it, or the token left off the URL entirely. None of that is
+// visible from the outside, and the token must never be logged, so this
+// describes the SHAPE of the configured URL without any of its secrets.
+function describeEndpoint(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "the configured endpoint isn't a valid URL";
+  }
+  const token = url.searchParams.get("token");
+  const parts = [`host=${url.host}`, `path=${url.pathname}`, `protocol=${url.protocol}`];
+  parts.push(token === null ? "token=MISSING" : `token=${token.length} chars`);
+  if (token && /\s/.test(token)) parts.push("token contains whitespace");
+  if (/\s/.test(raw)) parts.push("URL contains whitespace");
+  return parts.join(", ");
+}
+
+
 interface AcquiredBrowser {
   browser: Browser;
 }
@@ -109,7 +130,9 @@ async function acquireBrowser(): Promise<AcquiredBrowser | { error: string }> {
           : await chromium.connectOverCDP(endpoint, { timeout: PAGE_LOAD_TIMEOUT_MS });
       return { browser };
     } catch (err) {
-      return { error: `Couldn't connect to the remote browser: ${briefError(err)}` };
+      return {
+        error: `Couldn't connect to the remote browser: ${briefError(err)} [${describeEndpoint(endpoint)}]`,
+      };
     }
   }
 
