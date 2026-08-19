@@ -81,12 +81,20 @@ renders inline under the field, and an `app_settings` row that
 
 These came out of building it and are worth confirming against the live tenant:
 
-- **Login flow.** Aspire's login markup isn't documented here, and if the
-  account uses SSO or MFA there is no unattended path through it at all. The
-  credential path is written defensively (selectors are overridable via
-  `ASPIRE_LOGIN_*_SELECTOR`, and a two-step username-then-password page is
-  handled), but it is unverified. Pasting a session at `/admin/aspire-session`
-  is the path that definitely works; treat auto-login as the convenience.
+- **Login flow.** Now observed, not guessed: `cloud.youraspire.com/login` is a
+  single form with four fields — `emailAddress`, `password`, `companyCode`,
+  and `deviceName` — and one "Log in" button. All four are filled;
+  `ASPIRE_COMPANY_CODE` is required and the login is refused early with a
+  clear message if the field is on screen and the variable is unset.
+  Selectors stay overridable via `ASPIRE_LOGIN_*_SELECTOR` in case the form
+  changes.
+- **Device verification.** Aspire sometimes asks for a four-digit code, which
+  a headless run cannot answer. `ASPIRE_DEVICE_NAME` is deliberately constant
+  (default `VoiceData`) so Aspire sees the same device each time rather than a
+  new one, and every successful run writes the ending cookies back, so a
+  remembered device should keep being remembered. When a code *is* demanded,
+  the run fails with the login page's shape in the message, and the way
+  through is to paste a session at `/admin/aspire-session`.
 - **Session lifetime.** Unknown. Every successful run writes the ending cookies
   back, so an actively used session should keep renewing itself; a long-idle
   one will need re-pasting.

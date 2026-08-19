@@ -256,6 +256,18 @@ async function logIn(page: Page): Promise<{ ok: true } | { ok: false; message: s
     process.env.ASPIRE_LOGIN_USER_SELECTOR?.trim() ||
     'input[type="email"], input[name="username" i], input[id*="user" i], input[name*="email" i]';
   const passSelector = process.env.ASPIRE_LOGIN_PASS_SELECTOR?.trim() || 'input[type="password"]';
+  // Aspire's login form asks for four things, not two: email, password, the
+  // tenant's company code, and a device name. Leaving the last two blank is
+  // why an otherwise-correct email and password bounced straight back to the
+  // login page. The device name is what Aspire remembers a browser by, so it
+  // stays constant — a name that changes each run reads as a new device every
+  // time and re-triggers device verification.
+  const companyCodeSelector =
+    process.env.ASPIRE_LOGIN_COMPANY_SELECTOR?.trim() || 'input[name="companyCode"], input[id="companyCode"]';
+  const deviceNameSelector =
+    process.env.ASPIRE_LOGIN_DEVICE_SELECTOR?.trim() || 'input[name="deviceName"], input[id="deviceName"]';
+  const companyCode = process.env.ASPIRE_COMPANY_CODE?.trim();
+  const deviceName = process.env.ASPIRE_DEVICE_NAME?.trim() || "VoiceData";
   const submitSelector =
     process.env.ASPIRE_LOGIN_SUBMIT_SELECTOR?.trim() ||
     'button[type="submit"], input[type="submit"], button:has-text("Sign in"), button:has-text("Log in")';
@@ -278,6 +290,15 @@ async function logIn(page: Page): Promise<{ ok: true } | { ok: false; message: s
     await filled.press("Enter");
   }
 
+  // Only fills a field that's actually on the page, so a tenant whose login
+  // doesn't ask for one of these isn't broken by the attempt.
+  async function fillIfPresent(selector: string, value: string): Promise<boolean> {
+    const field = page.locator(selector).filter({ visible: true }).first();
+    if (!(await field.isVisible({ timeout: 2_000 }).catch(() => false))) return false;
+    await field.fill(value);
+    return true;
+  }
+
   try {
     const user = page.locator(userSelector).filter({ visible: true }).first();
     await user.waitFor({ state: "visible", timeout: 10_000 });
@@ -291,6 +312,27 @@ async function logIn(page: Page): Promise<{ ok: true } | { ok: false; message: s
       await pass.waitFor({ state: "visible", timeout: 15_000 });
     }
     await pass.fill(password);
+
+    // The company-code field being on screen with nothing to put in it is a
+    // dead end — say so plainly rather than submitting a login that can't
+    // succeed and reporting it as a mystery timeout.
+    const needsCompanyCode = await page
+      .locator(companyCodeSelector)
+      .filter({ visible: true })
+      .first()
+      .isVisible({ timeout: 2_000 })
+      .catch(() => false);
+    if (needsCompanyCode && !companyCode) {
+      return {
+        ok: false,
+        message:
+          "Aspire's login is asking for a company code and ASPIRE_COMPANY_CODE isn't set — " +
+          "add it to the deployment's environment variables.",
+      };
+    }
+    if (companyCode) await fillIfPresent(companyCodeSelector, companyCode);
+    await fillIfPresent(deviceNameSelector, deviceName);
+
     await submitForm(pass);
 
     if (await isSignedIn(page, LOGIN_TIMEOUT_MS)) return { ok: true };
