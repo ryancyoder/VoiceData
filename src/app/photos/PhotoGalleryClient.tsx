@@ -320,6 +320,27 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
   }, []);
 
   const activeProperty = activePropertyKey != null ? propertyGroups.find((p) => p.key === activePropertyKey) ?? null : null;
+  // Every collapsible section id in the open album — the reference group plus
+  // each rendered event group — for the Collapse all / Expand all toggle.
+  const activeSectionIds = useMemo(() => {
+    if (!activeProperty) return [] as number[];
+    const ids: number[] = [];
+    if (activeProperty.propertyId != null) ids.push(refEventId(activeProperty.propertyId));
+    for (const d of activeProperty.deals) {
+      for (const e of d.events) if (e.photos.length > 0) ids.push(e.id);
+    }
+    return ids;
+  }, [activeProperty]);
+  const allSectionsCollapsed =
+    activeSectionIds.length > 0 && activeSectionIds.every((id) => collapsedSections.has(id));
+  function toggleAllSections() {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (allSectionsCollapsed) for (const id of activeSectionIds) next.delete(id);
+      else for (const id of activeSectionIds) next.add(id);
+      return next;
+    });
+  }
   // Lightbox prev/next navigates this flat list, ordered the same way the
   // grid below renders it: deal by deal, then event by event within a deal.
   const activePhotos = useMemo(() => (activeProperty ? flattenPropertyPhotos(activeProperty) : []), [activeProperty]);
@@ -899,6 +920,16 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
         </div>
         {propertyGroups.length > 0 && (
           <div className={styles["topbar-actions"]}>
+            {activeProperty && activeSectionIds.length > 0 && (
+              <button
+                type="button"
+                className={styles["caption-toggle"]}
+                onClick={toggleAllSections}
+                title={allSectionsCollapsed ? "Expand every section in this album" : "Collapse every section in this album"}
+              >
+                {allSectionsCollapsed ? "▾ Expand all" : "▸ Collapse all"}
+              </button>
+            )}
             {!activeProperty && (
               <button
                 type="button"
