@@ -725,6 +725,68 @@ export default function SalesBoardClient({
     }
   }
 
+  async function handleAddTranscript(
+    dealId: number,
+    input: { transcript: string; title?: string | null; recorded_at?: string | null }
+  ) {
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/transcripts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save transcript");
+      setDeals((ds) =>
+        ds.map((d) => (d.id === dealId ? { ...d, transcripts: [data.transcript, ...d.transcripts] } : d))
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to save transcript");
+    }
+  }
+
+  async function handleEditTranscript(
+    dealId: number,
+    transcriptId: number,
+    updates: { transcript?: string; title?: string | null; recorded_at?: string | null }
+  ) {
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/transcripts/${transcriptId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update transcript");
+      setDeals((ds) =>
+        ds.map((d) =>
+          d.id === dealId
+            ? { ...d, transcripts: d.transcripts.map((t) => (t.id === transcriptId ? data.transcript : t)) }
+            : d
+        )
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to update transcript");
+    }
+  }
+
+  async function handleDeleteTranscript(dealId: number, transcriptId: number) {
+    const previous = deals;
+    setDeals((ds) =>
+      ds.map((d) =>
+        d.id === dealId ? { ...d, transcripts: d.transcripts.filter((t) => t.id !== transcriptId) } : d
+      )
+    );
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/transcripts/${transcriptId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete transcript");
+    } catch (err) {
+      setDeals(previous);
+      showToast(err instanceof Error ? err.message : "Failed to delete transcript");
+    }
+  }
+
   async function handleDeletePhoto(dealId: number, photoId: number) {
     const previous = deals;
     setDeals((ds) =>
@@ -1311,6 +1373,9 @@ export default function SalesBoardClient({
           onLogCorrespondence={handleLogCorrespondence}
           onAspireLinkResolved={handleAspireLinkResolved}
           onDeleteCorrespondence={handleDeleteCorrespondence}
+          onAddTranscript={handleAddTranscript}
+          onEditTranscript={handleEditTranscript}
+          onDeleteTranscript={handleDeleteTranscript}
         />
       )}
 

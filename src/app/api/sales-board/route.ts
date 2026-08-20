@@ -102,9 +102,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // A brand-new deal has no events, photos, attachments, or correspondence yet.
+  // A brand-new deal has no events, photos, attachments, correspondence, or
+  // transcripts yet.
   return NextResponse.json(
-    { deal: { ...data, events: [], site_plan_photos: [], attachments: [], correspondence: [] } },
+    {
+      deal: {
+        ...data,
+        events: [],
+        site_plan_photos: [],
+        attachments: [],
+        correspondence: [],
+        transcripts: [],
+      },
+    },
     { status: 201 }
   );
 }

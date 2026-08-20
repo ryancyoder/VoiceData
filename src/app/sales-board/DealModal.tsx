@@ -15,6 +15,7 @@ import {
   type DealCorrespondence,
   type DealInput,
   type DealPhoto,
+  type DealTranscript,
   type Email,
   type PropertyOption,
 } from "@/lib/salesBoard";
@@ -72,6 +73,16 @@ interface DealModalProps {
   // deal picks up the link the search route just cached on the row.
   onAspireLinkResolved: (dealId: number, url: string) => void;
   onDeleteCorrespondence: (dealId: number, correspondenceId: number) => Promise<void>;
+  onAddTranscript: (
+    dealId: number,
+    input: { transcript: string; title?: string | null; recorded_at?: string | null }
+  ) => Promise<void>;
+  onEditTranscript: (
+    dealId: number,
+    transcriptId: number,
+    updates: { transcript?: string; title?: string | null; recorded_at?: string | null }
+  ) => Promise<void>;
+  onDeleteTranscript: (dealId: number, transcriptId: number) => Promise<void>;
 }
 
 function formatDateTime(isoStr: string) {
@@ -268,6 +279,218 @@ function AddTaskInline({ dealId, currentNextAction, onAdded }: { dealId: number;
   );
 }
 
+// A plain date ("YYYY-MM-DD") from an ISO/date string, for prefilling the date
+// input. Empty when there's no value.
+function toDateInput(value: string | null): string {
+  if (!value) return "";
+  // Accept both "YYYY-MM-DD" and full ISO — take the leading date part.
+  return value.slice(0, 10);
+}
+
+// The deal's appointment transcripts: a list of collapsible entries plus an
+// add/edit form. Managed as its own component so its draft state doesn't bloat
+// the modal, and so the editor can be reused for both add and edit.
+function TranscriptsSection({
+  deal,
+  onAdd,
+  onEdit,
+  onDelete,
+}: {
+  deal: Deal;
+  onAdd: (
+    dealId: number,
+    input: { transcript: string; title?: string | null; recorded_at?: string | null }
+  ) => Promise<void>;
+  onEdit: (
+    dealId: number,
+    transcriptId: number,
+    updates: { transcript?: string; title?: string | null; recorded_at?: string | null }
+  ) => Promise<void>;
+  onDelete: (dealId: number, transcriptId: number) => Promise<void>;
+}) {
+  // null = closed; "new" = add form; a number = editing that transcript.
+  const [editing, setEditing] = useState<"new" | number | null>(null);
+  const [title, setTitle] = useState("");
+  const [recordedAt, setRecordedAt] = useState("");
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function openNew() {
+    setEditing("new");
+    setTitle("");
+    setRecordedAt("");
+    setText("");
+  }
+
+  function openEdit(t: DealTranscript) {
+    setEditing(t.id);
+    setTitle(t.title ?? "");
+    setRecordedAt(toDateInput(t.recorded_at));
+    setText(t.transcript);
+  }
+
+  function close() {
+    setEditing(null);
+    setTitle("");
+    setRecordedAt("");
+    setText("");
+  }
+
+  async function save() {
+    const body = text.trim();
+    if (!body || saving) return;
+    setSaving(true);
+    try {
+      const fields = {
+        transcript: body,
+        title: title.trim() || null,
+        recorded_at: recordedAt || null,
+      };
+      if (editing === "new") await onAdd(deal.id, fields);
+      else if (typeof editing === "number") await onEdit(deal.id, editing, fields);
+      close();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className={styles["deal-section"]}>
+      <h3 className={styles["deal-section-title"]}>Transcripts</h3>
+      <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
+        {deal.transcripts.length === 0 && editing !== "new" ? (
+          <p className={styles["deal-emails-empty"]}>
+            No appointment transcripts yet. Add one to keep the conversation on record with this deal.
+          </p>
+        ) : (
+          <div className={styles["deal-transcripts-list"]}>
+            {deal.transcripts.map((t) =>
+              editing === t.id ? (
+                <TranscriptEditor
+                  key={t.id}
+                  title={title}
+                  recordedAt={recordedAt}
+                  text={text}
+                  saving={saving}
+                  onTitle={setTitle}
+                  onRecordedAt={setRecordedAt}
+                  onText={setText}
+                  onSave={save}
+                  onCancel={close}
+                />
+              ) : (
+                <details key={t.id} className={styles["deal-transcript"]}>
+                  <summary className={styles["deal-transcript-head"]}>
+                    <span className={styles["deal-email-icon"]}>📝</span>
+                    <span className={styles["deal-transcript-meta"]}>
+                      <span className={styles["deal-transcript-title"]}>{t.title || "Appointment transcript"}</span>
+                      <span className={styles["deal-transcript-sub"]}>
+                        {t.recorded_at
+                          ? formatMilestoneDate(toDateInput(t.recorded_at))
+                          : `Saved ${formatDateTime(t.created_at)}`}
+                      </span>
+                    </span>
+                  </summary>
+                  <pre className={styles["deal-transcript-body"]}>{t.transcript}</pre>
+                  <div className={styles["deal-transcript-actions"]}>
+                    <button type="button" onClick={() => openEdit(t)}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className={styles["deal-transcript-delete"]}
+                      onClick={() => {
+                        if (confirm("Delete this transcript?")) onDelete(deal.id, t.id);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </details>
+              )
+            )}
+          </div>
+        )}
+
+        {editing === "new" ? (
+          <TranscriptEditor
+            title={title}
+            recordedAt={recordedAt}
+            text={text}
+            saving={saving}
+            onTitle={setTitle}
+            onRecordedAt={setRecordedAt}
+            onText={setText}
+            onSave={save}
+            onCancel={close}
+          />
+        ) : (
+          editing === null && (
+            <button type="button" className={styles["deal-transcript-add-btn"]} onClick={openNew}>
+              + Add transcript
+            </button>
+          )
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TranscriptEditor({
+  title,
+  recordedAt,
+  text,
+  saving,
+  onTitle,
+  onRecordedAt,
+  onText,
+  onSave,
+  onCancel,
+}: {
+  title: string;
+  recordedAt: string;
+  text: string;
+  saving: boolean;
+  onTitle: (v: string) => void;
+  onRecordedAt: (v: string) => void;
+  onText: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className={styles["deal-transcript-form"]}>
+      <div className={styles["deal-transcript-form-row"]}>
+        <input
+          type="text"
+          placeholder="Title (optional) — e.g. Kitchen walkthrough"
+          value={title}
+          onChange={(e) => onTitle(e.target.value)}
+        />
+        <input
+          type="date"
+          value={recordedAt}
+          onChange={(e) => onRecordedAt(e.target.value)}
+          title="Appointment date"
+        />
+      </div>
+      <textarea
+        autoFocus
+        placeholder="Paste or type the appointment transcript…"
+        value={text}
+        onChange={(e) => onText(e.target.value)}
+      />
+      <div className={styles["deal-transcript-form-actions"]}>
+        <button type="button" className={styles["deal-transcript-save"]} onClick={onSave} disabled={saving || !text.trim()}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button type="button" className={styles["deal-transcript-cancel"]} onClick={onCancel} disabled={saving}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function DealModal({
   deal,
   relatedDeals,
@@ -291,6 +514,9 @@ export default function DealModal({
   onLogCorrespondence,
   onAspireLinkResolved,
   onDeleteCorrespondence,
+  onAddTranscript,
+  onEditTranscript,
+  onDeleteTranscript,
 }: DealModalProps) {
   const router = useRouter();
   // The deal's single estimate: undefined = loading, null = none yet.
@@ -1844,6 +2070,12 @@ export default function DealModal({
             )}
           </div>
           </section>
+          <TranscriptsSection
+            deal={deal}
+            onAdd={onAddTranscript}
+            onEdit={onEditTranscript}
+            onDelete={onDeleteTranscript}
+          />
           <section className={styles["deal-section"]}>
             <h3 className={styles["deal-section-title"]}>Property</h3>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>

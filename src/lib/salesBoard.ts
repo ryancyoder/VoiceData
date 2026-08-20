@@ -110,6 +110,20 @@ export interface Email {
   created_at: string;
 }
 
+// An appointment transcript attached to a deal — text captured from a sales
+// appointment (e.g. a recorded/dictated conversation). Hangs directly off the
+// deal like attachments/correspondence; event_id optionally ties it to the
+// appointment event it came from. Rendered in the deal modal's Transcripts list.
+export interface DealTranscript {
+  id: number;
+  deal_id: number;
+  event_id: number | null;
+  title: string | null;
+  transcript: string;
+  recorded_at: string | null;
+  created_at: string;
+}
+
 export interface DealEvent {
   id: number;
   name: string | null;
@@ -219,6 +233,9 @@ export interface Deal {
   // Screenshots of correspondence with the client — also attached
   // directly to the deal, kept separate from `attachments` above.
   correspondence: DealCorrespondence[];
+  // Appointment transcripts captured for this deal — text only, attached
+  // directly to the deal (not by way of an event).
+  transcripts: DealTranscript[];
 }
 
 /**
