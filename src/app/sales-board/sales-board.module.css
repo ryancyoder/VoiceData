@@ -1709,6 +1709,7 @@
   text-overflow: ellipsis;
 }
 .deal-transcript-sub { font-size: 0.76rem; color: var(--text-muted); }
+.deal-transcript-appt { color: var(--accent); font-weight: 600; }
 .deal-transcript-body {
   margin: 0;
   padding: 8px 10px;

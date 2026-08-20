@@ -75,7 +75,7 @@ interface DealModalProps {
   onDeleteCorrespondence: (dealId: number, correspondenceId: number) => Promise<void>;
   onAddTranscript: (
     dealId: number,
-    input: { transcript: string; title?: string | null; recorded_at?: string | null }
+    input: { transcript: string; title?: string | null; recorded_at?: string | null; event_id?: number | null }
   ) => Promise<void>;
   onEditTranscript: (
     dealId: number,
@@ -287,6 +287,30 @@ function toDateInput(value: string | null): string {
   return value.slice(0, 10);
 }
 
+// Picks the deal's appointment event to auto-link a transcript to: the
+// Appointment-typed event on the transcript's own date if there is one,
+// otherwise the appointment nearest that date (or, with no date, the most
+// recent). Returns null when the deal has no Appointment event yet.
+function pickAppointmentEvent(deal: Deal, recordedYmd: string | null) {
+  const appts = (deal.events ?? []).filter((e) => e.event_type === "Appointment");
+  if (appts.length === 0) return null;
+  if (recordedYmd) {
+    const sameDay = appts.find((e) => e.start_time.slice(0, 10) === recordedYmd);
+    if (sameDay) return sameDay;
+  }
+  const targetYmd = recordedYmd || deal.appointment_date || null;
+  if (targetYmd) {
+    const target = new Date(targetYmd).getTime();
+    return [...appts].sort(
+      (a, b) =>
+        Math.abs(new Date(a.start_time).getTime() - target) -
+        Math.abs(new Date(b.start_time).getTime() - target)
+    )[0];
+  }
+  // No date to match on — the latest appointment is the best guess.
+  return [...appts].sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())[0];
+}
+
 // The deal's appointment transcripts: a list of collapsible entries plus an
 // add/edit form. Managed as its own component so its draft state doesn't bloat
 // the modal, and so the editor can be reused for both add and edit.
@@ -299,7 +323,7 @@ function TranscriptsSection({
   deal: Deal;
   onAdd: (
     dealId: number,
-    input: { transcript: string; title?: string | null; recorded_at?: string | null }
+    input: { transcript: string; title?: string | null; recorded_at?: string | null; event_id?: number | null }
   ) => Promise<void>;
   onEdit: (
     dealId: number,
@@ -318,7 +342,9 @@ function TranscriptsSection({
   function openNew() {
     setEditing("new");
     setTitle("");
-    setRecordedAt("");
+    // Default the date to the deal's appointment date so a new transcript lands
+    // on the appointment by default (and auto-links to its event).
+    setRecordedAt(toDateInput(deal.appointment_date));
     setText("");
   }
 
@@ -341,18 +367,31 @@ function TranscriptsSection({
     if (!body || saving) return;
     setSaving(true);
     try {
-      const fields = {
-        transcript: body,
-        title: title.trim() || null,
-        recorded_at: recordedAt || null,
-      };
-      if (editing === "new") await onAdd(deal.id, fields);
-      else if (typeof editing === "number") await onEdit(deal.id, editing, fields);
+      if (editing === "new") {
+        // Auto-link to the appointment event (when the deal has one) so the
+        // transcript is tied to the appointment it came from.
+        const appt = pickAppointmentEvent(deal, recordedAt || null);
+        await onAdd(deal.id, {
+          transcript: body,
+          title: title.trim() || null,
+          recorded_at: recordedAt || null,
+          event_id: appt?.id ?? null,
+        });
+      } else if (typeof editing === "number") {
+        await onEdit(deal.id, editing, {
+          transcript: body,
+          title: title.trim() || null,
+          recorded_at: recordedAt || null,
+        });
+      }
       close();
     } finally {
       setSaving(false);
     }
   }
+
+  // Event lookup for the linked-appointment chip on each entry.
+  const eventById = new Map((deal.events ?? []).map((e) => [e.id, e]));
 
   return (
     <section className={styles["deal-section"]}>
@@ -388,6 +427,12 @@ function TranscriptsSection({
                         {t.recorded_at
                           ? formatMilestoneDate(toDateInput(t.recorded_at))
                           : `Saved ${formatDateTime(t.created_at)}`}
+                        {t.event_id != null && (
+                          <span className={styles["deal-transcript-appt"]} title="Linked to appointment">
+                            {" · 📅 "}
+                            {eventById.get(t.event_id)?.name || "Appointment"}
+                          </span>
+                        )}
                       </span>
                     </span>
                   </summary>
@@ -1352,6 +1397,10 @@ export default function DealModal({
         const ymd = isoToYmd(e.sent_at ?? e.created_at);
         return { kind: "corr", refId: e.id, name: e.subject ?? "Email", ymd, day: toDay(ymd), stripKey: `e${e.id}` };
       }),
+      ...(deal.transcripts ?? []).map((t): Item => {
+        const ymd = isoToYmd(t.recorded_at ?? t.created_at);
+        return { kind: "corr", refId: t.id, name: t.title ?? "Transcript", ymd, day: toDay(ymd), stripKey: `t${t.id}` };
+      }),
     ].filter((it) => it.day <= todayDay);
 
     const byGap = new Map<number, Item[]>();
@@ -1407,6 +1456,7 @@ export default function DealModal({
     stripEmails,
     deal.correspondence,
     deal.events,
+    deal.transcripts,
     form.appointment_date,
     form.proposal_date,
     form.won_date,
@@ -1452,9 +1502,22 @@ export default function DealModal({
       const iso = e.sent_at ?? e.created_at;
       out.push({ kind: "corr", key: `e${e.id}`, icon: "📧", day: dayOf(iso), ts: new Date(iso).getTime(), caption: e.subject ?? "Email" });
     }
+    // The open deal's appointment transcripts appear as 📝 markers, dated by
+    // when the appointment happened (recorded_at) when known.
+    for (const t of deal.transcripts ?? []) {
+      const iso = t.recorded_at ?? t.created_at;
+      out.push({
+        kind: "corr",
+        key: `t${t.id}`,
+        icon: "📝",
+        day: dayOf(iso),
+        ts: new Date(iso).getTime(),
+        caption: t.title ?? "Transcript",
+      });
+    }
     out.sort((a, b) => a.ts - b.ts);
     return out;
-  }, [stripPhotos, stripCorrespondence, stripEmails]);
+  }, [stripPhotos, stripCorrespondence, stripEmails, deal.transcripts]);
 
   const photoStripRef = useRef<HTMLDivElement>(null);
   // Highlight state: an event id highlights all that event's photos; a single

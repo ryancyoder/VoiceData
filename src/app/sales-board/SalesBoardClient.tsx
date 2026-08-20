@@ -727,7 +727,7 @@ export default function SalesBoardClient({
 
   async function handleAddTranscript(
     dealId: number,
-    input: { transcript: string; title?: string | null; recorded_at?: string | null }
+    input: { transcript: string; title?: string | null; recorded_at?: string | null; event_id?: number | null }
   ) {
     try {
       const res = await fetch(`/api/sales-board/${dealId}/transcripts`, {
