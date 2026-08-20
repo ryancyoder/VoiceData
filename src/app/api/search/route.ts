@@ -56,7 +56,7 @@ export async function GET() {
   const dealProperty = new Map<number, number | null>();
   for (const d of dealsRes.data ?? []) dealProperty.set(d.id, d.property_id ?? null);
 
-  const propertiesWithPhotos = new Set<number>();
+  const photoCounts = new Map<number, number>();
   for (const photo of photosRes.data ?? []) {
     let propertyId: number | null = null;
     if (photo.event_id != null && eventProperty.has(photo.event_id)) {
@@ -66,12 +66,16 @@ export async function GET() {
     } else {
       propertyId = photo.property_id ?? null;
     }
-    if (propertyId != null) propertiesWithPhotos.add(propertyId);
+    if (propertyId != null) photoCounts.set(propertyId, (photoCounts.get(propertyId) ?? 0) + 1);
   }
 
   // Albums are just the properties that actually have photos, linking into the
-  // Photos view rather than the properties page.
-  const albums = properties.filter((p) => propertiesWithPhotos.has(p.id));
+  // Photos view rather than the properties page. The count rides along so the
+  // palette can tell an album apart from the plain property row that shares
+  // its address.
+  const albums = properties
+    .filter((p) => photoCounts.has(p.id))
+    .map((p) => ({ ...p, photoCount: photoCounts.get(p.id) ?? 0 }));
 
   return NextResponse.json({ deals, properties, albums });
 }
