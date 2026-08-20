@@ -16,7 +16,11 @@ interface SearchProperty {
   subtitle: string | null;
 }
 
-type ResultType = "deal" | "property" | "album";
+interface SearchAlbum extends SearchProperty {
+  photoCount: number;
+}
+
+type ResultType = "album" | "deal" | "property";
 
 interface ResultItem {
   key: string;
@@ -31,9 +35,9 @@ interface ResultItem {
 const MAX_PER_TYPE = 8;
 
 const GROUP_LABELS: Record<ResultType, string> = {
+  album: "Photo albums",
   deal: "Deals",
   property: "Properties",
-  album: "Photo albums",
 };
 
 export default function CommandPalette() {
@@ -42,7 +46,7 @@ export default function CommandPalette() {
   const [query, setQuery] = useState("");
   const [deals, setDeals] = useState<SearchDeal[]>([]);
   const [properties, setProperties] = useState<SearchProperty[]>([]);
-  const [albums, setAlbums] = useState<SearchProperty[]>([]);
+  const [albums, setAlbums] = useState<SearchAlbum[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -138,18 +142,25 @@ export default function CommandPalette() {
         href: `/properties?property=${p.id}`,
       }));
 
+    // Filtered on the contact name alone, then the photo count is appended for
+    // display — otherwise every album would match a query like "photos".
     const albumResults: ResultItem[] = albums
       .filter((p) => matches(p.label, p.subtitle))
       .slice(0, MAX_PER_TYPE)
       .map((p) => ({
         key: `album-${p.id}`,
-        type: "album",
+        type: "album" as const,
         label: p.label,
-        subtitle: p.subtitle,
+        subtitle: [p.subtitle, `${p.photoCount} ${p.photoCount === 1 ? "photo" : "photos"}`]
+          .filter(Boolean)
+          .join(" · "),
         href: `/photos?property=${p.id}`,
       }));
 
-    return [...dealResults, ...propertyResults, ...albumResults];
+    // Albums lead: a property with photos is nearly always what you're after
+    // when you search an address, and further down the list they sat below a
+    // screenful of deals and properties.
+    return [...albumResults, ...dealResults, ...propertyResults];
   }, [deals, properties, albums, query]);
 
   const [lastQueryProcessed, setLastQueryProcessed] = useState("");
@@ -261,7 +272,7 @@ export default function CommandPalette() {
                   setQuery(e.target.value);
                 }}
                 onKeyDown={onKeyDown}
-                placeholder="Search deals, properties, and photo albums…"
+                placeholder="Search photo albums, deals, and properties…"
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400 dark:text-zinc-100"
               />
               <kbd className="hidden shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[0.65rem] text-zinc-400 sm:inline dark:border-zinc-700">
