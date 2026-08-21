@@ -93,7 +93,7 @@ export default async function CalendarPage() {
   const ungeotaggedCount = ungroupedRes.count ?? 0;
   const planningBlocks = ((blocksRes.data ?? []) as unknown as PlanningBlockRow[]).map(rowToBlock);
 
-  // Deals + stage defaults feed the same forecast the /forecast view uses, so
+  // Deals + stage defaults feed the shared scheduling engine (lib/planning), so
   // the calendar can show which deals land in each block window.
   const forecastDeals: ForecastDeal[] = rawDeals
     .filter((d) => d.lost_at == null)

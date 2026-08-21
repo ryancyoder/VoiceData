@@ -17,7 +17,6 @@ const NAV_ITEMS = [
   { href: "/tasks", label: "Tasks" },
   { href: "/properties", label: "Properties" },
   { href: "/calendar", label: "Calendar" },
-  { href: "/forecast", label: "Forecast" },
   { href: "/planner", label: "Planner" },
   { href: "/photos", label: "Photos" },
   { href: "/voicemap", label: "VoiceMap" },

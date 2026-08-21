@@ -35,8 +35,8 @@ export default function StageDefaultsEditor({ initialDefaults }: { initialDefaul
         <div>
           <h2>Default effort per deal</h2>
           <p>
-            Hours a single deal is assumed to take, by stage. The Forecast uses this when a deal has no estimate of its
-            own; you can override any individual deal from the Forecast page.
+            Hours a single deal is assumed to take, by stage. The Planner and Calendar scheduling use this when a deal
+            has no estimate of its own.
           </p>
         </div>
         <button

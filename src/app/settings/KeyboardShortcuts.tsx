@@ -61,13 +61,6 @@ const GROUPS: Group[] = [
     shortcuts: [{ combos: [["Esc"]], desc: "Close the item modal" }],
   },
   {
-    title: "Forecast",
-    shortcuts: [
-      { combos: [["Enter"], ["Space"]], desc: "Expand / collapse a stage section" },
-      { combos: [["Enter"]], desc: "Save estimated hours" },
-    ],
-  },
-  {
     title: "Plant Database",
     shortcuts: [
       { combos: [["Enter"]], desc: "Save a cell edit" },

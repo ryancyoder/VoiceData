@@ -23,7 +23,6 @@ const MAIN_VIEWS: MainView[] = [
   { key: "tasks", label: "Tasks", icon: "📋", href: "/tasks" },
   { key: "properties", label: "Properties", icon: "🏠", href: "/properties" },
   { key: "calendar", label: "Calendar", icon: "📅", href: "/calendar" },
-  { key: "forecast", label: "Forecast", icon: "📈", href: "/forecast" },
   { key: "planner", label: "Planner", icon: "🗓️", href: "/planner" },
   { key: "photos", label: "Photos", icon: "🖼️", href: "/photos" },
   { key: "voicemap", label: "VoiceMap", icon: "🎙️", href: "/voicemap" },

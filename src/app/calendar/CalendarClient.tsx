@@ -550,7 +550,7 @@ export default function CalendarClient({
   // pre-dated to `date`. null = closed.
   const [blockEditor, setBlockEditor] = useState<{ block: PlanningBlock | null; date: string } | null>(null);
 
-  // Run the same forecast the /forecast view uses, and index the resulting
+  // Run the shared scheduling engine (lib/planning), and index the resulting
   // deal placements by their block instance ("<blockId>|<date>") so each block
   // band can subtly list the deals scheduled into it.
   const [forecastTodayKey] = useState(() => localDateKey(new Date()));

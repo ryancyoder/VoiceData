@@ -20,7 +20,7 @@ export default async function SettingsPage() {
     <div className={styles.settings}>
       <div className={styles.header}>
         <h1>Settings</h1>
-        <p>Planning &amp; forecast configuration.</p>
+        <p>Planning &amp; scheduling configuration.</p>
       </div>
       <TileModeSetting />
       <StageDefaultsEditor initialDefaults={defaults} />
