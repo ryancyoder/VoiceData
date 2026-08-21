@@ -68,7 +68,8 @@ interface DealModalProps {
   onUploadAttachment: (dealId: number, file: File) => Promise<void>;
   onDeleteAttachment: (dealId: number, attachmentId: number) => Promise<void>;
   onUploadCorrespondence: (dealId: number, file: File, parentId?: number) => Promise<void>;
-  onLogCorrespondence: (dealId: number, channel: "call" | "email" | "text") => Promise<void>;
+  onLogCorrespondence: (dealId: number, channel: "call" | "email" | "text", body?: string | null) => Promise<void>;
+  onEditCorrespondence: (dealId: number, correspondenceId: number, body: string | null) => Promise<void>;
   // Called once a proposal's Aspire URL is resolved, so the board's copy of the
   // deal picks up the link the search route just cached on the row.
   onAspireLinkResolved: (dealId: number, url: string) => void;
@@ -536,6 +537,26 @@ function TranscriptEditor({
   );
 }
 
+// A correspondence note: line breaks preserved (pre-wrap), and long notes
+// (Plaud call summaries run 1500+ chars) collapse behind a "Show more" toggle
+// so they can't blow out the modal.
+function CorrespondenceText({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const LIMIT = 400;
+  const long = text.length > LIMIT;
+  const shown = expanded || !long ? text : `${text.slice(0, LIMIT).trimEnd()}…`;
+  return (
+    <div className={styles["corr-body"]}>
+      <div className={styles["corr-body-text"]}>{shown}</div>
+      {long && (
+        <button type="button" className={styles["corr-body-toggle"]} onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function DealModal({
   deal,
   relatedDeals,
@@ -557,6 +578,7 @@ export default function DealModal({
   onDeleteAttachment,
   onUploadCorrespondence,
   onLogCorrespondence,
+  onEditCorrespondence,
   onAspireLinkResolved,
   onDeleteCorrespondence,
   onAddTranscript,
@@ -595,6 +617,15 @@ export default function DealModal({
   const [uploadingCorrespondence, setUploadingCorrespondence] = useState(false);
   const [deletingCorrespondenceId, setDeletingCorrespondenceId] = useState<number | null>(null);
   const [correspondencePasteError, setCorrespondencePasteError] = useState("");
+  // "Log correspondence" composer (create an entry with an optional note).
+  const [corrComposerOpen, setCorrComposerOpen] = useState(false);
+  const [corrChannel, setCorrChannel] = useState<"call" | "email" | "text">("call");
+  const [corrNote, setCorrNote] = useState("");
+  const [corrSaving, setCorrSaving] = useState(false);
+  // Inline note editing: which entry's note is open, its draft, and save state.
+  const [editingCorrId, setEditingCorrId] = useState<number | null>(null);
+  const [corrEditDraft, setCorrEditDraft] = useState("");
+  const [corrEditSaving, setCorrEditSaving] = useState(false);
   const correspondencePasteTargetRef = useRef<HTMLTextAreaElement>(null);
   // Both attachments and correspondence only ever claim a ⌘V when explicitly
   // armed (their own Paste button was clicked, or their hidden target is
@@ -1110,6 +1141,38 @@ export default function DealModal({
       await onDeleteCorrespondence(deal.id, correspondenceId);
     } finally {
       setDeletingCorrespondenceId(null);
+    }
+  }
+
+  // Create a correspondence entry from the composer — a channel plus an
+  // optional note. The note is trimmed; blank stays null (a bare channel entry,
+  // like the legacy rows).
+  async function handleLogFromComposer() {
+    if (corrSaving) return;
+    setCorrSaving(true);
+    try {
+      await onLogCorrespondence(deal.id, corrChannel, corrNote.trim() || null);
+      setCorrNote("");
+      setCorrComposerOpen(false);
+    } finally {
+      setCorrSaving(false);
+    }
+  }
+
+  function startEditCorr(item: DealCorrespondence) {
+    setEditingCorrId(item.id);
+    setCorrEditDraft(item.body ?? "");
+  }
+
+  async function saveEditCorr(correspondenceId: number) {
+    if (corrEditSaving) return;
+    setCorrEditSaving(true);
+    try {
+      await onEditCorrespondence(deal.id, correspondenceId, corrEditDraft.trim() || null);
+      setEditingCorrId(null);
+      setCorrEditDraft("");
+    } finally {
+      setCorrEditSaving(false);
     }
   }
 
@@ -1995,9 +2058,51 @@ export default function DealModal({
             <h3 className={styles["deal-section-title"]}>Correspondence</h3>
           <div className={`${styles["card-edit-field"]} ${styles["is-full"]}`}>
             <label>Correspondence with client</label>
+            {corrComposerOpen ? (
+              <div className={styles["corr-composer"]}>
+                <div className={styles["corr-composer-row"]}>
+                  <select
+                    value={corrChannel}
+                    onChange={(e) => setCorrChannel(e.target.value as "call" | "email" | "text")}
+                    aria-label="Channel"
+                  >
+                    <option value="call">📞 Call</option>
+                    <option value="text">💬 Text</option>
+                    <option value="email">✉️ Email</option>
+                  </select>
+                </div>
+                <textarea
+                  className={styles["corr-composer-note"]}
+                  placeholder="Note (optional) — what was said or agreed…"
+                  value={corrNote}
+                  onChange={(e) => setCorrNote(e.target.value)}
+                />
+                <div className={styles["corr-composer-actions"]}>
+                  <button type="button" className={styles["deal-transcript-save"]} onClick={handleLogFromComposer} disabled={corrSaving}>
+                    {corrSaving ? "Saving…" : "Log"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles["deal-transcript-cancel"]}
+                    onClick={() => {
+                      setCorrComposerOpen(false);
+                      setCorrNote("");
+                    }}
+                    disabled={corrSaving}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className={styles["deal-transcript-add-btn"]} onClick={() => setCorrComposerOpen(true)}>
+                + Log correspondence
+              </button>
+            )}
             {deal.correspondence.filter((c) => c.parent_id == null).length === 0 ? (
               <p className={styles["deal-emails-empty"]}>
-                Log a call, email, or text from the Contact section above — then attach screenshots to that entry here.
+                No correspondence yet. Log a call, email, or text above (or from the Contact section) — then attach
+                screenshots to an entry here.
               </p>
             ) : (
               <div className={styles["attachments-list"]}>
@@ -2036,6 +2141,42 @@ export default function DealModal({
                             ×
                           </button>
                         </div>
+                        {/* Note: displayed when present; editing/adding a note is
+                            offered on channel touchpoints (not attachment rows). A
+                            null-body row renders no note block at all. */}
+                        {editingCorrId === item.id ? (
+                          <div className={styles["corr-note-edit"]}>
+                            <textarea
+                              className={styles["corr-composer-note"]}
+                              placeholder="Note — what was said or agreed…"
+                              value={corrEditDraft}
+                              onChange={(e) => setCorrEditDraft(e.target.value)}
+                            />
+                            <div className={styles["corr-composer-actions"]}>
+                              <button
+                                type="button"
+                                className={styles["deal-transcript-save"]}
+                                onClick={() => saveEditCorr(item.id)}
+                                disabled={corrEditSaving}
+                              >
+                                {corrEditSaving ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                className={styles["deal-transcript-cancel"]}
+                                onClick={() => {
+                                  setEditingCorrId(null);
+                                  setCorrEditDraft("");
+                                }}
+                                disabled={corrEditSaving}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          item.body && <CorrespondenceText text={item.body} />
+                        )}
                         {shots.length > 0 && (
                           <div className={styles["corr-shots"]}>
                             {shots.map((s) => (
@@ -2083,6 +2224,18 @@ export default function DealModal({
                           >
                             📋 Paste
                           </button>
+                          {/* Note add/edit lives alongside the existing attach
+                              actions on channel touchpoints, so a bodyless legacy
+                              row gains one consistent action rather than a new block. */}
+                          {item.channel && editingCorrId !== item.id && (
+                            <button
+                              type="button"
+                              className={styles["corr-attach-btn"]}
+                              onClick={() => startEditCorr(item)}
+                            >
+                              {item.body ? "📝 Edit note" : "📝 Add note"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     );

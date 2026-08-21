@@ -83,6 +83,10 @@ export interface DealCorrespondence {
   storage_path: string | null;
   file_name: string | null;
   channel: CorrespondenceChannel | null;
+  // Free-text note for the touchpoint — what was actually said/agreed (e.g. a
+  // summarized call). Nullable; most legacy rows are bare channel+timestamp
+  // markers with no body.
+  body: string | null;
   // When set, this row is a screenshot attached to another correspondence entry
   // (that entry's id) — not a standalone record. Top-level entries are null.
   parent_id: number | null;

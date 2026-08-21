@@ -1558,6 +1558,64 @@
   border-radius: 8px;
   background: var(--surface-2);
 }
+
+/* Correspondence note (body) — line breaks preserved, long notes collapsible. */
+.corr-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 4px 0;
+}
+.corr-body-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+.corr-body-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.corr-body-toggle:hover { text-decoration: underline; }
+
+/* Composer for logging a new entry with a note, and the inline note editor. */
+.corr-composer,
+.corr-note-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.corr-note-edit { margin: 4px 0 0; padding: 0 4px; }
+.corr-composer-row { display: flex; gap: 8px; }
+.corr-composer-row select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+.corr-composer-note {
+  min-height: 72px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+.corr-composer-note:focus { border-color: var(--accent); outline: none; }
+.corr-composer-actions { display: flex; gap: 8px; }
 .corr-shots {
   display: flex;
   flex-wrap: wrap;

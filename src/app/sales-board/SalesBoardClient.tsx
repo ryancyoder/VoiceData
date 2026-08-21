@@ -691,12 +691,16 @@ export default function SalesBoardClient({
     }
   }
 
-  async function handleLogCorrespondence(dealId: number, channel: "call" | "email" | "text") {
+  async function handleLogCorrespondence(
+    dealId: number,
+    channel: "call" | "email" | "text",
+    body?: string | null
+  ) {
     try {
       const res = await fetch(`/api/sales-board/${dealId}/correspondence`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel }),
+        body: JSON.stringify({ channel, body: body ?? null }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to log");
@@ -705,6 +709,27 @@ export default function SalesBoardClient({
       );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to log correspondence");
+    }
+  }
+
+  async function handleEditCorrespondence(dealId: number, correspondenceId: number, body: string | null) {
+    try {
+      const res = await fetch(`/api/sales-board/${dealId}/correspondence/${correspondenceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update correspondence");
+      setDeals((ds) =>
+        ds.map((d) =>
+          d.id === dealId
+            ? { ...d, correspondence: d.correspondence.map((c) => (c.id === correspondenceId ? data.correspondence : c)) }
+            : d
+        )
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to update correspondence");
     }
   }
 
@@ -1371,6 +1396,7 @@ export default function SalesBoardClient({
           onDeleteAttachment={handleDeleteAttachment}
           onUploadCorrespondence={handleUploadCorrespondence}
           onLogCorrespondence={handleLogCorrespondence}
+          onEditCorrespondence={handleEditCorrespondence}
           onAspireLinkResolved={handleAspireLinkResolved}
           onDeleteCorrespondence={handleDeleteCorrespondence}
           onAddTranscript={handleAddTranscript}

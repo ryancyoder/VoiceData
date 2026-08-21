@@ -13,13 +13,17 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   // A JSON body logs a call/email/text touchpoint (no file). A multipart body
   // uploads a correspondence screenshot (the original behavior below).
   if ((req.headers.get("content-type") || "").includes("application/json")) {
-    const body = (await req.json()) as { channel?: unknown };
+    const body = (await req.json()) as { channel?: unknown; body?: unknown };
     if (typeof body.channel !== "string" || !(CHANNELS as readonly string[]).includes(body.channel)) {
       return NextResponse.json({ error: "channel must be call, email, or text" }, { status: 400 });
     }
+    // The note is optional — an entry with only a channel is still valid (all
+    // legacy rows are exactly that). An empty/blank note stores null.
+    const noteBody =
+      typeof body.body === "string" && body.body.trim() ? body.body.trim() : null;
     const { data, error } = await supabase
       .from("deal_correspondence")
-      .insert({ deal_id: Number(id), channel: body.channel })
+      .insert({ deal_id: Number(id), channel: body.channel, body: noteBody })
       .select()
       .single();
     if (error) {
