@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import type { AgentStatus } from "@/lib/agentOps";
+import type { AgentStatus, HumanActionItem, PendingReviewItem } from "@/lib/agentOps";
+import HumanActionInbox from "./HumanActionInbox";
 import styles from "./agentOps.module.css";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +25,16 @@ function ago(ts: string | null): string {
 }
 
 export default async function AgentOpsPage() {
-  const [statusRes, promptRes] = await Promise.all([
+  const [statusRes, promptRes, inboxRes, heldRes] = await Promise.all([
     supabase.from("agent_ops_status").select("*").order("agent_name"),
     supabase.from("agent_prompts").select("identity, version, updated_at, updated_by"),
+    supabase.from("human_action_inbox").select("*"),
+    supabase.from("pending_pm_review").select("*"),
   ]);
   if (statusRes.error) throw new Error(`Failed to load agents: ${statusRes.error.message}`);
   if (promptRes.error) throw new Error(`Failed to load briefs: ${promptRes.error.message}`);
+  if (inboxRes.error) throw new Error(`Failed to load the inbox: ${inboxRes.error.message}`);
+  if (heldRes.error) throw new Error(`Failed to load held items: ${heldRes.error.message}`);
 
   const agents = (statusRes.data ?? []) as AgentStatus[];
   const briefs = new Map<string, PromptMeta>(
@@ -45,6 +50,11 @@ export default async function AgentOpsPage() {
           rules it runs on — the change takes effect on its next session, with no redeploy.
         </p>
       </div>
+
+      <HumanActionInbox
+        initialItems={(inboxRes.data ?? []) as HumanActionItem[]}
+        initialHeld={(heldRes.data ?? []) as PendingReviewItem[]}
+      />
 
       <details className={styles.howto} open>
         <summary>How this works</summary>
@@ -63,8 +73,9 @@ export default async function AgentOpsPage() {
             field here, say why, save. The next session it runs, it follows the new rule.
           </li>
           <li>
-            <strong>Anything it can&apos;t do without you</strong> becomes a task in your Human Action
-            Inbox, after project-manager has made the wording readable.
+            <strong>Anything it can&apos;t do without you</strong> lands in <em>Needs you</em> at the top
+            of this page, after project-manager has made the wording readable. It is a task too, so it
+            also shows up on the Tasks screen.
           </li>
         </ol>
         <p>

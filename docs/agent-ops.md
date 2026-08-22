@@ -66,6 +66,14 @@ guard rails, so they are exact from day one.
   two array fields are edited one resource per line. Save writes the row; the
   database bumps the version and snapshots the previous state. Agents pick the
   change up on their next session — no redeploy.
+- **Needs you** — the Human Action Inbox, at the top of the console: what the
+  agents could not finish alone, each with the agent that raised it, the deal it
+  belongs to, and a Done button. Items an agent raised but project-manager has
+  not yet reworded are held back and shown separately, with a Release for when
+  one should not wait (nothing runs project-manager on a schedule yet). Release
+  sets only `instructions_reviewed_at` — `instructions_reviewed_by` is a foreign
+  key to `agent_registry` and cannot name a person, and leaving it null is the
+  honest record that no agent reviewed the wording.
 - **History** — every version with its change note. Open one to see, field by
   field, what it said then versus now, and roll back if an edit was bad.
 - **Copy brief** — the whole row as one markdown block, to paste into a mobile
@@ -75,7 +83,9 @@ Ryan should never be logging into Supabase to hand-edit these tables from his
 phone. Every rule in the system is editable from this screen.
 
 API: `GET /api/agent-ops`, `GET|PUT /api/agent-ops/[identity]`,
-`POST /api/agent-ops/[identity]/restore`.
+`POST /api/agent-ops/[identity]/restore`,
+`POST /api/agent-ops/inbox/[taskId]/review`. Completing an inbox item goes
+through the existing `PATCH /api/tasks/[id]`.
 
 ## Session handoff format
 

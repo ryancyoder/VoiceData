@@ -137,3 +137,27 @@ export function renderBrief(prompt: AgentPrompt, role?: string | null): string {
     "",
   ].join("\n");
 }
+
+// An item an agent could not finish without Ryan, after project-manager has
+// made the wording readable. Read from the human_action_inbox view.
+export interface HumanActionItem {
+  id: number;
+  title: string;
+  human_instructions: string | null;
+  deal_id: number | null;
+  deal_name: string | null;
+  deal_value: number | null;
+  start_date: string | null;
+  created_by_agent: string | null;
+  created_at: string;
+}
+
+// Raised by an agent but not yet reviewed, so it is deliberately held back
+// from the inbox above. Read from the pending_pm_review view.
+export interface PendingReviewItem {
+  id: number;
+  title: string;
+  human_instructions: string | null;
+  created_by_agent: string | null;
+  created_at: string;
+}
