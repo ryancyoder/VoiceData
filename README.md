@@ -94,6 +94,12 @@ A text box is also available as a fallback if you'd rather type.
   `aspire_link`; the **Find in Aspire** button beside a deal's Proposal #
   calls it, and `/admin/aspire-session` holds the encrypted Aspire session it
   signs in with (see `docs/aspire-proposal-search.md`)
+- `/db` — read-only browser for the Supabase Postgres database: every table
+  and view on the left, its rows on the right (sortable, searchable, paginated,
+  with a drawer showing one row in full). The schema comes from two read-only
+  Postgres functions, since PostgREST can't list tables — see
+  [docs/db-browser.md](docs/db-browser.md) for the SQL and the endpoints
+  (`src/lib/dbBrowser.ts`, `src/app/api/db/`, `src/app/db/`)
 - `/admin/geocode-backfill` — one-time utility to geocode jobsite
   addresses on deals that existed before automatic geocoding shipped;
   processes addresses in small batches (`src/app/api/sales-board/geocode-backfill/route.ts`)
