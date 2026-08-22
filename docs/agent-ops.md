@@ -76,8 +76,14 @@ guard rails, so they are exact from day one.
   honest record that no agent reviewed the wording.
 - **History** — every version with its change note. Open one to see, field by
   field, what it said then versus now, and roll back if an edit was bad.
-- **Copy brief** — the whole row as one markdown block, to paste into a mobile
-  session that is becoming that agent.
+- **Copy brief** — everything a session needs to become that agent: its brief,
+  the rules that apply to every agent, and its own documents, as one markdown
+  block. An app's page carries the same button with that app's record and
+  documentation added, so a session can be started already pointed at one
+  project. Both are built on request rather than with the page, so what is
+  copied is what the documents say now. Headings inside a document are demoted
+  so the result nests properly; fenced code is left alone, since `# install` in
+  a shell block is a comment and not a heading.
 
 Ryan should never be logging into Supabase to hand-edit these tables from his
 phone. Every rule in the system is editable from this screen.

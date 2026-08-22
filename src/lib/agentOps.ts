@@ -315,3 +315,123 @@ export function appMonogram(name: string): string {
   if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
   return name.trim().slice(0, 2).toUpperCase();
 }
+
+// Everything a session needs to become one agent: its brief, the rules that
+// apply to every agent, and its own documents. The app-specific variant below
+// adds one app's record and documentation on top.
+export function renderAgentBrief({
+  prompt,
+  role,
+  globalDocs,
+  agentDocs,
+}: {
+  prompt: AgentPrompt;
+  role: string | null;
+  globalDocs: AgentDocument[];
+  agentDocs: AgentDocument[];
+}): string {
+  const out = [renderBrief(prompt, role).trimEnd(), ""];
+
+  const section = (heading: string, docs: AgentDocument[]) => {
+    if (docs.length === 0) return;
+    out.push("---", "", `# ${heading}`, "");
+    for (const doc of docs) {
+      out.push(`## ${doc.title}`, "");
+      if (doc.summary) out.push(`_${doc.summary}_`, "");
+      out.push(demoteHeadings(doc.body.trim()) || "_(empty)_", "");
+    }
+  };
+
+  section("Rules for every agent", globalDocs);
+  section("Your documents", agentDocs);
+
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+// Everything a session needs to become app-developer working on one specific
+// app: the agent's brief, the rules that apply to every agent, and the app's
+// own record and documentation. Pasted into a fresh session, this is the whole
+// context — nothing else to look up, and nothing assumed to be remembered.
+// A document's own headings have to sit below the heading its title gets, or
+// the pasted result reads as a flat pile of same-level sections. Fenced code is
+// left alone — a shell comment like `# install deps` is not a heading, and
+// mangling one would corrupt the sample it appears in.
+export function demoteHeadings(markdown: string): string {
+  let inFence = false;
+  return markdown
+    .split("\n")
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) return line;
+      const heading = /^(#{1,5})(\s)/.exec(line);
+      return heading ? `#${line}` : line;
+    })
+    .join("\n");
+}
+
+export function renderAppBrief({
+  prompt,
+  role,
+  app,
+  globalDocs,
+  agentDocs,
+  appDocs,
+}: {
+  prompt: AgentPrompt | null;
+  role: string | null;
+  app: App;
+  globalDocs: AgentDocument[];
+  agentDocs: AgentDocument[];
+  appDocs: AgentDocument[];
+}): string {
+  const out: string[] = [];
+
+  out.push(`# ${prompt?.identity ?? "app-developer"} — working on ${app.name}`, "");
+  out.push(
+    "You are this agent, and this session is about this one app. Everything below is your brief and its context.",
+    ""
+  );
+
+  if (prompt) {
+    out.push(renderBrief(prompt, role).replace(/^# .*\n/, "").trimStart(), "");
+  } else {
+    out.push("_This agent has no brief row yet._", "");
+  }
+
+  out.push("---", "", `# The app: ${app.name}`, "");
+  const facts: string[] = [];
+  if (app.repo) facts.push(`- **Repo** — \`${app.repo}\` (https://github.com/${app.repo})`);
+  if (app.live_url) facts.push(`- **Live** — ${app.live_url}`);
+  facts.push(`- **Status** — ${app.status}`);
+  out.push(facts.join("\n"), "");
+  if (app.summary) out.push(app.summary, "");
+
+  const section = (heading: string, docs: AgentDocument[], note?: string) => {
+    if (docs.length === 0) return;
+    out.push("---", "", `# ${heading}`, "");
+    if (note) out.push(`_${note}_`, "");
+    for (const doc of docs) {
+      out.push(`## ${doc.title}`, "");
+      if (doc.summary) out.push(`_${doc.summary}_`, "");
+      out.push(demoteHeadings(doc.body.trim()) || "_(empty)_", "");
+    }
+  };
+
+  section(`${app.name} documentation`, appDocs);
+  section("Rules for every agent", globalDocs);
+  section(`${prompt?.identity ?? "Agent"} documents`, agentDocs);
+
+  if (appDocs.length === 0) {
+    out.push(
+      "---",
+      "",
+      `_${app.name} has no documentation yet. If this session learns something worth keeping about how it is built or deployed, write it there rather than leaving it in the transcript._`,
+      ""
+    );
+  }
+
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
