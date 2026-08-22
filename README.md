@@ -98,3 +98,11 @@ A text box is also available as a fallback if you'd rather type.
   addresses on deals that existed before automatic geocoding shipped;
   processes addresses in small batches (`src/app/api/sales-board/geocode-backfill/route.ts`)
   to respect Nominatim's ~1 request/second rate limit
+- `src/app/database/page.tsx` — Database, a read-only browser for every table
+  Supabase exposes: pick a table, sort by any column, filter it, search its
+  text columns, page through the rows and open one for the full values.
+  `src/lib/dbBrowser.ts` reads the schema from PostgREST's OpenAPI document
+  (the only introspection reachable over the wire), so nothing has to be added
+  to the database for it to work; `src/app/api/database/rows/route.ts` serves
+  the pages and checks every table, column and operator against that schema
+  before querying
