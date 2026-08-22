@@ -138,6 +138,21 @@ API: `GET|POST /api/agent-ops/documents`,
 `GET /api/agent-ops/documents/[id]/versions`,
 `POST /api/agent-ops/documents/[id]/restore`.
 
+## Apps
+
+`apps` holds every build and coding project — name, repo, live URL, status and a
+summary. `app_documents` hangs documentation off an app, reusing
+`agent_documents` rather than a second markdown store, so an app's docs get the
+same versioning, history and rollback the briefs' documents have. A document can
+belong to an app, to agents, or to both — they are separate axes.
+
+- `/agent-ops/apps` — the list, with a doc count per app and a New app form.
+  Archived apps are folded away behind a count.
+- `/agent-ops/apps/[slug]` — its documentation alongside its record (repo, live
+  URL, status, summary). The slug does not change on rename, so a saved link
+  keeps working.
+- The **app-developer** page links to all of them; no other agent's page does.
+
 ## Session handoff format
 
 Scattered Claude sessions each emit a handoff doc before closing, in this fixed

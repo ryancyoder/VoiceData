@@ -283,3 +283,24 @@ This agent is new, so expect this list to be wrong. When it turns out to be,
 the fix goes in the brief rather than in a conversation nobody will find again.`,
   };
 }
+
+// An app or coding project. app-developer owns these rows; documentation hangs
+// off them through app_documents, reusing the same store the briefs' documents
+// use so it gets the same versioning and history.
+export interface App {
+  id: number;
+  slug: string;
+  name: string;
+  repo: string | null;
+  live_url: string | null;
+  status: AppStatus;
+  summary: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AppStatus = "active" | "paused" | "archived";
+export const APP_STATUSES: AppStatus[] = ["active", "paused", "archived"];
+
+export const repoUrl = (repo: string | null): string | null =>
+  repo ? `https://github.com/${repo}` : null;
