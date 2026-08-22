@@ -411,3 +411,72 @@
 .heldBlock ul {
   width: 100%;
 }
+
+/* Documents — the agent's reference shelf, and the viewer for one of them. */
+.docList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.docRow,
+.docRowOpen {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.docRowOpen {
+  border-color: var(--accent);
+}
+.docTitle {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.docSummary {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.docMeta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.attachRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+.attachRow > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.docEditor {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.docViewer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.docViewerHead {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
