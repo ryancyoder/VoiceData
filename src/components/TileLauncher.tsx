@@ -11,6 +11,7 @@ const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "
 // Board tile drills into stages → deals in-place before landing on a deal.
 type MainView = { key: string; label: string; icon: string; href?: string; drill?: "sales" };
 const MAIN_VIEWS: MainView[] = [
+  { key: "site-visit", label: "Site Visit", icon: "🎤", href: "/site-visit" },
   { key: "sales", label: "Sales Board", icon: "🗂️", drill: "sales" },
   { key: "estimator", label: "Estimator", icon: "🧮", href: "/estimator" },
   { key: "catalog", label: "Catalog", icon: "📚", href: "/catalog" },

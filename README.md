@@ -27,6 +27,17 @@ you go.
   same jobsite address are linked to one `properties` row (repeat
   customers, multiple jobs at the same property over time), and a deal's
   detail view lists the other deals attached to its property.
+- **Site Visit** (`/site-visit`): a tile that launches a *context-loaded*
+  voice conversation about one deal. Tapping it loads that deal's contact,
+  scope, history, and whatever earlier visits established out of Supabase and
+  builds the system prompt from them, so the assistant already knows the job
+  before a word is spoken. It then works only the **gaps** — an eleven-item
+  checklist resolved against the database, so nothing already on file gets
+  asked again — and writes the answers back: confirmed facts onto the deal or
+  contact record, everything else into `site_visit_notes`. Every question asked
+  is logged verbatim to `site_visit_questions`, which is what shows over time
+  which questions come up on every visit (and so deserve a fixed field) versus
+  which vary. See `docs/context-aware-tiles-plan.md`.
 - **Photo Gallery** (`/photos`): album-style browsing of every photo uploaded
   to a deal — one cover per deal, click through to that deal's full photo
   grid, with a lightbox for viewing/deleting individual photos.
@@ -74,6 +85,14 @@ A text box is also available as a fallback if you'd rather type.
 - `src/app/api/sales-board/` — REST endpoints for the Sales Board table
 - `src/app/sales-board/page.tsx` — Sales Board Kanban UI
 - `src/app/photos/page.tsx` — Photo Gallery (album view, filterable by deal)
+- `src/lib/siteVisit.ts` — the Site Visit checklist, gap resolution, and
+  context-brief rendering (pure — no database, so it is testable on its own)
+- `src/lib/siteVisitContext.ts` — loads a deal's live context out of Supabase
+- `src/lib/siteVisitAgent.ts` — the Site Visit system prompt and the tool-use
+  loop whose tools write back to Supabase
+- `src/app/site-visit/` — the Site Visit UI (deal picker, live session, checklist)
+- `src/app/api/site-visit/` — start/resume a visit, one turn, close-out, and the
+  question-log report
 - `src/lib/photoEvents.ts` — clusters geotagged photos into calendar events
   (same location + gaps no longer than an hour)
 - `src/lib/geocode.ts` — geocodes jobsite addresses (Nominatim/OpenStreetMap,
