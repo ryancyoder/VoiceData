@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Cell, ColumnInfo, Row, TableInfo } from "@/lib/tableBrowser";
+import {
+  FILTER_OPS,
+  OP_LABELS,
+  OP_TITLES,
+  VALUELESS_OPS,
+  defaultOpFor,
+  type ColumnFilter,
+  type FilterOp,
+} from "@/lib/tableFilters";
 import styles from "./tables.module.css";
 
 const PAGE_SIZES = [25, 50, 100, 200];
@@ -21,7 +30,14 @@ type Query = {
   sort: string | null;
   ascending: boolean;
   search: string;
+  /** Active filters, already serialised — see `filterKey`. */
+  filters: string;
 };
+
+/** One column's filter as the UI holds it, before the column name is attached. */
+type DraftFilter = { op: FilterOp; value: string };
+
+const NO_FILTERS = "[]";
 
 /** The outcome of one request, tagged with the query that produced it. */
 type Settled = {
@@ -70,6 +86,9 @@ export default function TableBrowserClient({
   const [pageSize, setPageSize] = useState(50);
   const [sort, setSort] = useState<string | null>(null);
   const [ascending, setAscending] = useState(true);
+  const [filters, setFilters] = useState<Record<string, DraftFilter>>({});
+  const [appliedFilters, setAppliedFilters] = useState(NO_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
 
   // The last settled request, tagged with the query it answered. Loading and
   // error are derived from comparing that tag with the current query rather
@@ -101,10 +120,44 @@ export default function TableBrowserClient({
     router.replace(`/tables?table=${encodeURIComponent(selected)}`, { scroll: false });
   }, [selected, router]);
 
+  // Only filters that would actually narrow anything: a value-taking operator
+  // with an empty box is still being typed, not a filter.
+  const filterKey = useMemo(() => {
+    const active: ColumnFilter[] = Object.entries(filters)
+      .filter(([, f]) => VALUELESS_OPS.includes(f.op) || f.value.trim() !== "")
+      .map(([column, f]) => ({ column, op: f.op, value: f.value.trim() }));
+    return active.length > 0 ? JSON.stringify(active) : NO_FILTERS;
+  }, [filters]);
+
+  const activeFilterCount = useMemo(
+    () => (filterKey === NO_FILTERS ? 0 : (JSON.parse(filterKey) as ColumnFilter[]).length),
+    [filterKey]
+  );
+
+  // Debounced like the search box, so typing a value doesn't fire a request
+  // per keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setAppliedFilters(filterKey);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(id);
+  }, [filterKey]);
+
   const query = useMemo<Query | null>(
     () =>
-      table ? { table: table.name, page, pageSize, sort, ascending, search: search.trim() } : null,
-    [table, page, pageSize, sort, ascending, search]
+      table
+        ? {
+            table: table.name,
+            page,
+            pageSize,
+            sort,
+            ascending,
+            search: search.trim(),
+            filters: appliedFilters,
+          }
+        : null,
+    [table, page, pageSize, sort, ascending, search, appliedFilters]
   );
 
   // Track the newest request so a slow earlier one can't overwrite it.
@@ -122,6 +175,7 @@ export default function TableBrowserClient({
     });
     if (query.sort) params.set("sort", query.sort);
     if (query.search) params.set("q", query.search);
+    if (query.filters !== NO_FILTERS) params.set("filters", query.filters);
 
     fetch(`/api/tables/${encodeURIComponent(query.table)}/rows?${params}`, {
       signal: controller.signal,
@@ -165,6 +219,9 @@ export default function TableBrowserClient({
     setAscending(true);
     setSearchInput("");
     setSearch("");
+    setFilters({});
+    setAppliedFilters(NO_FILTERS);
+    setShowFilters(false);
     setDetail(null);
     setSidebarOpen(false);
   }, []);
@@ -181,6 +238,32 @@ export default function TableBrowserClient({
     },
     [sort]
   );
+
+  const setFilter = useCallback((column: string, patch: Partial<DraftFilter>, fallback: FilterOp) => {
+    setFilters((prev) => {
+      const next = { ...prev };
+      const current = prev[column] ?? { op: fallback, value: "" };
+      const merged = { ...current, ...patch };
+      // Drop the entry entirely once it stops filtering anything, so the
+      // active-filter count and the request stay honest.
+      if (!VALUELESS_OPS.includes(merged.op) && merged.value === "") delete next[column];
+      else next[column] = merged;
+      return next;
+    });
+  }, []);
+
+  // Hiding the row clears the filters — leaving invisible ones applied would
+  // silently hide rows.
+  const toggleFilters = useCallback(() => {
+    setShowFilters((open) => {
+      if (open) {
+        setFilters({});
+        setAppliedFilters(NO_FILTERS);
+        setPage(1);
+      }
+      return !open;
+    });
+  }, []);
 
   // Open the detail panel. Grid cells are clipped server-side, so when the
   // table has a single-column primary key the full row is re-fetched.
@@ -223,7 +306,7 @@ export default function TableBrowserClient({
   const lastRowNumber = Math.min(firstRowNumber + rows.length - 1, total);
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-fullheight>
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
         <div className={styles.sidebarHead}>
           <h1>Tables</h1>
@@ -299,6 +382,16 @@ export default function TableBrowserClient({
                 className={styles.searchInput}
                 aria-label={`Search ${table.name}`}
               />
+              <button
+                type="button"
+                onClick={toggleFilters}
+                aria-pressed={showFilters}
+                title="Per-column filters"
+                className={`${styles.filterToggle} ${showFilters ? styles.filterToggleOn : ""}`}
+              >
+                Filters
+                {activeFilterCount > 0 && <span className={styles.filterCount}>{activeFilterCount}</span>}
+              </button>
             </header>
 
             {error && <p className={styles.error}>{error}</p>}
@@ -327,6 +420,11 @@ export default function TableBrowserClient({
                             <span className={styles.sortArrow}>{ascending ? "▲" : "▼"}</span>
                           )}
                         </button>
+                        {showFilters && <ColumnFilterCell
+                          column={column}
+                          draft={filters[column.name]}
+                          onChange={setFilter}
+                        />}
                       </th>
                     ))}
                   </tr>
@@ -362,7 +460,9 @@ export default function TableBrowserClient({
               {loading && <div className={styles.loading}>Loading…</div>}
               {!loading && rows.length === 0 && !error && (
                 <p className={styles.empty}>
-                  {search.trim() ? `No rows match “${search.trim()}”.` : "This table is empty."}
+                  {search.trim() || activeFilterCount > 0
+                    ? "No rows match the current search and filters."
+                    : "This table is empty."}
                 </p>
               )}
             </div>
@@ -415,6 +515,44 @@ export default function TableBrowserClient({
           onClose={() => setDetail(null)}
         />
       )}
+    </div>
+  );
+}
+
+function ColumnFilterCell({
+  column,
+  draft,
+  onChange,
+}: {
+  column: ColumnInfo;
+  draft: DraftFilter | undefined;
+  onChange: (column: string, patch: Partial<DraftFilter>, fallback: FilterOp) => void;
+}) {
+  const fallback = defaultOpFor(column.type);
+  const filter = draft ?? { op: fallback, value: "" };
+  const valueless = VALUELESS_OPS.includes(filter.op);
+
+  return (
+    <div className={styles.filterCell}>
+      <select
+        value={filter.op}
+        onChange={(e) => onChange(column.name, { op: e.target.value as FilterOp }, fallback)}
+        title={OP_TITLES[filter.op]}
+        aria-label={`Filter ${column.name} by`}
+      >
+        {FILTER_OPS.map((op) => (
+          <option key={op} value={op} title={OP_TITLES[op]}>
+            {OP_LABELS[op]}
+          </option>
+        ))}
+      </select>
+      <input
+        value={valueless ? "" : filter.value}
+        disabled={valueless}
+        onChange={(e) => onChange(column.name, { value: e.target.value }, fallback)}
+        placeholder={valueless ? OP_TITLES[filter.op] : "filter"}
+        aria-label={`Filter value for ${column.name}`}
+      />
     </div>
   );
 }

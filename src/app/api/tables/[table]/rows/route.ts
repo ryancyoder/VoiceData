@@ -6,6 +6,7 @@ import {
   fetchRows,
   findTable,
 } from "@/lib/tableBrowser";
+import { FilterError, parseFilters } from "@/lib/tableFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -46,10 +47,15 @@ export async function GET(req: NextRequest, { params }: RouteContext<"/api/table
       sort: sp.get("sort"),
       ascending: sp.get("dir") !== "desc",
       search: sp.get("q") ?? "",
+      filters: parseFilters(sp.get("filters"), new Set(table.columns.map((c) => c.name))),
     });
 
     return NextResponse.json({ ...result, table });
   } catch (err) {
+    // An unknown column or operator is a bad request, not a server fault.
+    if (err instanceof FilterError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to load rows" },
       { status: 500 }
