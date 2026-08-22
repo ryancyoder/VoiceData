@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { repoUrl, type AgentDocument, type AgentDocumentListing, type App } from "@/lib/agentOps";
 import AgentDocuments from "../../AgentDocuments";
 import AppDetails from "./AppDetails";
+import AppIcon from "../AppIcon";
 import styles from "../../agentOps.module.css";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,10 @@ export default async function AppPage({ params }: { params: Promise<{ slug: stri
         <Link href="/agent-ops/apps" className={styles.back}>
           ← Apps
         </Link>
-        <h1>{app.name}</h1>
+        <div className={styles.appTitle}>
+          <AppIcon app={app} size={44} />
+          <h1>{app.name}</h1>
+        </div>
         <p>{app.summary || "No summary yet."}</p>
         <div className={styles.inboxMeta}>
           {github && (

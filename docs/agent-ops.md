@@ -146,6 +146,15 @@ summary. `app_documents` hangs documentation off an app, reusing
 same versioning, history and rollback the briefs' documents have. A document can
 belong to an app, to agents, or to both — they are separate axes.
 
+Each app carries the icon a phone shows when its link is saved to the home
+screen. **Fetch from site** looks for it the way a phone does — the
+`apple-touch-icon` first, then the web manifest's icons (largest wins, skipping
+maskable ones, which are padded for a circle mask), then a declared favicon,
+then `/favicon.ico`. The image is stored on the row as a data URL rather than
+kept as a remote link, so the icon survives the site moving or going behind
+auth, and a list of eleven apps makes no third-party requests. An image URL can
+be pasted instead. Until there is an icon, the app's initials stand in.
+
 - `/agent-ops/apps` — the list, with a doc count per app and a New app form.
   Archived apps are folded away behind a count.
 - `/agent-ops/apps/[slug]` — its documentation alongside its record (repo, live

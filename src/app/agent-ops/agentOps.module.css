@@ -715,3 +715,86 @@
 a.docRow {
   text-decoration: none;
 }
+
+/* App icons — the image a phone uses for a saved link. */
+.appIcon {
+  border-radius: 8px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+}
+.appIconFallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex: 0 0 auto;
+  background: var(--surface-3);
+  border: 1px solid var(--border-bright);
+  color: var(--text-dim);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.appRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-bright);
+  border-radius: 5px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  color: inherit;
+}
+.appRow:hover {
+  border-left-color: var(--accent);
+  background: var(--surface-3);
+}
+.appRowText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.appTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.iconRow {
+  display: flex;
+  gap: 13px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.iconRowBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.iconActions {
+  display: flex;
+  gap: 7px;
+  margin: 4px 0 8px;
+}
+.iconRowBody input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+.iconRowBody input:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}

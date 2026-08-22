@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import type { AgentDocument, AgentDocumentListing, AgentPrompt, AgentPromptVersion } from "@/lib/agentOps";
 import AgentBriefEditor from "../AgentBriefEditor";
 import AgentDocuments from "../AgentDocuments";
+import AppIcon from "../apps/AppIcon";
 import styles from "../agentOps.module.css";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
     supabase.from("agent_documents").select("*").order("title"),
     supabase.from("agent_document_links").select("document_id").eq("identity", identity),
     identity === "app-developer"
-      ? supabase.from("apps").select("id, slug, name, status, summary").order("name")
+      ? supabase.from("apps").select("id, slug, name, status, summary, icon_url").order("name")
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (promptRes.error) throw new Error(promptRes.error.message);
@@ -33,7 +34,13 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   if (linksRes.error) throw new Error(linksRes.error.message);
   if (appsRes.error) throw new Error(appsRes.error.message);
 
-  const apps = (appsRes.data ?? []) as { id: number; slug: string; name: string; status: string }[];
+  const apps = (appsRes.data ?? []) as {
+    id: number;
+    slug: string;
+    name: string;
+    status: string;
+    icon_url: string | null;
+  }[];
   const activeApps = apps.filter((a) => a.status !== "archived");
 
   const linkedIds = new Set(
@@ -100,8 +107,11 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
               <ul className={styles.docList}>
                 {activeApps.map((app) => (
                   <li key={app.id}>
-                    <Link href={`/agent-ops/apps/${app.slug}`} className={styles.docRow}>
-                      <span className={styles.docTitle}>{app.name}</span>
+                    <Link href={`/agent-ops/apps/${app.slug}`} className={styles.appRow}>
+                      <AppIcon app={app} size={28} />
+                      <span className={styles.appRowText}>
+                        <span className={styles.docTitle}>{app.name}</span>
+                      </span>
                     </Link>
                   </li>
                 ))}

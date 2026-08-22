@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { App } from "@/lib/agentOps";
+import AppIcon from "./AppIcon";
 import styles from "../agentOps.module.css";
 
 // Every app app-developer builds. Each row opens its own page, where its
@@ -108,15 +109,18 @@ export default function AppList({
       <ul className={styles.docList}>
         {shown.map((app) => (
           <li key={app.id}>
-            <Link href={`/agent-ops/apps/${app.slug}`} className={styles.docRow}>
-              <span className={styles.docTitle}>
-                {app.name}
-                {app.status !== "active" && <span className={styles.tag}>{app.status}</span>}
-              </span>
-              {app.summary && <span className={styles.docSummary}>{app.summary}</span>}
-              <span className={styles.docMeta}>
-                {app.repo ?? "no repo"} · {docCounts[app.id] ?? 0} doc
-                {(docCounts[app.id] ?? 0) === 1 ? "" : "s"}
+            <Link href={`/agent-ops/apps/${app.slug}`} className={styles.appRow}>
+              <AppIcon app={app} />
+              <span className={styles.appRowText}>
+                <span className={styles.docTitle}>
+                  {app.name}
+                  {app.status !== "active" && <span className={styles.tag}>{app.status}</span>}
+                </span>
+                {app.summary && <span className={styles.docSummary}>{app.summary}</span>}
+                <span className={styles.docMeta}>
+                  {app.repo ?? "no repo"} · {docCounts[app.id] ?? 0} doc
+                  {(docCounts[app.id] ?? 0) === 1 ? "" : "s"}
+                </span>
               </span>
             </Link>
           </li>
