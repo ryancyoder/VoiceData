@@ -87,11 +87,34 @@ API: `GET /api/agent-ops`, `GET|PUT /api/agent-ops/[identity]`,
 `POST /api/agent-ops/inbox/[taskId]/review`. Completing an inbox item goes
 through the existing `PATCH /api/tasks/[id]`.
 
+## Documents
+
+Reference material the agents read — SOPs, formats, playbooks — lives in
+`agent_documents` as markdown, for the same reason the briefs do: most sessions
+start from the phone. `agent_document_links` maps documents to agents
+many-to-many, so one format document can matter to the librarian and the
+project-manager both.
+
+Each agent page has a **Documents** section: the documents attached to that
+agent, a rendered markdown viewer for the one you open, an editor, and a way to
+attach a document another agent already uses. Detaching removes only that link
+— the document stays for the other agents. Deleting removes it everywhere, and
+its links go with it.
+
+`updated_at` is maintained by a trigger rather than the app, so it stays right
+whether the write came from the console, a SQL editor, or an agent through MCP.
+A save that changes nothing does not move it.
+
+API: `GET|POST /api/agent-ops/documents`,
+`PUT|DELETE /api/agent-ops/documents/[id]`,
+`POST /api/agent-ops/documents/[id]/link`.
+
 ## Session handoff format
 
 Scattered Claude sessions each emit a handoff doc before closing, in this fixed
 format, so the librarian can parse them mechanically rather than by judgment.
-Same headings every time (see `docs/handoffs/`):
+Same headings every time (see `docs/handoffs/`, and the "Session handoff
+format" document attached to the librarian and project-manager):
 
 ```markdown
 ## Session purpose

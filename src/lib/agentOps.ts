@@ -161,3 +161,33 @@ export interface PendingReviewItem {
   created_by_agent: string | null;
   created_at: string;
 }
+
+// A markdown reference document an agent reads — an SOP, a format, a playbook.
+// Too long to live inside a brief, and kept in the database for the same reason
+// the briefs are: most sessions start from the phone.
+export interface AgentDocument {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string;
+  body: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// A document plus whether it is linked to the agent currently being viewed.
+export interface AgentDocumentListing extends AgentDocument {
+  linked: boolean;
+}
+
+// URL-safe, stable, and readable in a slug column. Falls back to a timestamp
+// only if the title has nothing slug-able in it at all.
+export function slugify(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return slug || `document-${Date.now()}`;
+}
