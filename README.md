@@ -27,6 +27,13 @@ you go.
   same jobsite address are linked to one `properties` row (repeat
   customers, multiple jobs at the same property over time), and a deal's
   detail view lists the other deals attached to its property.
+- **Table Browser** (`/tables`): a read-only viewer for every table in the
+  Supabase project — sidebar of tables with row counts, paged and sortable
+  grid, free-text search, per-column filters, CSV export of the current page,
+  and a row detail panel whose foreign keys link through to the referenced
+  row. The schema comes from PostgREST's own OpenAPI description, so it needs
+  no migration and picks up new tables automatically (see
+  `docs/table-browser.md`).
 - **Photo Gallery** (`/photos`): album-style browsing of every photo uploaded
   to a deal — one cover per deal, click through to that deal's full photo
   grid, with a lightbox for viewing/deleting individual photos.
@@ -94,6 +101,10 @@ A text box is also available as a fallback if you'd rather type.
   `aspire_link`; the **Find in Aspire** button beside a deal's Proposal #
   calls it, and `/admin/aspire-session` holds the encrypted Aspire session it
   signs in with (see `docs/aspire-proposal-search.md`)
+- `src/lib/tableBrowser.ts` — schema introspection for the Table Browser
+  (reads PostgREST's OpenAPI description; also the identifier-quoting helpers)
+- `src/app/api/tables/` — schema, row-count, and row endpoints for `/tables`
+- `src/app/tables/TableBrowserClient.tsx` — the Table Browser UI
 - `/admin/geocode-backfill` — one-time utility to geocode jobsite
   addresses on deals that existed before automatic geocoding shipped;
   processes addresses in small batches (`src/app/api/sales-board/geocode-backfill/route.ts`)

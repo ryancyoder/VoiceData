@@ -24,3 +24,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* A page that manages its own scrolling (the table browser at /tables) marks
+   its root with data-fullheight. The body is normally auto-height with a
+   min-height, which lets a flex child grow past the viewport; pinning the
+   height here gives that child a definite box to fill, so it can scroll
+   internally and keep its toolbar and pager on screen. */
+body:has(> [data-fullheight]) {
+  height: 100%;
+  overflow: hidden;
+}
