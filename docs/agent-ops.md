@@ -1,0 +1,109 @@
+# Agent Ops
+
+A multi-agent system for Ricci's Landscape Management. Agents never call each
+other. They coordinate only through Supabase rows: an agent polls, claims a
+queue row addressed to it, does the work, marks it complete, and optionally
+enqueues follow-up rows for other agents.
+
+## The coordination layer (already applied, 21 Aug 2026)
+
+| Object | What it is |
+|---|---|
+| `agent_registry` | The agents, their roles, and a liveness heartbeat |
+| `agent_queue` | The bus. One row per durable agent-to-agent request |
+| `agent_log` | Append-only shared history — how an agent learns what happened while it was not running |
+| `crew_locations`, `neighborhoods` | Spatial observations and informal office place-names |
+| `tasks.requires_human` / `human_instructions` / `instructions_reviewed_at` / `created_by_agent` | The Human Action Inbox |
+| `claim_agent_work`, `enqueue_agent_work`, `complete_agent_work`, `fail_agent_work`, `agent_heartbeat` | The loop |
+| `agent_ops_status`, `agent_queue_live`, `human_action_inbox`, `pending_pm_review`, `crew_current_positions`, `deal_timeline` | Views the console reads |
+
+## The briefs
+
+Agent identity lives in Supabase, not in a local `CLAUDE.md`. Most sessions
+start from the phone, where there is no working directory — a session becomes
+an agent by loading its `agent_prompts` row.
+
+`agent_prompts`, one row per agent:
+
+| Field | Purpose |
+|---|---|
+| `identity` | Agent name; matches `agent_registry.agent_name` |
+| `mandate` | One or two sentences: what this agent exists to do |
+| `owned_resources` | `text[]` — what it may **write** |
+| `readonly_resources` | `text[]` — what it may read but never touch |
+| `run_loop` | The literal claim → work → complete sequence |
+| `escalation_rules` | When to write a Human Action Inbox item instead of proceeding |
+| `handoff_rules` | Which agents it may enqueue for, and the payload shape each expects |
+| `version`, `updated_by`, `change_note` | Written by the console and the triggers |
+
+`agent_prompt_versions` holds an immutable snapshot of every version, current
+one included, written by a trigger on `agent_prompts` — so the history covers
+every write path, not just the console. The versions table is append-only
+(`agent_prompt_versions_immutable`); a rollback is a new version rather than a
+deletion.
+
+The briefs are deliberately thin. They are meant to be wrong at first and to
+grow from real failures. The exception is the two resource lists: those are the
+guard rails, so they are exact from day one.
+
+### The seven lanes
+
+| Agent | Lane |
+|---|---|
+| `project-manager` | Orchestration. Reads everything, writes only `tasks`; influences other agents solely by enqueueing. Also reviews other agents' human-action wording before it reaches Ryan |
+| `scheduler` | Calendar. Writes only `Calendar`, `Home`, `Plaude`, `Calls`, `Proposals` — never a coworker calendar |
+| `librarian` | Knowledge base / wiki. Abstract and conceptual material, brainstorming |
+| `correspondence-manager` | Email. A staleness board by relationship, plus a linkage feed that always shows *why* it linked |
+| `mobilization-manager` | Spatial awareness, crews, routing. The near-miss check, delivered as one morning briefing |
+| `master-estimator` | Estimates and proposals; memory of comparable past jobs. Thin for a while by design |
+| `data-ingestor` | Scraping and extraction. Always stages a reviewable batch before landing anything |
+
+## The console — `/agent-ops`
+
+- **Tile list** — every registered agent with live queue counts (queued / in
+  flight / failed), heartbeat age, and its brief version.
+- **Detail view** — `/agent-ops/[identity]`. The brief in editable fields; the
+  two array fields are edited one resource per line. Save writes the row; the
+  database bumps the version and snapshots the previous state. Agents pick the
+  change up on their next session — no redeploy.
+- **History** — every version with its change note. Open one to see, field by
+  field, what it said then versus now, and roll back if an edit was bad.
+- **Copy brief** — the whole row as one markdown block, to paste into a mobile
+  session that is becoming that agent.
+
+Ryan should never be logging into Supabase to hand-edit these tables from his
+phone. Every rule in the system is editable from this screen.
+
+API: `GET /api/agent-ops`, `GET|PUT /api/agent-ops/[identity]`,
+`POST /api/agent-ops/[identity]/restore`.
+
+## Session handoff format
+
+Scattered Claude sessions each emit a handoff doc before closing, in this fixed
+format, so the librarian can parse them mechanically rather than by judgment.
+Same headings every time (see `docs/handoffs/`):
+
+```markdown
+## Session purpose
+## Decisions made
+## Open threads
+- each with an owner agent named
+## Knowledge for the wiki
+## Artifacts touched
+- tables, files, anything changed
+```
+
+The librarian routine that ingests these — knowledge → wiki, decisions →
+decisions table, open threads → `agent_queue` rows addressed to the owner — is
+not built yet.
+
+## Open questions — not decided
+
+- **Where does past-job history live?** The librarian is the natural knowledge
+  keeper, but that agent is meant to be the abstract/philosophical one. Either
+  the librarian owns it and the estimator queries it, or the estimator owns its
+  own archive. Both briefs currently say: do not start an archive until this is
+  settled.
+- **Agent health signals.** `agent_log` already captures enough to surface
+  "scheduler failed three tasks in a row" or "this queue row has sat unclaimed
+  two days." Deferred, not dropped.
