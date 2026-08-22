@@ -12,6 +12,8 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     title?: unknown;
     summary?: unknown;
     body?: unknown;
+    is_global?: unknown;
+    change_note?: unknown;
   };
 
   const update: Record<string, unknown> = {};
@@ -22,10 +24,13 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   }
   if (typeof body.summary === "string") update.summary = body.summary.trim();
   if (typeof body.body === "string") update.body = body.body;
+  if (typeof body.is_global === "boolean") update.is_global = body.is_global;
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nothing to save" }, { status: 400 });
   }
   update.updated_by = "console";
+  update.change_note =
+    typeof body.change_note === "string" && body.change_note.trim() ? body.change_note.trim() : null;
 
   // The slug is left alone on rename: agents and links refer to a document by
   // it, and a title being tidied up should not break those.
@@ -37,6 +42,13 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "No such document" }, { status: 404 });
+
+  // A document that now applies to every agent has no use for the individual
+  // links it used to carry.
+  if (update.is_global === true) {
+    const unlink = await supabase.from("agent_document_links").delete().eq("document_id", id);
+    if (unlink.error) return NextResponse.json({ error: unlink.error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ document: data as AgentDocument });
 }

@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import type { AgentStatus, HumanActionItem, PendingReviewItem } from "@/lib/agentOps";
+import type {
+  AgentDocument,
+  AgentDocumentListing,
+  AgentStatus,
+  HumanActionItem,
+  PendingReviewItem,
+} from "@/lib/agentOps";
+import AgentDocuments from "./AgentDocuments";
 import HumanActionInbox from "./HumanActionInbox";
 import styles from "./agentOps.module.css";
 
@@ -25,16 +32,28 @@ function ago(ts: string | null): string {
 }
 
 export default async function AgentOpsPage() {
-  const [statusRes, promptRes, inboxRes, heldRes] = await Promise.all([
+  const [statusRes, promptRes, inboxRes, heldRes, docsRes, linksRes] = await Promise.all([
     supabase.from("agent_ops_status").select("*").order("agent_name"),
     supabase.from("agent_prompts").select("identity, version, updated_at, updated_by"),
     supabase.from("human_action_inbox").select("*"),
     supabase.from("pending_pm_review").select("*"),
+    supabase.from("agent_documents").select("*").order("title"),
+    supabase.from("agent_document_links").select("document_id"),
   ]);
   if (statusRes.error) throw new Error(`Failed to load agents: ${statusRes.error.message}`);
   if (promptRes.error) throw new Error(`Failed to load briefs: ${promptRes.error.message}`);
   if (inboxRes.error) throw new Error(`Failed to load the inbox: ${inboxRes.error.message}`);
   if (heldRes.error) throw new Error(`Failed to load held items: ${heldRes.error.message}`);
+  if (docsRes.error) throw new Error(`Failed to load documents: ${docsRes.error.message}`);
+  if (linksRes.error) throw new Error(`Failed to load document links: ${linksRes.error.message}`);
+
+  // Here `linked` means "filed under some agent" rather than under a
+  // particular one — the shared shelf shows what is global or under nobody.
+  const filed = new Set(((linksRes.data ?? []) as { document_id: number }[]).map((l) => l.document_id));
+  const documents: AgentDocumentListing[] = ((docsRes.data ?? []) as AgentDocument[]).map((d) => ({
+    ...d,
+    linked: filed.has(d.id),
+  }));
 
   const agents = (statusRes.data ?? []) as AgentStatus[];
   const briefs = new Map<string, PromptMeta>(
@@ -55,6 +74,8 @@ export default async function AgentOpsPage() {
         initialItems={(inboxRes.data ?? []) as HumanActionItem[]}
         initialHeld={(heldRes.data ?? []) as PendingReviewItem[]}
       />
+
+      <AgentDocuments scope={{ kind: "shared" }} initialDocuments={documents} />
 
       <details className={styles.howto} open>
         <summary>How this works</summary>

@@ -171,9 +171,29 @@ export interface AgentDocument {
   title: string;
   summary: string;
   body: string;
+  // Applies to every agent rather than only the ones it is linked to.
+  is_global: boolean;
+  version: number;
   updated_by: string | null;
+  change_note: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// A snapshot of a document at one version, written by a trigger on
+// agent_documents — the same arrangement the briefs use.
+export interface AgentDocumentVersion {
+  id: number;
+  document_id: number;
+  slug: string;
+  title: string;
+  summary: string;
+  body: string;
+  is_global: boolean;
+  version: number;
+  updated_by: string | null;
+  change_note: string | null;
+  created_at: string;
 }
 
 // A document plus whether it is linked to the agent currently being viewed.

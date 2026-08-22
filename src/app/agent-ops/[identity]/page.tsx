@@ -32,6 +32,8 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   const linkedIds = new Set(
     ((linksRes.data ?? []) as { document_id: number }[]).map((l) => l.document_id)
   );
+  // A global document is on every agent's shelf without a link row; `linked`
+  // stays false for it so Detach never offers to remove something it cannot.
   const documents: AgentDocumentListing[] = ((docsRes.data ?? []) as AgentDocument[]).map((d) => ({
     ...d,
     linked: linkedIds.has(d.id),
@@ -56,23 +58,28 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         </p>
       </div>
 
-      {prompt ? (
-        <AgentBriefEditor
-          identity={identity}
-          role={registry.role}
-          initialPrompt={prompt}
-          initialVersions={(versionsRes.data ?? []) as AgentPromptVersion[]}
-        />
-      ) : (
-        <div className={styles.card}>
-          <p className={styles.empty}>
-            This agent is registered but has no brief row yet. Seed <code>agent_prompts</code> for{" "}
-            <code>{identity}</code> and it will show up here.
-          </p>
+      <div className={styles.columns}>
+        <div className={styles.column}>
+          {prompt ? (
+            <AgentBriefEditor
+              identity={identity}
+              role={registry.role}
+              initialPrompt={prompt}
+              initialVersions={(versionsRes.data ?? []) as AgentPromptVersion[]}
+            />
+          ) : (
+            <div className={styles.card}>
+              <p className={styles.empty}>
+                This agent is registered but has no brief row yet. Seed <code>agent_prompts</code> for{" "}
+                <code>{identity}</code> and it will show up here.
+              </p>
+            </div>
+          )}
         </div>
-      )}
-
-      <AgentDocuments identity={identity} initialDocuments={documents} />
+        <div className={styles.column}>
+          <AgentDocuments scope={{ kind: "agent", identity }} initialDocuments={documents} />
+        </div>
+      </div>
     </div>
   );
 }

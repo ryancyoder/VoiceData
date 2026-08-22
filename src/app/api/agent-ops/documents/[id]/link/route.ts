@@ -24,6 +24,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ ok: true, linked: false });
   }
 
+  // A global document already applies to every agent; linking it to one would
+  // imply it applies to that one in particular.
+  const doc = await supabase.from("agent_documents").select("is_global").eq("id", id).maybeSingle();
+  if (doc.error) return NextResponse.json({ error: doc.error.message }, { status: 500 });
+  if (!doc.data) return NextResponse.json({ error: "No such document" }, { status: 404 });
+  if ((doc.data as { is_global: boolean }).is_global) {
+    return NextResponse.json({ error: "That document already applies to every agent" }, { status: 400 });
+  }
+
   const { error } = await supabase
     .from("agent_document_links")
     .upsert({ document_id: Number(id), identity }, { onConflict: "document_id,identity" });

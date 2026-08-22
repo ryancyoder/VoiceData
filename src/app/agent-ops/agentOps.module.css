@@ -480,3 +480,64 @@
   gap: 8px;
   margin-bottom: 4px;
 }
+
+/* The agent page: brief on the left, its documents alongside on a wide screen,
+   stacked on a phone. */
+.columns {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 1400px;
+}
+@media (min-width: 1000px) {
+  .columns {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+.column .card {
+  max-width: none;
+}
+
+.groupLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 14px 0 7px;
+}
+.groupLabel:first-of-type {
+  margin-top: 0;
+}
+.tag {
+  margin-left: 7px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--text);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.checkRow input {
+  margin-top: 2px;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+.checkRow .fieldHint {
+  font-weight: 400;
+  margin: 3px 0 0;
+}
