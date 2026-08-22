@@ -17,13 +17,17 @@ where every rule in the system can be edited from a phone.
   one resource per line. It is the only array editor that works with a thumb.
 - Briefs are thin on purpose; the resource lists are not. Those are the guard
   rails and were written exact from day one.
+- Past-job history belongs to `master-estimator`, not the librarian (Ryan,
+  22 Aug 2026). The librarian keeps the general lesson and passes the job record
+  on. Recorded in both briefs, at v3.
 - Several sessions were building against this one Supabase project at the same
   time. This session adopted the schema and seeds another session had already
   applied instead of competing with them, and kept its own writes idempotent.
 
 ## Open threads
-- **Where past-job history lives** — librarian's archive or the estimator's own.
-  Owner: `project-manager` (needs Ryan's call before either agent builds it).
+- **Building the estimator's past-job archive** — ownership is settled, the
+  table is not. Owner: `master-estimator`; blocked on organizing the Aspire
+  history, which is its own data project.
 - **Agent health signals** from `agent_log` ("failed three in a row", "unclaimed
   two days"). Owner: `project-manager`. Deferred, not dropped.
 - **A staging table for `data-ingestor`** — its brief says it may land nothing it

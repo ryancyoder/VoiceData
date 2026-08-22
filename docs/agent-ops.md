@@ -97,13 +97,17 @@ The librarian routine that ingests these — knowledge → wiki, decisions →
 decisions table, open threads → `agent_queue` rows addressed to the owner — is
 not built yet.
 
+## Decided
+
+- **Past-job history belongs to `master-estimator`** (Ryan, 22 Aug 2026). The
+  estimator keeps the archive; other agents query it rather than filing job
+  records elsewhere. The librarian keeps the general lesson a job teaches — that
+  is a wiki page — and routes the record itself to the estimator. Both briefs
+  say so. The archive table itself is not built yet: the estimator has ownership
+  and, for now, nothing to write.
+
 ## Open questions — not decided
 
-- **Where does past-job history live?** The librarian is the natural knowledge
-  keeper, but that agent is meant to be the abstract/philosophical one. Either
-  the librarian owns it and the estimator queries it, or the estimator owns its
-  own archive. Both briefs currently say: do not start an archive until this is
-  settled.
 - **Agent health signals.** `agent_log` already captures enough to surface
   "scheduler failed three tasks in a row" or "this queue row has sat unclaimed
   two days." Deferred, not dropped.
