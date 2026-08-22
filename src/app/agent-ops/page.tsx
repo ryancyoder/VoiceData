@@ -9,6 +9,7 @@ import type {
 } from "@/lib/agentOps";
 import AgentDocuments from "./AgentDocuments";
 import HumanActionInbox from "./HumanActionInbox";
+import NewAgent from "./NewAgent";
 import styles from "./agentOps.module.css";
 
 export const dynamic = "force-dynamic";
@@ -106,6 +107,11 @@ export default async function AgentOpsPage() {
           within the last half hour.
         </p>
       </details>
+
+      <div className={styles.tilesHead}>
+        <h2>Agents</h2>
+        <NewAgent />
+      </div>
 
       <div className={styles.tiles}>
         {agents.map((agent) => {
