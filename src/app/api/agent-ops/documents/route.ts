@@ -9,12 +9,15 @@ export const dynamic = "force-dynamic";
 // the shared shelf needs the global ones plus anything filed under no agent.
 export async function GET(req: NextRequest) {
   const identity = req.nextUrl.searchParams.get("identity");
+  const appId = req.nextUrl.searchParams.get("app_id");
 
   const [docsRes, linksRes] = await Promise.all([
     supabase.from("agent_documents").select("*").order("title"),
-    identity
-      ? supabase.from("agent_document_links").select("document_id").eq("identity", identity)
-      : Promise.resolve({ data: [], error: null }),
+    appId
+      ? supabase.from("app_documents").select("document_id").eq("app_id", appId)
+      : identity
+        ? supabase.from("agent_document_links").select("document_id").eq("identity", identity)
+        : Promise.resolve({ data: [], error: null }),
   ]);
   if (docsRes.error) return NextResponse.json({ error: docsRes.error.message }, { status: 500 });
   if (linksRes.error) return NextResponse.json({ error: linksRes.error.message }, { status: 500 });
@@ -35,6 +38,7 @@ export async function POST(req: NextRequest) {
     is_global?: unknown;
     change_note?: unknown;
     identities?: unknown;
+    app_ids?: unknown;
   };
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -68,5 +72,19 @@ export async function POST(req: NextRequest) {
     if (linkRes.error) return NextResponse.json({ error: linkRes.error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ document: { ...(data as AgentDocument), linked: identities.length > 0 } }, { status: 201 });
+  // A document written from an app's page is that app's documentation.
+  const appIds = Array.isArray(body.app_ids)
+    ? body.app_ids.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+    : [];
+  if (appIds.length > 0) {
+    const linkRes = await supabase
+      .from("app_documents")
+      .insert(appIds.map((app_id) => ({ document_id: (data as AgentDocument).id, app_id })));
+    if (linkRes.error) return NextResponse.json({ error: linkRes.error.message }, { status: 500 });
+  }
+
+  return NextResponse.json(
+    { document: { ...(data as AgentDocument), linked: identities.length + appIds.length > 0 } },
+    { status: 201 }
+  );
 }

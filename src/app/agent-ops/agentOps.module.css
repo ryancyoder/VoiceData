@@ -694,3 +694,24 @@
   line-height: 1.55;
   color: var(--text-muted);
 }
+
+/* The status picker on an app's record. */
+.field select {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 9px 11px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.field select:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 1px var(--accent-dim);
+}
+/* A row that is a link rather than a button still reads as a row. */
+a.docRow {
+  text-decoration: none;
+}

@@ -8,7 +8,10 @@ import styles from "./agentOps.module.css";
 // Two places show this: an agent's page, where it is that agent's shelf, and
 // the console, where it is the shared shelf — the documents that belong to
 // every agent or to none in particular.
-export type DocScope = { kind: "agent"; identity: string } | { kind: "shared" };
+export type DocScope =
+  | { kind: "agent"; identity: string }
+  | { kind: "app"; appId: number; appName: string }
+  | { kind: "shared" };
 
 type Mode = "view" | "edit" | "new";
 
@@ -56,12 +59,21 @@ export default function AgentDocuments({
   const [openVersion, setOpenVersion] = useState<number | null>(null);
 
   const forAgent = scope.kind === "agent";
-  const global = documents.filter((d) => d.is_global);
+  const forApp = scope.kind === "app";
+  // Both scopes attach documents; only the key differs.
+  const linkBody = (linked: boolean) =>
+    scope.kind === "agent"
+      ? { identity: scope.identity, linked }
+      : scope.kind === "app"
+        ? { app_id: scope.appId, linked }
+        : null;
+  const global = scope.kind === "app" ? [] : documents.filter((d) => d.is_global);
   // On an agent page: what is attached to it. On the shared shelf: everything
   // that is not global and not filed under any agent, so nothing goes missing.
-  const own = forAgent
-    ? documents.filter((d) => d.linked && !d.is_global)
-    : documents.filter((d) => !d.is_global && !d.linked);
+  const own =
+    scope.kind === "shared"
+      ? documents.filter((d) => !d.is_global && !d.linked)
+      : documents.filter((d) => d.linked && !d.is_global);
   const attachable = documents.filter((d) => !d.linked && !d.is_global);
   const open = documents.find((d) => d.id === openId) ?? null;
 
@@ -90,7 +102,11 @@ export default function AgentDocuments({
     try {
       const creating = mode === "new";
       const payload = creating
-        ? { ...draft, identities: forAgent && !draft.is_global ? [scope.identity] : [] }
+        ? {
+            ...draft,
+            identities: scope.kind === "agent" && !draft.is_global ? [scope.identity] : [],
+            app_ids: scope.kind === "app" ? [scope.appId] : [],
+          }
         : draft;
       const res = await fetch(
         creating ? "/api/agent-ops/documents" : `/api/agent-ops/documents/${openId}`,
@@ -103,7 +119,7 @@ export default function AgentDocuments({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not save it");
       const saved = data.document as AgentDocumentListing;
-      const linked = saved.is_global ? false : creating ? forAgent : (open?.linked ?? false);
+      const linked = saved.is_global ? false : creating ? scope.kind !== "shared" : (open?.linked ?? false);
       setDocuments((prev) =>
         creating
           ? [...prev, { ...saved, linked }].sort((a, b) => a.title.localeCompare(b.title))
@@ -120,14 +136,15 @@ export default function AgentDocuments({
   }
 
   async function setLinked(doc: AgentDocumentListing, linked: boolean) {
-    if (!forAgent) return;
+    const payload = linkBody(linked);
+    if (!payload) return;
     setBusy(true);
     setError("");
     try {
       const res = await fetch(`/api/agent-ops/documents/${doc.id}/link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identity: scope.identity, linked }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error || "Could not change it");
       setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, linked } : d)));
@@ -190,11 +207,13 @@ export default function AgentDocuments({
     <div className={styles.card}>
       <div className={styles.cardHead}>
         <div>
-          <h2>{forAgent ? "Documents" : "Shared documents"}</h2>
+          <h2>{scope.kind === "shared" ? "Shared documents" : "Documents"}</h2>
           <p>
-            {forAgent
+            {scope.kind === "agent"
               ? "Reference material this agent reads — formats, playbooks, the rules too long to sit inside a brief."
-              : "Documents that belong to every agent, or to none in particular. The ones marked “all agents” show on every agent’s page."}
+              : scope.kind === "app"
+                ? `Documentation for ${scope.appName} — how it is built, how it deploys, what to know before changing it.`
+                : "Documents that belong to every agent, or to none in particular. The ones marked “all agents” show on every agent’s page."}
           </p>
         </div>
         <button
@@ -215,16 +234,18 @@ export default function AgentDocuments({
 
       {own.length === 0 && global.length === 0 && mode !== "new" && (
         <p className={styles.empty}>
-          {forAgent
+          {scope.kind === "agent"
             ? "Nothing here yet. Write one, or attach a document another agent already uses."
-            : "Nothing shared yet. A document written here applies to every agent."}
+            : scope.kind === "app"
+              ? "No documentation yet. Write the first page — how it is built, how it deploys, what breaks."
+              : "Nothing shared yet. A document written here applies to every agent."}
         </p>
       )}
 
       {own.length > 0 && (
         <>
           {forAgent && global.length > 0 && <p className={styles.groupLabel}>Just this agent</p>}
-          {!forAgent && <p className={styles.groupLabel}>Filed under no agent</p>}
+          {scope.kind === "shared" && <p className={styles.groupLabel}>Filed under no agent</p>}
           <ul className={styles.docList}>{own.map(row)}</ul>
         </>
       )}
@@ -236,7 +257,7 @@ export default function AgentDocuments({
         </>
       )}
 
-      {forAgent && attachable.length > 0 && mode !== "new" && (
+      {(forAgent || forApp) && attachable.length > 0 && mode !== "new" && (
         <div className={styles.heldBlock}>
           <button type="button" className={styles.ghostButton} onClick={() => setShowAttach(!showAttach)}>
             {showAttach ? "Hide" : `Attach one of ${attachable.length} other document${attachable.length === 1 ? "" : "s"}`}
@@ -274,7 +295,7 @@ export default function AgentDocuments({
             <span className={styles.fieldLabel}>Markdown</span>
             <textarea rows={16} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
           </label>
-          <label className={styles.checkRow}>
+          <label className={styles.checkRow} hidden={forApp}>
             <input
               type="checkbox"
               checked={draft.is_global}
@@ -332,7 +353,7 @@ export default function AgentDocuments({
             >
               {versions ? "Hide history" : `History (v${open.version})`}
             </button>
-            {forAgent && !open.is_global && (
+            {(forAgent || forApp) && !open.is_global && (
               <button type="button" className={styles.ghostButton} disabled={busy} onClick={() => setLinked(open, false)}>
                 Detach
               </button>
