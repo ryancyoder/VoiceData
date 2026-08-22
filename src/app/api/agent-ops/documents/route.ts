@@ -5,7 +5,8 @@ import { slugify, type AgentDocument } from "@/lib/agentOps";
 export const dynamic = "force-dynamic";
 
 // Every document, each marked with whether it is linked to ?identity= — the
-// agent page needs both its own documents and the ones it could attach.
+// agent page needs both its own documents and the ones it could attach, and
+// the shared shelf needs the global ones plus anything filed under no agent.
 export async function GET(req: NextRequest) {
   const identity = req.nextUrl.searchParams.get("identity");
 
@@ -31,6 +32,8 @@ export async function POST(req: NextRequest) {
     title?: unknown;
     summary?: unknown;
     body?: unknown;
+    is_global?: unknown;
+    change_note?: unknown;
     identities?: unknown;
   };
 
@@ -42,6 +45,8 @@ export async function POST(req: NextRequest) {
     title,
     summary: typeof body.summary === "string" ? body.summary.trim() : "",
     body: typeof body.body === "string" ? body.body : "",
+    is_global: body.is_global === true,
+    change_note: typeof body.change_note === "string" && body.change_note.trim() ? body.change_note.trim() : null,
     updated_by: "console",
   };
 
@@ -51,9 +56,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
   }
 
-  const identities = Array.isArray(body.identities)
-    ? body.identities.filter((i): i is string => typeof i === "string" && i.trim() !== "")
-    : [];
+  const identities = insert.is_global
+    ? []
+    : Array.isArray(body.identities)
+      ? body.identities.filter((i): i is string => typeof i === "string" && i.trim() !== "")
+      : [];
   if (identities.length > 0) {
     const linkRes = await supabase
       .from("agent_document_links")

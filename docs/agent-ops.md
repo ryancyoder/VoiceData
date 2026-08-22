@@ -95,19 +95,30 @@ start from the phone. `agent_document_links` maps documents to agents
 many-to-many, so one format document can matter to the librarian and the
 project-manager both.
 
-Each agent page has a **Documents** section: the documents attached to that
-agent, a rendered markdown viewer for the one you open, an editor, and a way to
-attach a document another agent already uses. Detaching removes only that link
-— the document stays for the other agents. Deleting removes it everywhere, and
-its links go with it.
+A document marked `is_global` applies to every agent instead of to the ones it
+is linked to. It shows on every agent page under **Every agent**, and it carries
+no links — going global drops the ones it had.
 
-`updated_at` is maintained by a trigger rather than the app, so it stays right
-whether the write came from the console, a SQL editor, or an agent through MCP.
-A save that changes nothing does not move it.
+Each agent page shows **Documents** alongside the brief (stacked on a phone,
+side by side from 1000px): what is attached to that agent, the global documents,
+a rendered markdown viewer, an editor, and a way to attach a document another
+agent already uses. Detaching removes only that link — the document stays for
+the other agents. Deleting removes it everywhere, and its links go with it.
+
+The console carries the **shared shelf**: the global documents, plus any
+document filed under no agent at all, so nothing can go missing.
+
+`agent_document_versions` snapshots every version the same way the briefs do —
+by trigger on insert and on each content edit, append-only, with a rollback that
+re-saves an old version as a new one. `updated_at` and `version` are derived by
+the database, so they are right whether the write came from the console, a SQL
+editor, or an agent through MCP, and a save that changes nothing does neither.
 
 API: `GET|POST /api/agent-ops/documents`,
 `PUT|DELETE /api/agent-ops/documents/[id]`,
-`POST /api/agent-ops/documents/[id]/link`.
+`POST /api/agent-ops/documents/[id]/link`,
+`GET /api/agent-ops/documents/[id]/versions`,
+`POST /api/agent-ops/documents/[id]/restore`.
 
 ## Session handoff format
 
