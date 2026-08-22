@@ -211,3 +211,75 @@ export function slugify(title: string): string {
     .slice(0, 60);
   return slug || `document-${Date.now()}`;
 }
+
+// Agent names are lowercase-kebab: they appear in queue rows, log rows and SQL
+// the agents write by hand, so a name with a space or a capital in it is a
+// quoting problem waiting to happen.
+export function agentNameError(name: string): string | null {
+  if (!name) return "A name is required";
+  if (name.length < 3) return "Too short to be a name";
+  if (name.length > 40) return "Keep it under 40 characters";
+  if (!/^[a-z][a-z0-9-]*[a-z0-9]$/.test(name)) {
+    return "Lowercase letters, numbers and hyphens only — like scheduler or master-estimator";
+  }
+  return null;
+}
+
+// A new agent starts with the same loop and escalation rules as everyone else,
+// and owning nothing but its own bookkeeping. The lane is what you write next;
+// until you do, it cannot touch anything.
+export function starterBrief(identity: string): Pick<
+  BriefFields,
+  "owned_resources" | "readonly_resources" | "run_loop" | "escalation_rules"
+> {
+  return {
+    owned_resources: [
+      "table:agent_log",
+      "fn:enqueue_agent_work",
+      "table:agent_registry (own row only)",
+      "table:tasks (insert escalation rows only: requires_human = true, created_by_agent = '" +
+        identity +
+        "', instructions_reviewed_at left null)",
+    ],
+    readonly_resources: [
+      "NOTHING ELSE YET — until this list says otherwise, read what you need and write nothing outside the list above.",
+    ],
+    run_loop: `1. Claim work addressed to you:
+     select * from claim_agent_work('${identity}', 5, 900);
+   Claims up to 5 pending rows and leases them for 15 minutes. Rows you do not
+   finish inside the lease are reaped and handed back to the queue.
+2. Do the work — inside owned_resources only. If a row asks you to write
+   something you do not own, do not do it: fail the row with that reason, or
+   enqueue the agent that does own it.
+3. Close every row you claimed:
+     select complete_agent_work(<id>, '{"...":"..."}'::jsonb);   -- success
+     select fail_agent_work(<id>, '<what went wrong>');          -- failure
+   fail_agent_work retries up to max_attempts, then parks the row as failed.
+4. Record what happened so the next session can pick up cold:
+     insert into agent_log (agent_name, kind, summary, detail, deal_id, queue_id)
+     values ('${identity}', '<kind>', '<one line>', '{}'::jsonb, <deal_id>, <queue_id>);
+5. Enqueue follow-ups per your handoff rules:
+     select enqueue_agent_work('${identity}', '<to_agent>', '<intent>',
+       '{...}'::jsonb, <deal_id>, 100, now(), '<idempotency_key>');
+6. Before you stop:
+     select agent_heartbeat('${identity}', 'idle');
+
+Never call another agent directly. A queue row is the only way to ask for
+anything. Never claim a row addressed to someone else.`,
+    escalation_rules: `Escalate instead of guessing. To put an item in front of Ryan:
+  insert into tasks (title, deal_id, human_instructions, requires_human,
+                     created_by_agent, source_queue_id)
+  values ('<short title>', <deal_id or null>,
+          '<what Ryan should do, in plain words>', true, '${identity}', <queue_id>);
+project-manager reviews the wording before it reaches his Human Action Inbox,
+so write it for him to read on a phone — not as a log line.
+
+Escalate when:
+- the work needs a write to something outside owned_resources
+- the request is ambiguous and guessing wrong costs money, a client, or a day
+- you would overwrite or delete something you did not create
+
+This agent is new, so expect this list to be wrong. When it turns out to be,
+the fix goes in the brief rather than in a conversation nobody will find again.`,
+  };
+}

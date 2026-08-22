@@ -87,6 +87,24 @@ API: `GET /api/agent-ops`, `GET|PUT /api/agent-ops/[identity]`,
 `POST /api/agent-ops/inbox/[taskId]/review`. Completing an inbox item goes
 through the existing `PATCH /api/tasks/[id]`.
 
+### Adding an agent
+
+**New agent** on the console takes a name, a role and an optional mandate, and
+writes both rows — the `agent_registry` entry and its `agent_prompts` brief —
+so a new agent always has something to load. If the brief fails to write, the
+registry row is removed rather than leaving a registered agent with nothing
+behind it.
+
+Names are lowercase-kebab (`master-estimator`), because they appear in queue
+rows, log rows and in SQL the agents write by hand.
+
+A new agent starts with the standard run loop and escalation rules, and owns
+nothing but `agent_log`, its own registry row, the queue functions, and
+inserting escalation tasks. Its read-only list says so outright. It therefore
+cannot touch anything until its lane is written — which is the safe direction
+for a blank agent to fail in. Global documents reach it immediately, with no
+linking.
+
 ## Documents
 
 Reference material the agents read — SOPs, formats, playbooks — lives in
