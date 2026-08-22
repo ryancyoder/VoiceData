@@ -23,7 +23,7 @@ export default async function TablesPage({ searchParams }: PageProps<"/tables">)
 
   if (error) {
     return (
-      <div className={styles.page}>
+      <div className={styles.page} data-fullheight>
         <div className={styles.fatal}>
           <h1>Tables</h1>
           <p>{error}</p>

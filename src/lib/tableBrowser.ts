@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import type { ColumnFilter } from "@/lib/tableFilters";
 
 // ── Schema introspection ────────────────────────────────────────────────────
 //
@@ -215,7 +216,16 @@ function isSearchable(column: ColumnInfo): boolean {
  * when it has no reserved characters; anything else has to be quoted.
  */
 function filterName(name: string): string {
-  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) ? name : `"${name}"`;
+  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) ? name : `"${name.replace(/"/g, '""')}"`;
+}
+
+/**
+ * PostgREST reads `,` `.` `(` `)` as syntax inside a filter value, so a value
+ * containing them is double-quoted to keep it literal rather than escaped.
+ */
+function filterValue(value: string): string {
+  if (!/[,()"\\]/.test(value)) return value;
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 export type RowQuery = {
@@ -224,6 +234,7 @@ export type RowQuery = {
   sort: string | null;
   ascending: boolean;
   search: string;
+  filters: ColumnFilter[];
 };
 
 export type RowResult = {
@@ -237,17 +248,38 @@ export async function fetchRows(table: TableInfo, query: RowQuery): Promise<RowR
   const from = (query.page - 1) * query.pageSize;
   let builder = supabase.from(table.name).select("*", { count: "exact" });
 
-  // PostgREST leaves row order undefined without an ORDER BY, which makes
-  // pagination non-deterministic. Sort by the requested column when it's real,
-  // otherwise fall back to the primary key, and always break ties on the
-  // primary key so pages can't overlap or skip rows.
-  const sortColumn = table.columns.find((c) => c.name === query.sort)?.name ?? null;
-  const orderBy = sortColumn ?? table.primaryKey[0] ?? table.columns[0]?.name ?? null;
-  if (orderBy) {
-    builder = builder.order(orderBy, { ascending: query.ascending, nullsFirst: false });
-  }
-  for (const pk of table.primaryKey) {
-    if (pk !== orderBy) builder = builder.order(pk, { ascending: true });
+  // Column filters first: `.order()` narrows the builder's type, so every
+  // filter has to be attached before the sort is.
+  for (const f of query.filters) {
+    const column = filterName(f.column);
+    switch (f.op) {
+      case "is_null":
+        builder = builder.is(column, null);
+        break;
+      case "not_null":
+        builder = builder.not(column, "is", null);
+        break;
+      case "contains":
+        builder = builder.filter(column, "ilike", filterValue(`%${f.value}%`));
+        break;
+      case "startsWith":
+        builder = builder.filter(column, "ilike", filterValue(`${f.value}%`));
+        break;
+      case "endsWith":
+        builder = builder.filter(column, "ilike", filterValue(`%${f.value}`));
+        break;
+      case "in":
+        builder = builder.in(
+          column,
+          f.value
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean)
+        );
+        break;
+      default:
+        builder = builder.filter(column, f.op, filterValue(f.value));
+    }
   }
 
   // Strip the characters PostgREST treats as filter syntax rather than trying
@@ -258,7 +290,20 @@ export async function fetchRows(table: TableInfo, query: RowQuery): Promise<RowR
     builder = builder.or(searchable.map((c) => `${filterName(c.name)}.ilike.*${term}*`).join(","));
   }
 
-  const { data, error, count } = await builder.range(from, from + query.pageSize - 1);
+  // PostgREST leaves row order undefined without an ORDER BY, which makes
+  // pagination non-deterministic. Sort by the requested column when it's real,
+  // otherwise fall back to the primary key, and always break ties on the
+  // primary key so pages can't overlap or skip rows.
+  const sortColumn = table.columns.find((c) => c.name === query.sort)?.name ?? null;
+  const orderBy = sortColumn ?? table.primaryKey[0] ?? table.columns[0]?.name ?? null;
+  let sorted = orderBy
+    ? builder.order(orderBy, { ascending: query.ascending, nullsFirst: false })
+    : builder;
+  for (const pk of table.primaryKey) {
+    if (pk !== orderBy) sorted = sorted.order(pk, { ascending: true });
+  }
+
+  const { data, error, count } = await sorted.range(from, from + query.pageSize - 1);
   if (error) throw new Error(error.message);
 
   return {

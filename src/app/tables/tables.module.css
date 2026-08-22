@@ -185,6 +185,41 @@
   cursor: pointer;
 }
 
+.filterToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.filterToggle:hover {
+  color: var(--text);
+}
+.filterToggleOn {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.filterCount {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.filterToggle:not(.filterToggleOn) .filterCount {
+  background: var(--border);
+}
+
 /* ── Grid ────────────────────────────────────────────────────────────────── */
 
 .gridWrap {
@@ -247,6 +282,51 @@
   border-radius: 50%;
   background: var(--accent);
   vertical-align: middle;
+}
+
+.filterCell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  /* Narrow columns would otherwise squeeze the value box down to a couple of
+     characters, so filtering widens them enough for both controls to be
+     readable. */
+  min-width: 152px;
+  padding: 4px 6px 5px;
+  border-top: 1px solid var(--border);
+}
+.filterCell select {
+  flex: 0 0 auto;
+  min-width: 44px;
+  padding: 3px 2px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+.filterCell input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 0.68rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.filterCell input:focus,
+.filterCell select:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.filterCell input:disabled {
+  background: var(--bg);
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .row {
@@ -474,6 +554,7 @@
 /* ── Fatal error ─────────────────────────────────────────────────────────── */
 
 .fatal {
+  overflow-y: auto;
   max-width: 620px;
   margin: 48px auto;
   padding: 0 24px;
