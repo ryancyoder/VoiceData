@@ -1,77 +1,158 @@
+/* Agent Ops runs dark whatever the system theme is. It is a console for
+   machines — the palette, the monospace identifiers and the hairline panels are
+   there so a name, a status and a version read the way they do in a terminal,
+   and so the screen looks nothing like the customer-facing pages. */
 .page {
-  --bg: #f3f5f7;
-  --surface: #ffffff;
-  --surface-2: #f8f9fb;
-  --border: #e2e5ea;
-  --text: #12161c;
-  --text-muted: #5b6472;
-  --accent: #16a34a;
-  --danger: #dc2626;
+  --bg: #0a0d12;
+  --surface: #10151d;
+  --surface-2: #0c1118;
+  --surface-3: #161d28;
+  --border: #1e2733;
+  --border-bright: #2b3849;
+  --text: #d5dee9;
+  --text-muted: #7a8798;
+  --text-dim: #56626f;
+  --accent: #4ade80;
+  --accent-dim: #1d7a45;
+  --cyan: #56b6f0;
+  --amber: #e5b567;
+  --danger: #f87171;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 
   min-height: 100dvh;
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 400px at 12% -8%, #121a26 0%, transparent 70%),
+    var(--bg);
   color: var(--text);
-  padding: 20px 16px 64px;
-  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  padding: 22px 16px 72px;
+  font-family: var(--mono);
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  .page {
-    --bg: #0e1116;
-    --surface: #161a21;
-    --surface-2: #1c212a;
-    --border: #262c36;
-    --text: #e7eaef;
-    --text-muted: #9099a8;
-    --accent: #4ade80;
-    --danger: #f87171;
-  }
-}
-
+/* Header ------------------------------------------------------------------ */
 .header {
-  margin-bottom: 18px;
-  max-width: 760px;
+  margin-bottom: 20px;
+  max-width: 1400px;
 }
 .header h1 {
-  font-size: 1.4rem;
+  font-size: 1.15rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.header h1::before {
+  content: "▸ ";
+  color: var(--accent);
 }
 .header p {
   color: var(--text-muted);
-  font-size: 0.85rem;
-  margin-top: 4px;
-  line-height: 1.45;
+  font-size: 0.8rem;
+  margin-top: 6px;
+  line-height: 1.55;
+  max-width: 78ch;
 }
 .back {
   display: inline-block;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  margin-bottom: 8px;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  margin-bottom: 10px;
   text-decoration: none;
 }
 .back:hover {
-  color: var(--text);
+  color: var(--accent);
 }
 
-/* Tiles — one per registered agent. */
+/* Panels ------------------------------------------------------------------ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  max-width: 900px;
+  margin-bottom: 14px;
+}
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.cardHead h2 {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text);
+}
+.cardHead h2::before {
+  content: "// ";
+  color: var(--accent-dim);
+}
+.cardHead p {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  margin-top: 6px;
+  line-height: 1.55;
+  max-width: 62ch;
+}
+
+/* Two columns on a wide screen: the brief, and its documents alongside. */
+.columns {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 1500px;
+}
+@media (min-width: 1000px) {
+  .columns {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+.column .card {
+  max-width: none;
+}
+
+/* Tiles ------------------------------------------------------------------- */
+.tilesHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  max-width: 1400px;
+  margin: 22px 0 10px;
+}
+.tilesHead h2 {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+}
 .tiles {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  max-width: 1100px;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  max-width: 1400px;
 }
 .tile {
   display: block;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px;
+  border-left: 2px solid var(--border-bright);
+  border-radius: 6px;
+  padding: 13px 15px;
   text-decoration: none;
   color: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease;
 }
-.tile:active {
-  background: var(--surface-2);
+.tile:hover {
+  background: var(--surface-3);
+  border-left-color: var(--accent);
 }
 .tileHead {
   display: flex;
@@ -80,165 +161,463 @@
   gap: 8px;
 }
 .tileName {
-  font-size: 0.95rem;
+  font-size: 0.86rem;
   font-weight: 700;
+  color: var(--text);
 }
 .tileRole {
   color: var(--text-muted);
-  font-size: 0.8rem;
-  margin-top: 3px;
-  line-height: 1.35;
+  font-size: 0.74rem;
+  margin-top: 5px;
+  line-height: 1.45;
 }
 .counts {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 10px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  gap: 12px;
+  margin-top: 11px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
 }
 .bad {
   color: var(--danger);
-  font-weight: 600;
+  font-weight: 700;
 }
 .tileFoot {
-  margin-top: 8px;
-  font-size: 0.72rem;
-  color: var(--text-muted);
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 0.69rem;
+  color: var(--text-dim);
 }
 .dotLive,
 .dotStale {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex: 0 0 auto;
 }
 .dotLive {
   background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
 }
 .dotStale {
-  background: var(--border);
+  background: var(--border-bright);
 }
 
-/* Cards — the brief editor and the history. */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px 18px;
-  max-width: 760px;
-  margin-bottom: 14px;
-}
-.cardHead {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-.cardHead h2 {
-  font-size: 1rem;
-  font-weight: 700;
-}
-.cardHead p {
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  margin-top: 3px;
-  line-height: 1.45;
-}
-
+/* Fields ------------------------------------------------------------------ */
 .field {
   display: block;
-  margin-bottom: 16px;
+  margin-bottom: 17px;
 }
 .fieldLabel {
   display: block;
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--cyan);
 }
 .fieldHint {
   display: block;
-  color: var(--text-muted);
-  font-size: 0.74rem;
-  margin: 2px 0 6px;
-  line-height: 1.4;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  margin: 4px 0 7px;
+  line-height: 1.5;
 }
 .field textarea,
 .field input {
   width: 100%;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   color: var(--text);
   padding: 9px 11px;
-  font-size: 0.85rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  line-height: 1.5;
+  font-size: 0.8rem;
+  font-family: var(--mono);
+  line-height: 1.6;
   resize: vertical;
+  tab-size: 2;
 }
-.field input {
-  font-family: inherit;
+.field textarea::placeholder,
+.field input::placeholder {
+  color: var(--text-dim);
 }
 .field textarea:focus,
 .field input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline: none;
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 1px var(--accent-dim);
 }
-
-.actions {
+.checkRow {
   display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.actions button {
-  padding: 9px 18px;
-  border-radius: 9px;
-  border: none;
-  background: var(--text);
-  color: var(--surface);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.actions button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.saved {
-  background: var(--accent) !important;
-  color: #06210f !important;
-}
-.ghostButton {
-  padding: 8px 14px;
-  border-radius: 9px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 17px;
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
 }
-.error {
-  color: var(--danger);
-  font-size: 0.8rem;
-  margin-bottom: 10px;
+.checkRow input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
 }
-.empty {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  line-height: 1.45;
+.checkRow .fieldHint {
+  font-weight: 400;
+  margin: 3px 0 0;
 }
 
-/* History */
+/* Buttons ----------------------------------------------------------------- */
+.actions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.actions button {
+  padding: 8px 17px;
+  border-radius: 5px;
+  border: 1px solid var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.saved {
+  background: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+}
+.ghostButton {
+  padding: 7px 13px;
+  border-radius: 5px;
+  border: 1px solid var(--border-bright);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ghostButton:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+.ghostButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.error {
+  color: var(--danger);
+  font-size: 0.76rem;
+  margin-bottom: 11px;
+}
+.error::before {
+  content: "! ";
+  font-weight: 700;
+}
+.empty {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+.empty code {
+  color: var(--cyan);
+}
+
+/* How this works ---------------------------------------------------------- */
+.howto {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 17px;
+  max-width: 900px;
+  margin-bottom: 16px;
+}
+.howto summary {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.howto ol {
+  margin: 13px 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 0.77rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.howto ol strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.howto em {
+  color: var(--cyan);
+  font-style: normal;
+}
+.howto > p {
+  margin-top: 13px;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+/* Human Action Inbox ------------------------------------------------------ */
+.inbox {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.inboxItem {
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--amber);
+  border-radius: 5px;
+  padding: 11px 13px;
+  background: var(--surface-2);
+}
+.inboxHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.inboxTitle {
+  font-size: 0.83rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.inboxHead button {
+  flex: 0 0 auto;
+  padding: 5px 13px;
+  border-radius: 5px;
+  border: 1px solid var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.inboxHead button:disabled {
+  opacity: 0.4;
+}
+.inboxBody {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--text-muted);
+}
+.inboxMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 11px;
+  margin-top: 9px;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+.inboxMeta a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+.inboxMeta a:hover {
+  text-decoration: underline;
+}
+.heldBlock {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px dashed var(--border-bright);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  align-items: flex-start;
+}
+.heldBlock ul {
+  width: 100%;
+}
+
+/* Documents --------------------------------------------------------------- */
+.groupLabel {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-dim);
+  margin: 15px 0 8px;
+}
+.groupLabel::before {
+  content: "── ";
+  color: var(--border-bright);
+}
+.groupLabel:first-of-type {
+  margin-top: 0;
+}
+.docList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.docRow,
+.docRowOpen {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-bright);
+  border-radius: 5px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  color: inherit;
+  font-family: var(--mono);
+  font-size: inherit;
+  cursor: pointer;
+}
+.docRow:hover {
+  border-left-color: var(--cyan);
+}
+.docRowOpen {
+  border-left-color: var(--accent);
+  background: var(--surface-3);
+}
+.docTitle {
+  font-size: 0.81rem;
+  font-weight: 700;
+}
+.docTitle::before {
+  content: "◇ ";
+  color: var(--text-dim);
+}
+.docSummary {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.docMeta {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+.tag {
+  margin-left: 7px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  vertical-align: middle;
+}
+.attachRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 9px 12px;
+  background: var(--surface-2);
+}
+.attachRow > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.docEditor {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border);
+}
+.docViewer {
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+}
+.docViewerHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+/* The markdown renderer is shared with the wiki, where its Tailwind classes
+   follow the system theme. This console is dark whatever the system says, so
+   its colors are pinned here — otherwise a light-mode browser would paint dark
+   grey prose onto a near-black panel. */
+.docViewer :global(p),
+.docViewer :global(li) {
+  color: var(--text-muted);
+}
+.docViewer :global(h1),
+.docViewer :global(h2),
+.docViewer :global(h3),
+.docViewer :global(strong) {
+  color: var(--text);
+}
+.docViewer :global(h2) {
+  border-bottom-color: var(--border);
+}
+.docViewer :global(a) {
+  color: var(--cyan);
+  text-decoration-color: var(--accent-dim);
+}
+.docViewer :global(code) {
+  background: var(--surface-3);
+  color: var(--accent);
+}
+.docViewer :global(pre) {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.docViewer :global(pre) :global(code) {
+  background: transparent;
+}
+.docViewer :global(blockquote) {
+  border-left-color: var(--border-bright);
+  color: var(--text-dim);
+}
+.docViewer :global(th) {
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text);
+}
+.docViewer :global(td) {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+.docViewer :global(hr) {
+  border-color: var(--border);
+}
+
+/* History ----------------------------------------------------------------- */
 .versions {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 .version {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   overflow: hidden;
 }
 .versionHead {
@@ -252,27 +631,33 @@
   color: inherit;
   padding: 9px 12px;
   cursor: pointer;
-  font: inherit;
+  font-family: var(--mono);
+  font-size: inherit;
+}
+.versionHead:hover {
+  background: var(--surface-3);
 }
 .versionNo {
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  color: var(--accent);
 }
 .versionMeta {
-  color: var(--text-muted);
-  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-size: 0.71rem;
   align-self: center;
 }
 .versionNote {
   grid-column: 1 / -1;
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: 0.73rem;
 }
 .versionBody {
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  background: var(--surface);
 }
 .diff {
   display: flex;
@@ -281,276 +666,31 @@
 }
 .diffWas,
 .diffNow {
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 8px 10px;
-  font-size: 0.76rem;
+  font-size: 0.73rem;
+  border-left: 2px solid;
 }
 .diffWas {
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+  border-left-color: var(--danger);
 }
 .diffNow {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-left-color: var(--accent);
 }
 .diffWas span,
 .diffNow span {
   display: block;
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  margin-bottom: 4px;
+  color: var(--text-dim);
+  font-size: 0.67rem;
+  margin-bottom: 5px;
 }
 .diffWas pre,
 .diffNow pre {
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  line-height: 1.45;
-}
-
-/* The "how this works" panel. Collapsible, because it earns its space the
-   first few visits and then stops. */
-.howto {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px;
-  max-width: 760px;
-  margin-bottom: 16px;
-}
-.howto summary {
-  font-size: 0.9rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.howto ol {
-  margin: 12px 0 0 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 0.82rem;
-  line-height: 1.5;
+  font-family: var(--mono);
+  line-height: 1.55;
   color: var(--text-muted);
-}
-.howto ol strong {
-  color: var(--text);
-  font-weight: 600;
-}
-.howto > p {
-  margin-top: 12px;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-
-/* Human Action Inbox — the work the agents handed back. */
-.inbox {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.inboxItem {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 11px 13px;
-  background: var(--surface-2);
-}
-.inboxHead {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.inboxTitle {
-  font-size: 0.88rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
-.inboxHead button {
-  flex: 0 0 auto;
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: none;
-  background: var(--text);
-  color: var(--surface);
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.inboxHead button:disabled {
-  opacity: 0.5;
-}
-.inboxBody {
-  margin-top: 7px;
-  font-size: 0.82rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  color: var(--text);
-}
-.inboxMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
-  font-size: 0.73rem;
-  color: var(--text-muted);
-}
-.inboxMeta a {
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 600;
-}
-.heldBlock {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-}
-.heldBlock ul {
-  width: 100%;
-}
-
-/* Documents — the agent's reference shelf, and the viewer for one of them. */
-.docList {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.docRow,
-.docRowOpen {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  text-align: left;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: var(--surface-2);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.docRowOpen {
-  border-color: var(--accent);
-}
-.docTitle {
-  font-size: 0.86rem;
-  font-weight: 600;
-}
-.docSummary {
-  font-size: 0.76rem;
-  color: var(--text-muted);
-  line-height: 1.4;
-}
-.docMeta {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-.attachRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 9px 12px;
-}
-.attachRow > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.docEditor {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.docViewer {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-.docViewerHead {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-/* The agent page: brief on the left, its documents alongside on a wide screen,
-   stacked on a phone. */
-.columns {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: minmax(0, 1fr);
-  max-width: 1400px;
-}
-@media (min-width: 1000px) {
-  .columns {
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-    align-items: start;
-  }
-}
-.column .card {
-  max-width: none;
-}
-
-.groupLabel {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  margin: 14px 0 7px;
-}
-.groupLabel:first-of-type {
-  margin-top: 0;
-}
-.tag {
-  margin-left: 7px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  color: var(--text);
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  vertical-align: middle;
-}
-.checkRow {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  margin-bottom: 16px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.checkRow input {
-  margin-top: 2px;
-  width: 17px;
-  height: 17px;
-  flex: 0 0 auto;
-}
-.checkRow .fieldHint {
-  font-weight: 400;
-  margin: 3px 0 0;
-}
-
-.tilesHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  max-width: 1100px;
-  margin: 18px 0 10px;
-}
-.tilesHead h2 {
-  font-size: 1rem;
-  font-weight: 700;
 }
