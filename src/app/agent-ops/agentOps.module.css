@@ -798,3 +798,30 @@ a.docRow {
   outline: none;
   border-color: var(--accent-dim);
 }
+
+/* Copy brief: the whole starting context for a session on one app. */
+.copyBrief {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 10px;
+  max-width: 900px;
+}
+.copyBrief .fieldHint {
+  margin: 0;
+  flex: 1 1 22ch;
+  min-width: 0;
+}
+.copyFallback {
+  flex: 1 1 100%;
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  padding: 9px 11px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}

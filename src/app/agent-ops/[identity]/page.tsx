@@ -77,7 +77,6 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
           {prompt ? (
             <AgentBriefEditor
               identity={identity}
-              role={registry.role}
               initialPrompt={prompt}
               initialVersions={(versionsRes.data ?? []) as AgentPromptVersion[]}
             />

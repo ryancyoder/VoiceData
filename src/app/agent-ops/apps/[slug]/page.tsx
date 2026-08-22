@@ -5,6 +5,7 @@ import { repoUrl, type AgentDocument, type AgentDocumentListing, type App } from
 import AgentDocuments from "../../AgentDocuments";
 import AppDetails from "./AppDetails";
 import AppIcon from "../AppIcon";
+import CopyAppBrief from "./CopyAppBrief";
 import styles from "../../agentOps.module.css";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,7 @@ export default async function AppPage({ params }: { params: Promise<{ slug: stri
           <h1>{app.name}</h1>
         </div>
         <p>{app.summary || "No summary yet."}</p>
+        <CopyAppBrief appId={app.id} appName={app.name} />
         <div className={styles.inboxMeta}>
           {github && (
             <a href={github} target="_blank" rel="noreferrer">

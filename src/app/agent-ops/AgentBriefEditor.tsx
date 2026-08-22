@@ -7,7 +7,6 @@ import {
   FIELD_LABELS,
   arrayToLines,
   linesToArray,
-  renderBrief,
   type AgentPrompt,
   type AgentPromptVersion,
   type BriefFields,
@@ -46,12 +45,10 @@ function fmt(ts: string): string {
 
 export default function AgentBriefEditor({
   identity,
-  role,
   initialPrompt,
   initialVersions,
 }: {
   identity: string;
-  role: string;
   initialPrompt: AgentPrompt;
   initialVersions: AgentPromptVersion[];
 }) {
@@ -146,13 +143,24 @@ export default function AgentBriefEditor({
     }
   }
 
+  // Fetched rather than rendered here, so the copy carries the agent's
+  // documents and the rules every agent follows — not just this row — and so
+  // it reflects what those say now.
   async function copyBrief() {
+    setError("");
     try {
-      await navigator.clipboard.writeText(renderBrief(prompt, role));
+      const res = await fetch(`/api/agent-ops/${encodeURIComponent(identity)}/brief`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not build the brief");
+      await navigator.clipboard.writeText(data.markdown as string);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError("Could not copy — select the fields and copy manually.");
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message !== "" && !err.message.includes("clipboard")
+          ? err.message
+          : "Could not copy — select the fields and copy manually."
+      );
     }
   }
 
