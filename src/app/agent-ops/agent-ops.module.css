@@ -1,0 +1,439 @@
+.page {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;
+  --border: #e2e5ea;
+  --text: #12161c;
+  --text-muted: #5b6472;
+  --accent: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
+
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px 24px 64px;
+  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page {
+    --bg: #0e1116;
+    --surface: #161a21;
+    --surface-2: #1c212a;
+    --border: #262c36;
+    --text: #e7eaef;
+    --text-muted: #9099a8;
+    --accent: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+  }
+}
+
+.header {
+  margin-bottom: 14px;
+  max-width: 760px;
+}
+.header h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.header p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.summary {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 18px;
+}
+.summary strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+/* Tiles: one column on a phone, filling out on anything wider. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  max-width: 1100px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.tile:active {
+  transform: scale(0.995);
+}
+@media (hover: hover) {
+  .tile:hover {
+    border-color: var(--text-muted);
+  }
+}
+
+.tileHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tileHead h2 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dotLive {
+  background: var(--accent);
+}
+.dotStale {
+  background: var(--border);
+  border: 1px solid var(--text-muted);
+}
+
+.role {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.mandate {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  /* Two lines of mandate on the tile; the rest reads on the detail screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.noBrief {
+  font-size: 0.8rem;
+  color: var(--warn);
+}
+
+.counts {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: auto;
+  padding-top: 4px;
+}
+.countOn {
+  color: var(--text);
+  font-weight: 600;
+}
+.countBad {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* ---------- Detail screen ---------- */
+
+.back {
+  display: inline-block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-bottom: 10px;
+}
+.back:hover {
+  color: var(--text);
+}
+
+.detailHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-width: 820px;
+  margin-bottom: 16px;
+}
+.detailHead h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.detailHead p {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-top: 3px;
+}
+.badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  max-width: 820px;
+  margin-bottom: 14px;
+}
+
+.field {
+  display: block;
+  margin-bottom: 18px;
+}
+.fieldHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.fieldHead strong {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.dirtyMark {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--warn);
+}
+.fieldHint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin-bottom: 8px;
+  max-width: 62ch;
+}
+
+.textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+.textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.protectedField .textarea {
+  /* owned/read-only lists are the fields that prevent damage — mark them. */
+  border-color: var(--warn);
+}
+
+.input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 0.82rem;
+}
+.input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.saveBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 4px;
+}
+.saveBar button {
+  padding: 9px 18px;
+  border-radius: 9px;
+  border: none;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.saveBar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.saveBar button.secondary {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.saveState {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.saveError {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--bad);
+}
+
+.versionList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.version {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+.versionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.versionHead strong {
+  font-size: 0.82rem;
+}
+.versionMeta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.versionNote {
+  font-size: 0.76rem;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.versionChanged {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.versionActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.versionActions button {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.versionActions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.diff {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.diffField {
+  margin-bottom: 10px;
+}
+.diffField strong {
+  display: block;
+  font-size: 0.74rem;
+  margin-bottom: 4px;
+}
+.diffLine {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.diffAdd {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.diffRemove {
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+}
+.diffSame {
+  color: var(--text-muted);
+}
+.diffNone {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sectionHead h2 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.sectionHead p {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
