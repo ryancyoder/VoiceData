@@ -1,0 +1,342 @@
+.page {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;
+  --border: #e2e5ea;
+  --text: #12161c;
+  --text-muted: #5b6472;
+  --accent: #16a34a;
+  --danger: #dc2626;
+
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px 16px 64px;
+  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page {
+    --bg: #0e1116;
+    --surface: #161a21;
+    --surface-2: #1c212a;
+    --border: #262c36;
+    --text: #e7eaef;
+    --text-muted: #9099a8;
+    --accent: #4ade80;
+    --danger: #f87171;
+  }
+}
+
+.header {
+  margin-bottom: 18px;
+  max-width: 760px;
+}
+.header h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.header p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 4px;
+  line-height: 1.45;
+}
+.back {
+  display: inline-block;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+  text-decoration: none;
+}
+.back:hover {
+  color: var(--text);
+}
+
+/* Tiles — one per registered agent. */
+.tiles {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  max-width: 1100px;
+}
+.tile {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  text-decoration: none;
+  color: inherit;
+}
+.tile:active {
+  background: var(--surface-2);
+}
+.tileHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tileName {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.tileRole {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 3px;
+  line-height: 1.35;
+}
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.bad {
+  color: var(--danger);
+  font-weight: 600;
+}
+.tileFoot {
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.dotLive,
+.dotStale {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.dotLive {
+  background: var(--accent);
+}
+.dotStale {
+  background: var(--border);
+}
+
+/* Cards — the brief editor and the history. */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  max-width: 760px;
+  margin-bottom: 14px;
+}
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.cardHead h2 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.cardHead p {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.field {
+  display: block;
+  margin-bottom: 16px;
+}
+.fieldLabel {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.fieldHint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  margin: 2px 0 6px;
+  line-height: 1.4;
+}
+.field textarea,
+.field input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 9px 11px;
+  font-size: 0.85rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.5;
+  resize: vertical;
+}
+.field input {
+  font-family: inherit;
+}
+.field textarea:focus,
+.field input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.actions button {
+  padding: 9px 18px;
+  border-radius: 9px;
+  border: none;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.saved {
+  background: var(--accent) !important;
+  color: #06210f !important;
+}
+.ghostButton {
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.error {
+  color: var(--danger);
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}
+.empty {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+/* History */
+.versions {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.version {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.versionHead {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-2);
+  border: none;
+  color: inherit;
+  padding: 9px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+.versionNo {
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.versionMeta {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  align-self: center;
+}
+.versionNote {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+.versionBody {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.diff {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.diffWas,
+.diffNow {
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.76rem;
+}
+.diffWas {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.diffNow {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.diffWas span,
+.diffNow span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  margin-bottom: 4px;
+}
+.diffWas pre,
+.diffNow pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.45;
+}
+
+/* The "how this works" panel. Collapsible, because it earns its space the
+   first few visits and then stops. */
+.howto {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  max-width: 760px;
+  margin-bottom: 16px;
+}
+.howto summary {
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.howto ol {
+  margin: 12px 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.howto ol strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.howto > p {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
