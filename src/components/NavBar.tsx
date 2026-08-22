@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/planner", label: "Planner" },
   { href: "/photos", label: "Photos" },
   { href: "/voicemap", label: "VoiceMap" },
+  { href: "/tables", label: "Tables" },
   { href: "/settings", label: "Settings" },
 ];
 
