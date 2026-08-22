@@ -305,3 +305,38 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   line-height: 1.45;
 }
+
+/* The "how this works" panel. Collapsible, because it earns its space the
+   first few visits and then stops. */
+.howto {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  max-width: 760px;
+  margin-bottom: 16px;
+}
+.howto summary {
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.howto ol {
+  margin: 12px 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.howto ol strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.howto > p {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}

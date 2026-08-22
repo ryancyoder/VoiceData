@@ -46,6 +46,35 @@ export default async function AgentOpsPage() {
         </p>
       </div>
 
+      <details className={styles.howto} open>
+        <summary>How this works</summary>
+        <ol>
+          <li>
+            <strong>An agent is a Claude session that loaded one of these briefs.</strong> Open an agent,
+            tap <em>Copy brief</em>, and paste it into a new session. That session is now that agent.
+          </li>
+          <li>
+            <strong>It works from the queue.</strong> It claims rows addressed to it, does the work inside
+            its own lane, marks them done, and can leave work for another agent. Agents never call each
+            other directly — a row in the queue is the only way one reaches another.
+          </li>
+          <li>
+            <strong>When one gets something wrong, you change its brief, not the code.</strong> Edit the
+            field here, say why, save. The next session it runs, it follows the new rule.
+          </li>
+          <li>
+            <strong>Anything it can&apos;t do without you</strong> becomes a task in your Human Action
+            Inbox, after project-manager has made the wording readable.
+          </li>
+        </ol>
+        <p>
+          Nothing runs on a schedule yet — an agent only runs while a session is holding its brief. The
+          counts below are that agent&apos;s queue: <em>queued</em> is waiting for it, <em>in flight</em>
+          is claimed right now, <em>failed</em> needs a look. The dot is green when it has checked in
+          within the last half hour.
+        </p>
+      </details>
+
       <div className={styles.tiles}>
         {agents.map((agent) => {
           const brief = briefs.get(agent.agent_name);

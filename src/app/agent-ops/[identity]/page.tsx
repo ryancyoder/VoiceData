@@ -37,6 +37,10 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         </Link>
         <h1>{registry.agent_name}</h1>
         <p>{registry.role}</p>
+        <p>
+          This is what the agent reads at the start of every session. Change a field, say why, and save —
+          the version it replaces is kept below, so a bad edit can be read back and undone.
+        </p>
       </div>
 
       {prompt ? (
