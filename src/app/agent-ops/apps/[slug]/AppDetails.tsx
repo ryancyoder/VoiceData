@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import { APP_STATUSES, type App, type AppStatus } from "@/lib/agentOps";
+import AppIcon from "../AppIcon";
 import styles from "../../agentOps.module.css";
 
 // The app's own record: what it is, where its code lives, whether it is still
 // being worked on. The slug is deliberately not editable — it is the URL.
-export default function AppDetails({ app }: { app: App }) {
+export default function AppDetails({ app: initialApp }: { app: App }) {
+  const [app, setApp] = useState(initialApp);
+  const [iconState, setIconState] = useState<"idle" | "fetching">("idle");
+  const [iconUrl, setIconUrl] = useState("");
   const [draft, setDraft] = useState({
     name: app.name,
     repo: app.repo ?? "",
@@ -19,6 +23,43 @@ export default function AppDetails({ app }: { app: App }) {
   const [error, setError] = useState("");
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+
+  // The home-screen icon: what a phone shows when this app's link is saved.
+  // Fetched from the live site and stored on the row, so the list does not make
+  // a request to eleven other origins every time it renders.
+  async function fetchIcon(explicit?: string) {
+    setIconState("fetching");
+    setError("");
+    try {
+      const res = await fetch(`/api/agent-ops/apps/${app.id}/icon`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(explicit ? { url: explicit } : {}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not fetch the icon");
+      setApp(data.app as App);
+      setIconUrl("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not fetch the icon");
+    } finally {
+      setIconState("idle");
+    }
+  }
+
+  async function clearIcon() {
+    setIconState("fetching");
+    try {
+      const res = await fetch(`/api/agent-ops/apps/${app.id}/icon`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not clear it");
+      setApp(data.app as App);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not clear it");
+    } finally {
+      setIconState("idle");
+    }
+  }
 
   async function save() {
     setState("saving");
@@ -58,6 +99,48 @@ export default function AppDetails({ app }: { app: App }) {
             What this project is and where it lives. The URL slug stays as it is, so a saved link keeps
             working through a rename.
           </p>
+        </div>
+      </div>
+
+      <div className={styles.iconRow}>
+        <AppIcon app={app} size={52} />
+        <div className={styles.iconRowBody}>
+          <span className={styles.fieldLabel}>Icon</span>
+          <span className={styles.fieldHint}>
+            {app.icon_url
+              ? `From the ${app.icon_source ?? "site"}. Fetch again after it changes.`
+              : "The image a phone uses when this link is saved to the home screen. Needs a live URL, or paste one."}
+          </span>
+          <div className={styles.iconActions}>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              disabled={iconState === "fetching"}
+              onClick={() => fetchIcon()}
+            >
+              {iconState === "fetching" ? "Fetching…" : app.icon_url ? "Fetch again" : "Fetch from site"}
+            </button>
+            {app.icon_url && (
+              <button
+                type="button"
+                className={styles.ghostButton}
+                disabled={iconState === "fetching"}
+                onClick={clearIcon}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <input
+            value={iconUrl}
+            placeholder="…or paste an image URL"
+            autoCapitalize="none"
+            spellCheck={false}
+            onChange={(e) => setIconUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && iconUrl.trim()) fetchIcon(iconUrl.trim());
+            }}
+          />
         </div>
       </div>
 

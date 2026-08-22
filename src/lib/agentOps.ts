@@ -295,6 +295,9 @@ export interface App {
   live_url: string | null;
   status: AppStatus;
   summary: string;
+  // The home-screen icon, usually a data: URL fetched from the live site.
+  icon_url: string | null;
+  icon_source: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -304,3 +307,11 @@ export const APP_STATUSES: AppStatus[] = ["active", "paused", "archived"];
 
 export const repoUrl = (repo: string | null): string | null =>
   repo ? `https://github.com/${repo}` : null;
+
+// What stands in for an icon until there is one: the app's initials, the way a
+// launcher would draw a placeholder tile.
+export function appMonogram(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return name.trim().slice(0, 2).toUpperCase();
+}
