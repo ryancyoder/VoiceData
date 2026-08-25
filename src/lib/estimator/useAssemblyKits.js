@@ -2,28 +2,22 @@ import { useState, useEffect } from 'react';
 
 let idCounter = 0;
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' };
-
-// Phase 2 persistence: Supabase, via /api/estimator/kits. Local state is
-// updated optimistically for a snappy UI; the matching request persists in
-// the background (kits are low-stakes reference data, so a failed write logs
-// rather than blocking the interaction).
-// `source` mirrors useCatalog: 'legacy' reads /api/estimator/kits, 'master'
-// reads /api/estimator/kits-v2 (assemblies from the normalized tables).
-// Master is read-only — writes are local-only until the write path migrates.
-export function useAssemblyKits(source = 'legacy') {
+// Assembly kits, read from the master catalog (assemblies) via
+// /api/estimator/kits-v2. The estimator is a read-only consumer: kit/assembly
+// authoring lives on the /master-catalog page. saveKit/removeKit/updateKit
+// therefore only mutate the in-session list (e.g. "save this group as a kit"
+// for reuse within the open estimate) — they do not persist.
+export function useAssemblyKits() {
   const [kits, setKits] = useState([]);
-  const readOnly = source === 'master';
 
   useEffect(() => {
     let active = true;
-    const url = source === 'master' ? '/api/estimator/kits-v2' : '/api/estimator/kits';
-    fetch(url)
+    fetch('/api/estimator/kits-v2')
       .then(res => (res.ok ? res.json() : Promise.reject(new Error('load failed'))))
       .then(data => { if (active && Array.isArray(data.kits)) setKits(data.kits); })
       .catch(() => { /* start empty if kits can't be loaded */ });
     return () => { active = false; };
-  }, [source]);
+  }, []);
 
   const saveKit = (name, description, groupItems, { color, takeoffUnit } = {}) => {
     const kitItems = groupItems.map(item => {
@@ -63,27 +57,15 @@ export function useAssemblyKits(source = 'legacy') {
       items: kitItems,
     };
     setKits(prev => [...prev, kit]);
-    if (!readOnly) {
-      fetch('/api/estimator/kits', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(kit) })
-        .catch(err => console.error('Failed to save kit', err));
-    }
     return kit.id;
   };
 
   const removeKit = (id) => {
     setKits(prev => prev.filter(k => k.id !== id));
-    if (!readOnly) {
-      fetch(`/api/estimator/kits/${id}`, { method: 'DELETE' })
-        .catch(err => console.error('Failed to delete kit', err));
-    }
   };
 
   const updateKit = (id, changes) => {
     setKits(prev => prev.map(k => k.id === id ? { ...k, ...changes } : k));
-    if (!readOnly) {
-      fetch(`/api/estimator/kits/${id}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(changes) })
-        .catch(err => console.error('Failed to update kit', err));
-    }
   };
 
   return { kits, saveKit, removeKit, updateKit };

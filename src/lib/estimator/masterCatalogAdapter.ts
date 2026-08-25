@@ -4,8 +4,7 @@
 // unchanged against the new source. This is the read side only.
 
 import { supabase } from "@/lib/supabaseClient";
-import type { CatalogItem } from "./catalogItemColumns";
-import type { Kit, KitItem } from "./assemblyKitColumns";
+import type { CatalogItem, Kit, KitItem } from "./catalogTypes";
 
 function num(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined || value === "") return null;

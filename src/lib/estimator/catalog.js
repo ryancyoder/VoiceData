@@ -50,8 +50,3 @@ export const CATEGORY_COLORS = {
   lighting:  { bg: 'bg-yellow-100', text: 'text-yellow-800', badge: 'bg-yellow-200', border: 'border-yellow-300', dot: 'bg-yellow-500' },
   logistics: { bg: 'bg-slate-100',  text: 'text-slate-800',  badge: 'bg-slate-200',  border: 'border-slate-300',  dot: 'bg-slate-500'  },
 };
-
-import catalogData from './catalog-items.json';
-
-export const CATALOG_DELIVERY_RATE = catalogData.deliveryRate ?? 80;
-export default catalogData.items;

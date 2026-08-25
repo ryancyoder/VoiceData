@@ -13,7 +13,6 @@ type MainView = { key: string; label: string; icon: string; href?: string; drill
 const MAIN_VIEWS: MainView[] = [
   { key: "sales", label: "Sales Board", icon: "🗂️", drill: "sales" },
   { key: "estimator", label: "Estimator", icon: "🧮", href: "/estimator" },
-  { key: "catalog", label: "Catalog", icon: "📚", href: "/catalog" },
   { key: "master-catalog", label: "Master Catalog", icon: "📖", href: "/master-catalog" },
   { key: "design", label: "Design", icon: "🎨", href: "/design" },
   { key: "plants", label: "Plants", icon: "🌿", href: "/plants" },

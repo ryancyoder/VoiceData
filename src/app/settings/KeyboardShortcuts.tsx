@@ -57,10 +57,6 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    title: "Item Catalog",
-    shortcuts: [{ combos: [["Esc"]], desc: "Close the item modal" }],
-  },
-  {
     title: "Plant Database",
     shortcuts: [
       { combos: [["Enter"]], desc: "Save a cell edit" },

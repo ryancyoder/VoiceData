@@ -17,7 +17,6 @@ import { useCatalog } from '@/lib/estimator/useCatalog';
 import { useAssemblyKits } from '@/lib/estimator/useAssemblyKits';
 import { usePhases } from '@/lib/estimator/usePhases';
 import CatalogPanel from './CatalogPanel';
-import CatalogEditor from './CatalogEditor';
 import ImportModal from './ImportModal';
 import AssemblyKitModal from './AssemblyKitModal';
 import QuickPicker from './QuickPicker';
@@ -31,18 +30,11 @@ import { CATEGORY_COLORS } from '@/lib/estimator/catalog';
 export default function App({ estimateId }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Catalog data source: 'legacy' (catalog_items) or 'master' (the normalized
-  // tables via the -v2 endpoints). Persisted so a reload keeps the choice.
-  const [catalogSource, setCatalogSource] = useState(() => {
-    if (typeof window === 'undefined') return 'legacy';
-    return localStorage.getItem('estimator_catalog_source') === 'master' ? 'master' : 'legacy';
-  });
-  const switchCatalogSource = (next) => {
-    setCatalogSource(next);
-    try { localStorage.setItem('estimator_catalog_source', next); } catch { /* ignore */ }
-  };
-  const { catalogItems, deliveryRate, updateDeliveryRate, updateCatalogItem, addCatalogItem, removeCatalogItem, saveCatalog } = useCatalog(catalogSource);
-  const { kits, saveKit, removeKit, updateKit } = useAssemblyKits(catalogSource);
+  // The catalog is read from the master catalog (materials/applications/
+  // assemblies). It's read-only here — catalog authoring lives on the
+  // /master-catalog page, not inside the estimator.
+  const { catalogItems, deliveryRate } = useCatalog();
+  const { kits, saveKit, removeKit, updateKit } = useAssemblyKits();
   const { stageOptions } = usePhases();
 
   const {
@@ -87,7 +79,6 @@ export default function App({ estimateId }) {
 
   // activeDrag: { type: 'catalog', item } | { type: 'takeoff-group' } | { type: 'assembly-kit', kit } | null
   const [activeDrag, setActiveDrag] = useState(null);
-  const [editorOpen, setEditorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState(null);
@@ -370,26 +361,6 @@ export default function App({ estimateId }) {
             <span className="text-xs text-green-200/90 w-16" aria-live="polite">
               {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Save failed' : ''}
             </span>
-            {/* Catalog data source toggle (Phase 3: compare legacy vs master). */}
-            <div className="flex items-center rounded-lg overflow-hidden border border-green-600 text-xs font-semibold" title="Catalog data source">
-              <button
-                onClick={() => switchCatalogSource('legacy')}
-                className={`px-2.5 py-1 transition-colors ${catalogSource === 'legacy' ? 'bg-white text-green-800' : 'text-green-200 hover:bg-green-700'}`}
-              >
-                Legacy
-              </button>
-              <button
-                onClick={() => switchCatalogSource('master')}
-                className={`px-2.5 py-1 transition-colors ${catalogSource === 'master' ? 'bg-white text-green-800' : 'text-green-200 hover:bg-green-700'}`}
-              >
-                Master
-              </button>
-            </div>
-            {catalogSource === 'master' && (
-              <span className="rounded bg-amber-400/90 px-2 py-0.5 text-[0.65rem] font-bold text-amber-950" title="The master catalog is read-only until the write path is migrated">
-                READ-ONLY
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -414,19 +385,6 @@ export default function App({ estimateId }) {
                   d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
               Plan
-            </button>
-            <button
-              onClick={() => setEditorOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-green-700 hover:bg-green-600
-                         rounded-lg text-sm font-medium transition-colors"
-              title="Edit catalog"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Catalog
             </button>
             {/* Quick picker */}
             <button
@@ -675,19 +633,6 @@ export default function App({ estimateId }) {
         />
       )}
 
-      {/* Catalog editor modal */}
-      {editorOpen && (
-        <CatalogEditor
-          items={catalogItems}
-          deliveryRate={deliveryRate}
-          onUpdateDeliveryRate={updateDeliveryRate}
-          onUpdate={updateCatalogItem}
-          onAdd={addCatalogItem}
-          onRemove={removeCatalogItem}
-          onSave={() => saveCatalog(catalogItems, deliveryRate)}
-          onClose={() => setEditorOpen(false)}
-        />
-      )}
     </DndContext>
   );
 }
