@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import styles from "./sales-board.module.css";
 import type { Stage } from "@/lib/salesBoard";
 import { STAGES } from "@/lib/salesBoard";
@@ -34,20 +34,70 @@ function monogram(name: string): string {
 
 type SortKey = "name" | "value" | "stage";
 
+// Long-press (hold without moving) opens the property's photo album; a normal
+// tap opens the deal. Fired on the hold threshold so it feels like an iOS
+// press-and-hold, and the release click is then suppressed.
+const LONG_PRESS_MS = 500;
+const MOVE_TOLERANCE = 10;
+
 export default function DealTiles({
   deals,
   coverUrls,
   onOpen,
+  onOpenAlbum,
 }: {
   deals: UiDeal[];
   // property id -> cover photo URL. Missing entries just mean no photo yet.
   coverUrls: Record<number, string>;
   onOpen: (deal: UiDeal) => void;
+  // Long-press action — open this deal's property photo album.
+  onOpenAlbum: (deal: UiDeal) => void;
 }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("stage");
   // Empty set = every stage shown. Otherwise only the selected stages.
   const [stageFilter, setStageFilter] = useState<Set<Stage>>(new Set());
+
+  // One press at a time, so a single set of refs covers the whole grid.
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+  const pressStart = useRef<{ x: number; y: number } | null>(null);
+
+  function clearPress() {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+    pressStart.current = null;
+  }
+
+  function startPress(deal: UiDeal, e: React.PointerEvent) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    longPressFired.current = false;
+    clearPress();
+    pressStart.current = { x: e.clientX, y: e.clientY };
+    pressTimer.current = setTimeout(() => {
+      pressTimer.current = null;
+      longPressFired.current = true;
+      onOpenAlbum(deal);
+    }, LONG_PRESS_MS);
+  }
+
+  function movePress(e: React.PointerEvent) {
+    const start = pressStart.current;
+    if (!start) return;
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > MOVE_TOLERANCE) clearPress();
+  }
+
+  function handleClick(deal: UiDeal) {
+    // A completed long-press already navigated — swallow the release click so
+    // it doesn't also open the deal modal.
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      return;
+    }
+    onOpen(deal);
+  }
 
   function toggleStage(stage: Stage) {
     setStageFilter((prev) => {
@@ -142,8 +192,14 @@ export default function DealTiles({
                   type="button"
                   className={styles["tile"]}
                   style={{ ["--col-color" as string]: color }}
-                  onClick={() => onOpen(d)}
-                  title={`${d.deal_name} — open`}
+                  onClick={() => handleClick(d)}
+                  onPointerDown={(e) => startPress(d, e)}
+                  onPointerMove={movePress}
+                  onPointerUp={clearPress}
+                  onPointerLeave={clearPress}
+                  onPointerCancel={clearPress}
+                  onContextMenu={(e) => e.preventDefault()}
+                  title={`${d.deal_name} — tap to open, hold for photos`}
                 >
                   <div className={styles["tile-photo"]}>
                     {cover ? (

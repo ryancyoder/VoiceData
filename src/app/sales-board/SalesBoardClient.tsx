@@ -1200,7 +1200,14 @@ export default function SalesBoardClient({
       {viewMode === "table" ? (
         <DealTable deals={activeDeals} onOpen={(d) => setActiveDealId(d.id)} />
       ) : viewMode === "tile" ? (
-        <DealTiles deals={activeDeals} coverUrls={propertyCoverUrls} onOpen={(d) => setActiveDealId(d.id)} />
+        <DealTiles
+          deals={activeDeals}
+          coverUrls={propertyCoverUrls}
+          onOpen={(d) => setActiveDealId(d.id)}
+          onOpenAlbum={(d) =>
+            router.push(d.property_id != null ? `/photos?property=${d.property_id}` : `/photos?deal=${d.id}`)
+          }
+        />
       ) : (
       <div className={styles["board-wrap"]}>
         <div className={`${styles.board} ${hoverPhotoMode === "pane" ? styles["has-photo-pane"] : ""}`}>
