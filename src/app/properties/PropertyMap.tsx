@@ -1,6 +1,7 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup, Tooltip } from "react-leaflet";
+import { useEffect, useMemo, useState } from "react";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import styles from "./properties.module.css";
@@ -51,8 +52,40 @@ function pinIcon(color: string): L.DivIcon {
 
 type GeocodedProperty = PropertyRow & { latitude: number; longitude: number };
 
+// Text a property is searchable by: contact name (last, first) and address.
+function searchText(p: GeocodedProperty): string {
+  return [p.contact?.last_name, p.contact?.first_name, p.address].filter(Boolean).join(" ").toLowerCase();
+}
+
+// Flies/fits the map to the current search matches. Rendered only while a query
+// is active, so it never fights the initial center/zoom on load: one match flies
+// in close, several fit their bounds.
+function MapSearchController({ matches }: { matches: GeocodedProperty[] }) {
+  const map = useMap();
+  const key = matches.map((m) => m.id).join(",");
+  useEffect(() => {
+    if (matches.length === 0) return;
+    if (matches.length === 1) {
+      map.flyTo([matches[0].latitude, matches[0].longitude], Math.max(map.getZoom(), 15), { duration: 0.6 });
+    } else {
+      const bounds = L.latLngBounds(matches.map((m) => [m.latitude, m.longitude] as [number, number]));
+      map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
+    }
+    // Keyed on the matched-id set so it re-runs as the query narrows/widens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return null;
+}
+
 export default function PropertyMap({ properties }: { properties: PropertyRow[] }) {
-  const geocoded = properties.filter((p): p is GeocodedProperty => p.latitude != null && p.longitude != null);
+  const geocoded = useMemo(
+    () => properties.filter((p): p is GeocodedProperty => p.latitude != null && p.longitude != null),
+    [properties]
+  );
+
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const matches = useMemo(() => (q ? geocoded.filter((p) => searchText(p).includes(q)) : geocoded), [geocoded, q]);
 
   if (geocoded.length === 0) {
     return <div className={styles.empty}>No geocoded properties to show on the map yet.</div>;
@@ -64,29 +97,51 @@ export default function PropertyMap({ properties }: { properties: PropertyRow[] 
   ];
 
   return (
-    <MapContainer center={center} zoom={geocoded.length === 1 ? 14 : 9} className={styles["map-wrap"]} scrollWheelZoom>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      {geocoded.map((p) => {
-        const stage = propertyStage(p);
-        return (
-          <Marker key={p.id} position={[p.latitude, p.longitude]} icon={pinIcon(stage ? STAGE_HEX[stage] : NO_DEAL_COLOR)}>
-            <Tooltip permanent direction="top" offset={[0, 0]} className={styles["map-pin-label"]}>
-              {p.contact?.last_name?.trim() || formatPropertyLabel({ address: p.address, contactLastName: null })}
-            </Tooltip>
-            <Popup>
-              <div className={styles["map-popup-title"]}>
-                {formatPropertyLabel({ address: p.address, contactLastName: p.contact?.last_name ?? null })}
-              </div>
-              <div className={styles["map-popup-detail"]}>
-                {stage ? stage : "No deals"} · {p.dealCount} deal{p.dealCount === 1 ? "" : "s"} · {p.eventCount} event{p.eventCount === 1 ? "" : "s"}
-              </div>
-            </Popup>
-          </Marker>
-        );
-      })}
-    </MapContainer>
+    <div className={styles["map-view"]}>
+      <div className={styles["map-search"]}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+        <input
+          type="search"
+          className={styles["map-search-input"]}
+          placeholder="Search name or address…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {q && (
+          <span className={styles["map-search-count"]}>
+            {matches.length === 0 ? "No matches" : `${matches.length} of ${geocoded.length}`}
+          </span>
+        )}
+      </div>
+
+      <MapContainer center={center} zoom={geocoded.length === 1 ? 14 : 9} className={styles["map-wrap"]} scrollWheelZoom>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {q && <MapSearchController matches={matches} />}
+        {matches.map((p) => {
+          const stage = propertyStage(p);
+          return (
+            <Marker key={p.id} position={[p.latitude, p.longitude]} icon={pinIcon(stage ? STAGE_HEX[stage] : NO_DEAL_COLOR)}>
+              <Tooltip permanent direction="top" offset={[0, 0]} className={styles["map-pin-label"]}>
+                {p.contact?.last_name?.trim() || formatPropertyLabel({ address: p.address, contactLastName: null })}
+              </Tooltip>
+              <Popup>
+                <div className={styles["map-popup-title"]}>
+                  {formatPropertyLabel({ address: p.address, contactLastName: p.contact?.last_name ?? null })}
+                </div>
+                <div className={styles["map-popup-detail"]}>
+                  {stage ? stage : "No deals"} · {p.dealCount} deal{p.dealCount === 1 ? "" : "s"} · {p.eventCount} event{p.eventCount === 1 ? "" : "s"}
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+      </MapContainer>
+    </div>
   );
 }

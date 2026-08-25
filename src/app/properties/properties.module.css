@@ -212,6 +212,9 @@
 .geocode-yes { color: var(--accent); font-size: 0.76rem; }
 .geocode-no { color: var(--text-faint); font-size: 0.76rem; }
 
+.map-view {
+  position: relative;
+}
 .map-wrap {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -219,6 +222,42 @@
   box-shadow: var(--shadow);
   height: 70vh;
   min-height: 420px;
+}
+
+/* Search box floating over the map (above Leaflet panes/controls). */
+.map-search {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(340px, calc(100% - 88px));
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #5b6472;
+  box-shadow: 0 2px 8px rgba(20, 24, 30, 0.18);
+}
+.map-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.88rem;
+  color: #12161c;
+}
+.map-search-input::placeholder { color: #8b92a0; }
+.map-search-count {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #5b6472;
+  font-variant-numeric: tabular-nums;
 }
 
 .map-popup-title { font-weight: 650; margin-bottom: 2px; }
