@@ -7,8 +7,8 @@ import { parseAspireCsv } from "@/lib/aspireCsv";
 
 // ── The richer, normalized catalog editor ────────────────────────────────
 // A native editor for the master model (materials → their applications,
-// equipment, and read-only assemblies) that reads and writes the normalized
-// Supabase tables directly via /api/estimator/master. This is the write
+// equipment, and assemblies — all editable) that reads and writes the
+// normalized Supabase tables directly via /api/estimator/master. This is the write
 // surface the legacy flat catalog editor can't safely be — materials are
 // shared across contexts, coverage lives per-application, and deletes are
 // FK-constrained. Built to run side-by-side with the legacy Catalog page.
