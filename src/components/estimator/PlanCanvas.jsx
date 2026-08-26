@@ -292,6 +292,69 @@ export default function PlanCanvas({
   // A drag ends with a synthetic click; swallow it so it doesn't re-select.
   const suppressClickRef = useRef(false);
 
+  // ── Map zoom/pan ──────────────────────────────────────────────────────────
+  // A user zoom (1 = fit) + pan (canvas px) layered on top of the fit transform.
+  // Every coordinate conversion already runs through getTransformNow(), so
+  // shapes/plants/pins stay correct at any zoom with no other changes.
+  const viewRef = useRef({ zoom: 1, panX: 0, panY: 0 });
+  const [viewVersion, setViewVersion] = useState(0);
+  const [zoomPct, setZoomPct] = useState(100);
+  const bumpView = () => {
+    clampView();
+    setZoomPct(Math.round(viewRef.current.zoom * 100));
+    setViewVersion((v) => v + 1);
+  };
+  // Active pointers (for pinch) and the in-progress two-finger gesture.
+  const pointersRef = useRef(new Map());
+  const gestureRef = useRef(null);
+  const MIN_ZOOM = 1;
+  const MAX_ZOOM = 8;
+
+  // Layer the user zoom/pan onto a base (fit) transform.
+  function applyView(base) {
+    const v = viewRef.current;
+    return { scale: base.scale * v.zoom, offsetX: base.offsetX * v.zoom + v.panX, offsetY: base.offsetY * v.zoom + v.panY };
+  }
+
+  // Keep the (scaled) image within the canvas; snap fully back to fit at zoom 1.
+  function clampView() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const v = viewRef.current;
+    v.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.zoom));
+    if (v.zoom <= 1) { v.zoom = 1; v.panX = 0; v.panY = 0; return; }
+    const base = getTransform(plan.imageWidth, plan.imageHeight, canvas.width, canvas.height);
+    const axes = [['panX', 'width', 'offsetX', plan.imageWidth], ['panY', 'height', 'offsetY', plan.imageHeight]];
+    for (const [axis, dim, off, imgDim] of axes) {
+      const scaledDim = base.scale * v.zoom * imgDim;
+      const canvasDim = canvas[dim];
+      const origin = base[off] * v.zoom + v[axis];
+      let minOrigin, maxOrigin;
+      if (scaledDim >= canvasDim) { minOrigin = canvasDim - scaledDim; maxOrigin = 0; }
+      else { minOrigin = maxOrigin = (canvasDim - scaledDim) / 2; }
+      const clamped = Math.max(minOrigin, Math.min(maxOrigin, origin));
+      v[axis] += clamped - origin;
+    }
+  }
+
+  // Zoom to a target multiplier, keeping the given canvas point fixed on screen.
+  function zoomToPoint(nextZoom, focalX, focalY) {
+    const v = viewRef.current;
+    const z0 = v.zoom;
+    const z1 = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom));
+    if (z1 === z0) return;
+    // screen = z * baseCanvas + pan  ⇒  keep focal fixed: pan1 = focal - z1*(focal - pan0)/z0
+    v.panX = focalX - z1 * (focalX - v.panX) / z0;
+    v.panY = focalY - z1 * (focalY - v.panY) / z0;
+    v.zoom = z1;
+    bumpView();
+  }
+
+  function resetView() {
+    viewRef.current = { zoom: 1, panX: 0, panY: 0 };
+    bumpView();
+  }
+
   useEffect(() => { inProgressRef.current = []; setInProgressVertices([]); setCursorPos(null); }, [activeTool]);
   useEffect(() => { if (plan.scale) setCalPoints([]); }, [plan.scale]);
   useEffect(() => {
@@ -305,6 +368,9 @@ export default function PlanCanvas({
   }, [plan.items, selectedItemInstanceId]);
 
   useEffect(() => {
+    // A different plan image starts fresh at fit.
+    viewRef.current = { zoom: 1, panX: 0, panY: 0 };
+    setZoomPct(100);
     if (!plan.imageDataUrl) { imageRef.current = null; setImageReady(false); return; }
     setImageReady(false);
     const img = new Image();
@@ -322,6 +388,32 @@ export default function PlanCanvas({
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
+
+  // Wheel-to-zoom (toward the cursor). Attached natively as a non-passive
+  // listener so preventDefault actually stops the browser from zooming/scrolling
+  // the page — the whole point of this feature.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    function onWheel(e) {
+      if (!plan.imageDataUrl) return;
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const fx = e.clientX - rect.left, fy = e.clientY - rect.top;
+      const v = viewRef.current;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const z1 = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.zoom * factor));
+      if (z1 !== v.zoom) {
+        v.panX = fx - z1 * (fx - v.panX) / v.zoom;
+        v.panY = fy - z1 * (fy - v.panY) / v.zoom;
+        v.zoom = z1;
+      }
+      bumpView();
+    }
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.imageDataUrl, plan.imageWidth, plan.imageHeight]);
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -343,7 +435,7 @@ export default function PlanCanvas({
       return;
     }
 
-    const t = getTransform(plan.imageWidth, plan.imageHeight, canvas.width, canvas.height);
+    const t = applyView(getTransform(plan.imageWidth, plan.imageHeight, canvas.width, canvas.height));
     ctx.drawImage(imageRef.current, t.offsetX, t.offsetY, plan.imageWidth * t.scale, plan.imageHeight * t.scale);
 
     // Calibration line from stored scale
@@ -473,7 +565,7 @@ export default function PlanCanvas({
       drawPhotoPin(ctx, pt.x, pt.y);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan, groups, canvasSize, inProgressVertices, cursorPos, calPoints, selectedShapeId, selectedPlantInstanceId, selectedItemInstanceId, imageReady, activeTool, catalogPlants, catalogItems, showCalLine, showMeasurements, photoPins]);
+  }, [plan, groups, canvasSize, inProgressVertices, cursorPos, calPoints, selectedShapeId, selectedPlantInstanceId, selectedItemInstanceId, imageReady, activeTool, catalogPlants, catalogItems, showCalLine, showMeasurements, photoPins, viewVersion]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function getCanvasPoint(e) {
@@ -482,7 +574,7 @@ export default function PlanCanvas({
   }
   function getTransformNow() {
     const canvas = canvasRef.current;
-    return getTransform(plan.imageWidth, plan.imageHeight, canvas?.width || canvasSize.width, canvas?.height || canvasSize.height);
+    return applyView(getTransform(plan.imageWidth, plan.imageHeight, canvas?.width || canvasSize.width, canvas?.height || canvasSize.height));
   }
 
   // ── Mouse handlers ─────────────────────────────────────────────────────────
@@ -618,6 +710,23 @@ export default function PlanCanvas({
   // ── Node editing (select mode): drag a vertex, insert one on a midpoint, or
   //    drag the whole shape. Updates cascade to the take-off + loads instantly.
   function handlePointerDown(e) {
+    // Track every pointer (any tool) so two fingers pinch-zoom/pan the map.
+    // A fresh first touch clears any leftover click-suppression (a pinch ends
+    // without firing a click, so it can't self-clear like a drag does).
+    if (pointersRef.current.size === 0) suppressClickRef.current = false;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointersRef.current.size === 2 && plan.imageDataUrl) {
+      dragRef.current = null; // abandon any single-pointer draw/drag
+      const pts = [...pointersRef.current.values()];
+      gestureRef.current = {
+        lastDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+        lastMid: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 },
+      };
+      suppressClickRef.current = true;
+      return;
+    }
+    if (pointersRef.current.size > 2) return;
+
     if (activeTool !== 'select' || placingPhoto || !plan.imageDataUrl) return;
     const cp = getCanvasPoint(e);
     const t = getTransformNow();
@@ -676,6 +785,30 @@ export default function PlanCanvas({
   }
 
   function handlePointerMove(e) {
+    // Two-finger pinch: zoom about the midpoint and pan by its movement.
+    if (pointersRef.current.has(e.pointerId)) pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const g = gestureRef.current;
+    if (g && pointersRef.current.size >= 2) {
+      const pts = [...pointersRef.current.values()];
+      const distNow = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      const rect = canvasRef.current.getBoundingClientRect();
+      const fx = mid.x - rect.left, fy = mid.y - rect.top;
+      const v = viewRef.current;
+      if (g.lastDist > 0) {
+        const z1 = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.zoom * (distNow / g.lastDist)));
+        v.panX = fx - z1 * (fx - v.panX) / v.zoom;
+        v.panY = fy - z1 * (fy - v.panY) / v.zoom;
+        v.zoom = z1;
+      }
+      v.panX += mid.x - g.lastMid.x;
+      v.panY += mid.y - g.lastMid.y;
+      g.lastDist = distNow;
+      g.lastMid = mid;
+      bumpView();
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag) return;
     const imgPt = fromCanvas(getCanvasPoint(e), getTransformNow());
@@ -690,6 +823,11 @@ export default function PlanCanvas({
   }
 
   function handlePointerUp(e) {
+    pointersRef.current.delete(e.pointerId);
+    if (gestureRef.current && pointersRef.current.size < 2) {
+      gestureRef.current = null;
+      suppressClickRef.current = true; // swallow the click a lifted finger fires
+    }
     if (dragRef.current) {
       dragRef.current = null;
       suppressClickRef.current = true;
@@ -765,8 +903,42 @@ export default function PlanCanvas({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         className="block w-full h-full"
-        style={{ touchAction: activeTool === 'select' ? 'none' : undefined }}
+        // Always none so browser pinch-zoom / pan gestures never reach the page —
+        // only the map itself zooms (wheel on desktop, two-finger pinch on touch).
+        style={{ touchAction: 'none' }}
       />
+
+      {/* Zoom controls — a fallback to wheel/pinch and a way back to fit. */}
+      {plan.imageDataUrl && (
+        <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg bg-gray-900/80 p-1 text-gray-100 shadow-lg backdrop-blur">
+          <button
+            type="button"
+            onClick={() => { const c = canvasRef.current; zoomToPoint(viewRef.current.zoom / 1.3, (c?.width ?? 0) / 2, (c?.height ?? 0) / 2); }}
+            className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/15"
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={resetView}
+            className="min-w-[3rem] rounded px-1 text-center text-xs font-semibold tabular-nums hover:bg-white/15"
+            title="Reset to fit"
+          >
+            {zoomPct}%
+          </button>
+          <button
+            type="button"
+            onClick={() => { const c = canvasRef.current; zoomToPoint(viewRef.current.zoom * 1.3, (c?.width ?? 0) / 2, (c?.height ?? 0) / 2); }}
+            className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/15"
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+        </div>
+      )}
     </div>
   );
 }
