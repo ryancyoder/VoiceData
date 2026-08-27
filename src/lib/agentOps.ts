@@ -435,3 +435,67 @@ export function renderAppBrief({
 
   return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
+
+// A row on the agent bus. One durable request from one agent to another.
+export interface QueueRow {
+  id: number;
+  created_at: string;
+  from_agent: string;
+  to_agent: string;
+  intent: string;
+  status: QueueStatus;
+  priority: number;
+  attempts: number;
+  max_attempts: number;
+  claimed_by: string | null;
+  claimed_at: string | null;
+  lease_expires_at: string | null;
+  not_before: string;
+  error: string | null;
+  completed_at: string | null;
+  deal_id: number | null;
+  deal_name: string | null;
+  payload: unknown;
+  result?: unknown;
+}
+
+export type QueueStatus = "pending" | "claimed" | "done" | "failed" | "cancelled";
+
+// How a row reads at a glance. "claimed" is an agent holding it right now;
+// a claimed row past its lease is stuck rather than working.
+export function queueRowState(row: QueueRow, now = Date.now()): {
+  label: string;
+  tone: "waiting" | "working" | "stuck" | "bad" | "good" | "off";
+} {
+  switch (row.status) {
+    case "failed":
+      return { label: "failed", tone: "bad" };
+    case "done":
+      return { label: "done", tone: "good" };
+    case "cancelled":
+      return { label: "cancelled", tone: "off" };
+    case "claimed": {
+      const expired = row.lease_expires_at ? new Date(row.lease_expires_at).getTime() < now : false;
+      return expired
+        ? { label: "lease expired", tone: "stuck" }
+        : { label: `in flight · ${row.claimed_by ?? "?"}`, tone: "working" };
+    }
+    default: {
+      const held = new Date(row.not_before).getTime() > now;
+      return held ? { label: "scheduled", tone: "off" } : { label: "pending", tone: "waiting" };
+    }
+  }
+}
+
+// "3m", "2h", "4d" — how long ago, short enough for a dense row.
+export function shortAge(ts: string | null): string {
+  if (!ts) return "";
+  const ms = Date.now() - new Date(ts).getTime();
+  if (!Number.isFinite(ms)) return "";
+  const mins = Math.round(ms / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}

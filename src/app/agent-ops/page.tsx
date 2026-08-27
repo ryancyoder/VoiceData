@@ -33,13 +33,14 @@ function ago(ts: string | null): string {
 }
 
 export default async function AgentOpsPage() {
-  const [statusRes, promptRes, inboxRes, heldRes, docsRes, linksRes] = await Promise.all([
+  const [statusRes, promptRes, inboxRes, heldRes, docsRes, linksRes, queueRes] = await Promise.all([
     supabase.from("agent_ops_status").select("*").order("agent_name"),
     supabase.from("agent_prompts").select("identity, version, updated_at, updated_by"),
     supabase.from("human_action_inbox").select("*"),
     supabase.from("pending_pm_review").select("*"),
     supabase.from("agent_documents").select("*").order("title"),
     supabase.from("agent_document_links").select("document_id"),
+    supabase.from("agent_queue_live").select("id"),
   ]);
   if (statusRes.error) throw new Error(`Failed to load agents: ${statusRes.error.message}`);
   if (promptRes.error) throw new Error(`Failed to load briefs: ${promptRes.error.message}`);
@@ -47,6 +48,10 @@ export default async function AgentOpsPage() {
   if (heldRes.error) throw new Error(`Failed to load held items: ${heldRes.error.message}`);
   if (docsRes.error) throw new Error(`Failed to load documents: ${docsRes.error.message}`);
   if (linksRes.error) throw new Error(`Failed to load document links: ${linksRes.error.message}`);
+  if (queueRes.error) throw new Error(`Failed to load the queue: ${queueRes.error.message}`);
+
+  // Everything still on the bus — pending, in flight or failed.
+  const queueLive = (queueRes.data ?? []).length;
 
   // Here `linked` means "filed under some agent" rather than under a
   // particular one — the shared shelf shows what is global or under nobody.
@@ -110,7 +115,12 @@ export default async function AgentOpsPage() {
 
       <div className={styles.tilesHead}>
         <h2>Agents</h2>
-        <NewAgent />
+        <div className={styles.tilesHeadActions}>
+          <Link href="/agent-ops/queue" className={styles.ghostButton}>
+            Queue{queueLive > 0 ? ` (${queueLive})` : ""}
+          </Link>
+          <NewAgent />
+        </div>
       </div>
 
       <div className={styles.tiles}>

@@ -825,3 +825,163 @@ a.docRow {
   font-size: 0.72rem;
   line-height: 1.5;
 }
+
+.tilesHeadActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Filter chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.chip,
+.chipOn {
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-bright);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip:hover {
+  color: var(--text);
+}
+.chipOn {
+  border-color: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.chipCount {
+  opacity: 0.65;
+  margin-left: 3px;
+}
+.note {
+  color: var(--accent);
+  font-size: 0.76rem;
+  margin-bottom: 10px;
+}
+
+/* Queue rows — the left edge says what state the row is in. */
+.queue {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.queue > li {
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-bright);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.q_bad {
+  border-left-color: var(--danger) !important;
+}
+.q_stuck {
+  border-left-color: var(--amber) !important;
+}
+.q_working {
+  border-left-color: var(--cyan) !important;
+}
+.q_waiting {
+  border-left-color: var(--accent) !important;
+}
+.q_good {
+  border-left-color: var(--accent-dim) !important;
+}
+.q_off {
+  border-left-color: var(--border-bright) !important;
+  opacity: 0.75;
+}
+.queueHead {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font-family: var(--mono);
+  font-size: inherit;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.queueHead:hover {
+  background: var(--surface-3);
+}
+.queueIntent {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.queueId {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.queueRoute {
+  font-size: 0.74rem;
+  color: var(--cyan);
+}
+.queueState {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+.queueBody {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.queueError {
+  color: var(--danger);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.queueFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 0.72rem;
+}
+.queueFacts dt {
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.64rem;
+}
+.queueFacts dd {
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.queueFacts a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+.queueJson {
+  margin-top: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 9px 11px;
+  font-family: var(--mono);
+  font-size: 0.71rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  /* A real payload can be a page and a half of JSON — a research brief, a spec.
+     Cap it and let it scroll rather than letting one row swallow the screen. */
+  max-height: 340px;
+  overflow: auto;
+  white-space: pre;
+}
