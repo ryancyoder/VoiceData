@@ -111,6 +111,29 @@ cannot touch anything until its lane is written — which is the safe direction
 for a blank agent to fail in. Global documents reach it immediately, with no
 linking.
 
+## The queue
+
+`/agent-ops/queue` reads `agent_queue_live` — failed first, then in flight, then
+pending by priority — plus the last 40 finished rows for review. Filter by state
+(needs attention / pending / in flight / finished) or by the agent a row is
+addressed to. Open a row for its payload, its result, the deal it belongs to,
+and who is holding it.
+
+Three things a person can do that an agent cannot do for itself:
+
+- **Queue it again** — a failed row goes back to pending with attempts reset,
+  since someone retrying has usually changed something and spending the last
+  attempt on the old state wastes it.
+- **Release** — hand back a row an agent is holding but is not working, usually
+  because its lease ran out or the session died.
+- **Cancel** — status `cancelled`, not deleted: the row stays as the record of
+  something asked for and deliberately not done, and `claim_agent_work` only
+  takes pending rows, so it is inert.
+
+**Reap expired leases** runs `reap_expired_leases()` across the whole bus. Rows
+with attempts left go back to pending; rows out of attempts are marked failed.
+Nothing runs this on a schedule yet, which is why it is a button.
+
 ## Documents
 
 Reference material the agents read — SOPs, formats, playbooks — lives in
