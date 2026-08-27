@@ -58,6 +58,10 @@ export interface GalleryEvent {
   // A synthetic group holding a deal's event-less next-action photo(s), uploaded
   // from the Next Actions list. Rendered under an "Action" section.
   isActionSection?: boolean;
+  // A real but photoless event (e.g. a just-imported appointment) carried into
+  // the gallery so its section renders in an otherwise-empty album, with its
+  // own uploader — kept despite having zero photos.
+  isPlaceholder?: boolean;
 }
 
 interface DealGroup {
@@ -193,7 +197,7 @@ export default function PhotoGalleryClient({
       { propertyId: number | null; propertyLabel: string; coverPhotoId: number | null; referencePhotos: DealPhoto[]; dealMap: Map<string, DealGroup> }
     >();
     for (const event of events) {
-      if (event.photos.length === 0 && !event.isPropertyReference) continue;
+      if (event.photos.length === 0 && !event.isPropertyReference && !event.isPlaceholder) continue;
       const pKey = propertyKey(event.propertyId);
       if (!propMap.has(pKey)) {
         propMap.set(pKey, {
@@ -1231,7 +1235,7 @@ export default function PhotoGalleryClient({
                     </div>
                     <div className={styles["event-groups"]}>
                       {deal.events
-                        .filter((event) => event.photos.length > 0)
+                        .filter((event) => event.photos.length > 0 || event.isPlaceholder)
                         .map((event) => (
                           <div
                             key={event.id}

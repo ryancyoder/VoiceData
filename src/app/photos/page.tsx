@@ -276,7 +276,37 @@ async function loadGallery(): Promise<{ gallery: GalleryEvent[]; emptyProperties
     });
   }
 
-  return { gallery, emptyProperties };
+  // Carry the events of empty properties (e.g. a just-imported appointment) into
+  // the gallery as photoless placeholders, so each renders as its own section in
+  // the album with an uploader — the user can add photos straight onto the event.
+  const placeholderEvents: GalleryEvent[] = [];
+  for (const e of rawEvents) {
+    if (e.property_id == null || propertiesWithPhotos.has(e.property_id)) continue;
+    const prop = props.get(e.property_id);
+    if (!prop) continue;
+    const deal = e.deal_id != null ? deals.get(e.deal_id) ?? null : null;
+    placeholderEvents.push({
+      id: e.id,
+      name: e.name,
+      start_time: e.start_time,
+      end_time: e.end_time,
+      event_type: e.event_type,
+      isPlaceholder: true,
+      photos: [],
+      dealId: e.deal_id,
+      dealName: deal?.deal_name ?? null,
+      dealCompany: deal?.company ?? null,
+      dealStage: deal?.stage ?? null,
+      propertyId: e.property_id,
+      propertyAddress: prop.address,
+      propertyContactLastName: prop.contacts?.last_name ?? null,
+      propertyCoverPhotoId: prop.cover_photo_id,
+      dealNextActionPhotoId: deal?.next_action_photo_id ?? null,
+      dealAppointmentDate: deal?.appointment_date ?? null,
+    });
+  }
+
+  return { gallery: [...gallery, ...placeholderEvents], emptyProperties };
 }
 
 export default async function PhotosPage() {
