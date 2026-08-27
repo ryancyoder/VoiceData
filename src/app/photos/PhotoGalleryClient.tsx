@@ -112,7 +112,19 @@ function propertyKey(propertyId: number | null): string {
   return propertyId != null ? String(propertyId) : "none";
 }
 
-export default function PhotoGalleryClient({ events: initialEvents }: { events: GalleryEvent[] }) {
+// A property that is referenced by an event or deal but has no photos yet.
+// Rendered as an empty placeholder album so its link (e.g. the one shown after
+// importing an Outlook appointment) opens a real album the user can add photos
+// to, instead of dead-ending.
+export type EmptyProperty = { propertyId: number; propertyLabel: string; coverPhotoId: number | null };
+
+export default function PhotoGalleryClient({
+  events: initialEvents,
+  emptyProperties = [],
+}: {
+  events: GalleryEvent[];
+  emptyProperties?: EmptyProperty[];
+}) {
   const searchParams = useSearchParams();
   const [events, setEvents] = useState<GalleryEvent[]>(initialEvents);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -216,21 +228,43 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
       }
       propGroup.dealMap.get(dKey)!.events.push(event);
     }
-    return Array.from(propMap.entries())
-      .map(([key, p]) => ({
+    const labelById = new Map(emptyProperties.map((ep) => [ep.propertyId, ep.propertyLabel]));
+    const groups = Array.from(propMap.entries()).map(([key, p]) => ({
+      key,
+      propertyId: p.propertyId,
+      // Recover a real label if the only source was a synthesized (address-less)
+      // reference group — e.g. right after the first upload into an empty album.
+      propertyLabel:
+        p.propertyLabel === "No property" && p.propertyId != null && labelById.has(p.propertyId)
+          ? labelById.get(p.propertyId)!
+          : p.propertyLabel,
+      coverPhotoId: coverOverrides.has(key) ? coverOverrides.get(key)! : p.coverPhotoId,
+      referencePhotos: p.referencePhotos,
+      deals: Array.from(p.dealMap.values()).map((d) =>
+        d.dealId != null && nextActionOverrides.has(d.dealId)
+          ? { ...d, nextActionPhotoId: nextActionOverrides.get(d.dealId)! }
+          : d
+      ),
+    }));
+
+    // Placeholder albums for referenced-but-photoless properties, so their link
+    // opens a real (empty) album with the General reference uploader.
+    const presentKeys = new Set(groups.map((g) => g.key));
+    for (const ep of emptyProperties) {
+      const key = propertyKey(ep.propertyId);
+      if (presentKeys.has(key)) continue;
+      groups.push({
         key,
-        propertyId: p.propertyId,
-        propertyLabel: p.propertyLabel,
-        coverPhotoId: coverOverrides.has(key) ? coverOverrides.get(key)! : p.coverPhotoId,
-        referencePhotos: p.referencePhotos,
-        deals: Array.from(p.dealMap.values()).map((d) =>
-          d.dealId != null && nextActionOverrides.has(d.dealId)
-            ? { ...d, nextActionPhotoId: nextActionOverrides.get(d.dealId)! }
-            : d
-        ),
-      }))
-      .sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel));
-  }, [events, coverOverrides, nextActionOverrides]);
+        propertyId: ep.propertyId,
+        propertyLabel: ep.propertyLabel,
+        coverPhotoId: coverOverrides.has(key) ? coverOverrides.get(key)! : ep.coverPhotoId,
+        referencePhotos: [],
+        deals: [],
+      });
+    }
+
+    return groups.sort((a, b) => a.propertyLabel.localeCompare(b.propertyLabel));
+  }, [events, coverOverrides, nextActionOverrides, emptyProperties]);
 
   const totalPhotoCount = useMemo(
     () => propertyGroups.reduce((n, p) => n + flattenPropertyPhotos(p).length, 0),
@@ -1007,7 +1041,7 @@ export default function PhotoGalleryClient({ events: initialEvents }: { events: 
             {visiblePropertyGroups.map((property) => {
               const photos = flattenPropertyPhotos(property);
               const cover = photos.find((p) => p.id === property.coverPhotoId) ?? photos[0];
-              const coverThumb = dealThumbUrl(cover);
+              const coverThumb = cover ? dealThumbUrl(cover) : null;
               const dealCount = property.deals.filter((d) => d.dealId != null).length;
               const appt = nearestAppointment(property);
               return (

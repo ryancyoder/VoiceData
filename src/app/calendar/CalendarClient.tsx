@@ -2003,6 +2003,16 @@ export default function CalendarClient({
               ))}
             </div>
 
+            {/* Property-level album — works even with no deal (e.g. an imported
+                appointment) and lands on an empty album ready for photos. */}
+            {selectedEvent.propertyId != null && (
+              <div className={styles["deal-list"]}>
+                <Link href={`/photos?property=${selectedEvent.propertyId}`} className={styles["deal-chip-link"]}>
+                  🖼️ View property album →
+                </Link>
+              </div>
+            )}
+
             <div className={styles["photo-grid"]}>
               {selectedEvent.photos.map((photo, i) => {
                 const thumbUrl = dealThumbUrl(photo);

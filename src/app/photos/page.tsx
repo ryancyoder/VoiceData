@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
-import { SITE_PLAN_IMAGE_TYPE, PROPERTY_REFERENCE_TYPE, ACTION_PHOTO_TYPE, type DealPhoto } from "@/lib/salesBoard";
+import { SITE_PLAN_IMAGE_TYPE, PROPERTY_REFERENCE_TYPE, ACTION_PHOTO_TYPE, formatPropertyLabel, type DealPhoto } from "@/lib/salesBoard";
 import type { EventType } from "@/lib/events";
-import PhotoGalleryClient, { type GalleryEvent } from "./PhotoGalleryClient";
+import PhotoGalleryClient, { type GalleryEvent, type EmptyProperty } from "./PhotoGalleryClient";
 import { refEventId } from "./refEventId";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +73,7 @@ async function fetchDeals(ids: number[]): Promise<Map<number, DealRow>> {
   return map;
 }
 
-async function loadGallery(): Promise<GalleryEvent[]> {
+async function loadGallery(): Promise<{ gallery: GalleryEvent[]; emptyProperties: EmptyProperty[] }> {
   // 1) Events with their photos. deal_photos<->events is a single FK (no
   //    junction), so this embed is unambiguous and safe.
   const { data: eventData, error: eventError } = await supabase
@@ -249,13 +249,41 @@ async function loadGallery(): Promise<GalleryEvent[]> {
 
   // Append synthetic groups after real events so a jobsite photo stays the
   // default album cover.
-  return [...events, ...sitePlanEvents, ...actionEvents, ...referenceEvents];
+  const gallery = [...events, ...sitePlanEvents, ...actionEvents, ...referenceEvents];
+
+  // Placeholder albums: properties that are in play (referenced by an event or
+  // deal — e.g. a just-imported Outlook appointment) but have no photos yet, so
+  // their album link opens an empty album to add photos to instead of nowhere.
+  const propertiesWithPhotos = new Set<number>();
+  for (const g of gallery) {
+    if (g.photos.length > 0 && g.propertyId != null) propertiesWithPhotos.add(g.propertyId);
+  }
+  const referencedPropertyIds = new Set<number>(
+    [
+      ...rawEvents.map((e) => e.property_id),
+      ...Array.from(deals.values()).map((d) => d.property_id),
+    ].filter((id): id is number => id != null)
+  );
+  const emptyProperties: EmptyProperty[] = [];
+  for (const pid of referencedPropertyIds) {
+    if (propertiesWithPhotos.has(pid)) continue;
+    const prop = props.get(pid);
+    if (!prop) continue;
+    emptyProperties.push({
+      propertyId: pid,
+      propertyLabel: formatPropertyLabel({ address: prop.address, contactLastName: prop.contacts?.last_name ?? null }),
+      coverPhotoId: prop.cover_photo_id ?? null,
+    });
+  }
+
+  return { gallery, emptyProperties };
 }
 
 export default async function PhotosPage() {
   let gallery: GalleryEvent[];
+  let emptyProperties: EmptyProperty[] = [];
   try {
-    gallery = await loadGallery();
+    ({ gallery, emptyProperties } = await loadGallery());
   } catch (err) {
     // Surface the real message instead of Next's generic error digest, so the
     // exact failing query is visible on the page.
@@ -284,5 +312,5 @@ export default async function PhotosPage() {
     );
   }
 
-  return <PhotoGalleryClient events={gallery} />;
+  return <PhotoGalleryClient events={gallery} emptyProperties={emptyProperties} />;
 }
