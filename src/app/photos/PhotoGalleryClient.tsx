@@ -325,13 +325,15 @@ export default function PhotoGalleryClient({
       const match = initialEvents.find((e) => e.photos.some((p) => p.id === targetPhotoId));
       if (match) return propertyKey(match.propertyId);
     }
-    // ?property=<id> opens that property's album directly (used by the global
-    // command palette's "Photo albums" results).
+    // ?property=<id> opens that property's album directly (the command palette's
+    // "Photo albums" results, and the calendar's property-album link). Matched
+    // against propertyGroups so it also opens empty placeholder albums — a
+    // property with no photos yet still has a group to open.
     const propertyParam = searchParams.get("property");
     const propertyId = propertyParam ? Number(propertyParam) : NaN;
     if (Number.isFinite(propertyId)) {
-      const match = initialEvents.find((e) => e.propertyId === propertyId && e.photos.length > 0);
-      if (match) return propertyKey(propertyId);
+      const match = propertyGroups.find((p) => p.propertyId === propertyId);
+      if (match) return match.key;
     }
     const dealParam = searchParams.get("deal");
     const dealId = dealParam ? Number(dealParam) : NaN;
