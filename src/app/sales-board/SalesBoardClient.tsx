@@ -306,6 +306,38 @@ export default function SalesBoardClient({
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  // iPhone paged board: on a phone the board stops free-scrolling and becomes
+  // one stage per screen. `isPhone` drives that mode (and suppresses column
+  // collapse, which makes no sense at full width); `phonePage` is the stage
+  // index the horizontal scroll is currently snapped to.
+  const boardWrapRef = useRef<HTMLDivElement | null>(null);
+  const [isPhone, setIsPhone] = useState(false);
+  const [phonePage, setPhonePage] = useState(0);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsPhone(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  // Track which stage the swipe has landed on. clientWidth == one page (columns
+  // are 100vw and the wrap has no horizontal padding on phones), so scrollLeft
+  // divided by page width rounds to the current stage index.
+  function handleBoardScroll() {
+    const el = boardWrapRef.current;
+    if (!el || !isPhone) return;
+    const page = Math.round(el.scrollLeft / el.clientWidth);
+    setPhonePage((p) => (p === page ? p : page));
+  }
+
+  function scrollToPage(i: number) {
+    const el = boardWrapRef.current;
+    if (!el) return;
+    const clamped = Math.max(0, Math.min(STAGES.length - 1, i));
+    el.scrollTo({ left: clamped * el.clientWidth, behavior: "smooth" });
+  }
 
   function showToast(msg: string) {
     setToast(msg);
@@ -320,6 +352,14 @@ export default function SalesBoardClient({
   const closedValue = activeDeals
     .filter((d) => d.stage === "Paid in Full")
     .reduce((sum, d) => sum + (d.value || 0), 0);
+
+  // Deal count per stage for the phone pager (Lead reflects whichever panel —
+  // leads or loose ends — is showing).
+  const phoneStageCounts = STAGES.map((stage) =>
+    stage === "Lead" && leadPanelView === "loose"
+      ? activeDeals.filter((d) => d.flagged).length
+      : activeDeals.filter((d) => d.stage === stage).length
+  );
 
   async function refreshBoard() {
     setRefreshing(true);
@@ -1209,8 +1249,51 @@ export default function SalesBoardClient({
           }
         />
       ) : (
-      <div className={styles["board-wrap"]}>
-        <div className={`${styles.board} ${hoverPhotoMode === "pane" ? styles["has-photo-pane"] : ""}`}>
+      <>
+      {isPhone && (
+        <div className={styles["phone-pager"]}>
+          <button
+            type="button"
+            className={styles["phone-pager-arrow"]}
+            onClick={() => scrollToPage(phonePage - 1)}
+            disabled={phonePage === 0}
+            aria-label="Previous stage"
+          >
+            ‹
+          </button>
+          <div className={styles["phone-pager-center"]}>
+            <div className={styles["phone-pager-stage"]}>
+              {STAGES[phonePage] === "Lead" && leadPanelView === "loose" ? "Loose ends" : STAGES[phonePage]}
+              <span className={styles["phone-pager-count"]}>{phoneStageCounts[phonePage]}</span>
+            </div>
+            <div className={styles["phone-pager-dots"]} role="tablist" aria-label="Pipeline stages">
+              {STAGES.map((stage, i) => (
+                <button
+                  key={stage}
+                  type="button"
+                  role="tab"
+                  aria-selected={i === phonePage}
+                  aria-label={stage}
+                  className={`${styles["phone-pager-dot"]} ${i === phonePage ? styles["is-active"] : ""}`}
+                  style={i === phonePage ? { ["--dot-color" as string]: STAGE_COLORS[stage] } : undefined}
+                  onClick={() => scrollToPage(i)}
+                />
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            className={styles["phone-pager-arrow"]}
+            onClick={() => scrollToPage(phonePage + 1)}
+            disabled={phonePage === STAGES.length - 1}
+            aria-label="Next stage"
+          >
+            ›
+          </button>
+        </div>
+      )}
+      <div className={styles["board-wrap"]} ref={boardWrapRef} onScroll={handleBoardScroll}>
+        <div className={`${styles.board} ${hoverPhotoMode === "pane" && !isPhone ? styles["has-photo-pane"] : ""}`}>
           {STAGES.map((stage) => {
             const isLeadPanel = stage === "Lead";
             const looseView = isLeadPanel && leadPanelView === "loose";
@@ -1219,7 +1302,7 @@ export default function SalesBoardClient({
               : activeDeals.filter((d) => d.stage === stage);
             const stageTotal = stageDeals.reduce((sum, d) => sum + (d.value || 0), 0);
             const color = STAGE_COLORS[stage];
-            const collapsed = !!columnCollapsedState[stage];
+            const collapsed = !isPhone && !!columnCollapsedState[stage];
             const sortMode = columnSortState[stage] || "";
             const stageDate = STAGE_DATE[stage] ?? null;
 
@@ -1366,7 +1449,7 @@ export default function SalesBoardClient({
             );
           })}
 
-          {hoverPhotoMode === "pane" && (
+          {hoverPhotoMode === "pane" && !isPhone && (
             <PropertyPhotoPane
               deal={panePreviewDealId != null ? deals.find((d) => d.id === panePreviewDealId) ?? null : null}
               coverUrls={propertyCoverUrls}
@@ -1374,6 +1457,7 @@ export default function SalesBoardClient({
           )}
         </div>
       </div>
+      </>
       )}
 
       <div className={`${styles.toast} ${toast ? styles["is-visible"] : ""}`} role="status" aria-live="polite">
