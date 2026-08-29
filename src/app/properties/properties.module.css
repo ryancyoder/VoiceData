@@ -351,16 +351,42 @@
 .form { display: flex; flex-direction: column; gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 0.76rem; font-weight: 600; color: var(--text-muted); }
-.field input {
+.field input,
+.field select {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 0.85rem;
+  color: var(--text);
 }
-.field input:focus { border-color: var(--accent); outline: none; }
+.field input:focus,
+.field select:focus { border-color: var(--accent); outline: none; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .form-error { font-size: 0.78rem; color: var(--danger); }
+
+/* Deals column: count pill + a quick "new deal" action. */
+.deals-cell { display: inline-flex; align-items: center; gap: 8px; }
+.new-deal-btn {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.new-deal-btn:hover { border-color: var(--accent); background: var(--surface-2); }
+
+/* The property a new deal is being created for, shown atop the deal form. */
+.deal-form-property {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
 
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .btn-cancel {
