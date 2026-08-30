@@ -27,6 +27,15 @@ you go.
   same jobsite address are linked to one `properties` row (repeat
   customers, multiple jobs at the same property over time), and a deal's
   detail view lists the other deals attached to its property.
+  Each column sorts by value, name, its own stage date, last follow-up — or by
+  **☰, the hand-arranged order**. That last one is
+  `"Sales Board".board_order`, a position within the stage written by
+  MasterDash's job board, where the tiles are dragged into whatever order
+  somebody wants them. One arrangement, read by both apps, rather than each
+  keeping its own idea of it. A deal nobody has arranged has no opinion and
+  keeps the place the column already gave it, after the arranged ones — where a
+  null would otherwise sort to the front, putting every new deal at the head of
+  somebody's arrangement.
 - **Photo Gallery** (`/photos`): album-style browsing of every photo uploaded
   to a deal — one cover per deal, click through to that deal's full photo
   grid, with a lightbox for viewing/deleting individual photos.

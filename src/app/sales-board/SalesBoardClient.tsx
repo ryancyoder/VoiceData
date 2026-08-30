@@ -121,8 +121,31 @@ function compareCorrespondence(a: UiDeal, b: UiDeal, direction: 1 | -1) {
   return compareStageDate(a, b, "proposal_date", 1);
 }
 
+/**
+ * The order somebody arranged by hand, in MasterDash's job board.
+ *
+ * `board_order` is a position within the stage, written there and read here so
+ * the two apps show ONE arrangement. A deal nobody has arranged has no opinion
+ * and keeps the place the column already gave it — after the arranged ones,
+ * rather than at the front where a null would sort if this were left to the
+ * numbers.
+ *
+ * Ties and unarranged deals fall back to the incoming order, which is stable
+ * in every browser this runs on, so the column does not reshuffle itself
+ * between renders.
+ */
+function compareBoardOrder(a: UiDeal, b: UiDeal) {
+  const ao = Number.isFinite(a.board_order) ? (a.board_order as number) : null;
+  const bo = Number.isFinite(b.board_order) ? (b.board_order as number) : null;
+  if (ao !== null && bo !== null) return ao - bo;
+  if (ao !== null) return -1;
+  if (bo !== null) return 1;
+  return 0;
+}
+
 function sortDeals(list: UiDeal[], mode: string, dateField: StageDateField | null) {
   const sorted = [...list];
+  if (mode === "manual") return sorted.sort(compareBoardOrder);
   if (mode === "value_desc") sorted.sort((a, b) => (b.value || 0) - (a.value || 0));
   else if (mode === "value_asc") sorted.sort((a, b) => (a.value || 0) - (b.value || 0));
   else if (mode === "alpha_asc") sorted.sort((a, b) => a.deal_name.localeCompare(b.deal_name));
@@ -150,6 +173,11 @@ function nextDateSort(current: string) {
   if (current === "date_desc") return "date_asc";
   if (current === "date_asc") return "";
   return "date_desc";
+}
+
+/** One arrangement, so it is on or off rather than a direction. */
+function nextManualSort(current: string) {
+  return current === "manual" ? "" : "manual";
 }
 
 function nextCorrSort(current: string) {
@@ -1323,6 +1351,17 @@ export default function SalesBoardClient({
                         {stageDate.short + (sortMode === "date_desc" ? "▾" : sortMode === "date_asc" ? "▴" : "")}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className={`${styles["column-sort-btn"]} ${sortMode === "manual" ? styles["is-active"] : ""}`}
+                      aria-label={`Sort ${stage} by the arranged order`}
+                      title="Sort by the order the job tiles were arranged in"
+                      onClick={() =>
+                        setColumnSortState((s) => ({ ...s, [stage]: nextManualSort(sortMode) }))
+                      }
+                    >
+                      {"\u2630"}
+                    </button>
                     {stage === "Sent" && (
                       <button
                         type="button"

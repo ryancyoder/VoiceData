@@ -209,6 +209,16 @@ export interface Deal {
   appointment_date: string | null;
   property_id: number | null;
   value: number | null;
+  /**
+   * A hand-arranged position within the deal's stage, low first.
+   *
+   * Written by MasterDash's job board — where the tiles are dragged into the
+   * order somebody wants them — and read here as a sort option, so the two
+   * apps show one arrangement rather than each keeping its own idea of it.
+   * Null means nobody has arranged this deal; those sort after the ones who
+   * have, in whatever order the column was already in.
+   */
+  board_order: number | null;
   stage: Stage;
   status: "Open" | "Closed";
   // A "loose end to tie up" marker, independent of stage. A flagged deal always
