@@ -361,6 +361,10 @@ export default function SalesBoardClient({
       : activeDeals.filter((d) => d.stage === stage).length
   );
 
+  // The table view is desktop-only — it doesn't fit a phone. If a phone lands
+  // on it (e.g. it was selected on a wider screen), fall back to tiles.
+  const effectiveView = isPhone && viewMode === "table" ? "tile" : viewMode;
+
   async function refreshBoard() {
     setRefreshing(true);
     try {
@@ -973,20 +977,22 @@ export default function SalesBoardClient({
             </button>
             <button
               type="button"
-              className={`${styles["view-toggle-btn"]} ${viewMode === "tile" ? styles["is-active"] : ""}`}
+              className={`${styles["view-toggle-btn"]} ${effectiveView === "tile" ? styles["is-active"] : ""}`}
               onClick={() => setViewMode("tile")}
               title="Photo tile view of all deals"
             >
               Tiles
             </button>
-            <button
-              type="button"
-              className={`${styles["view-toggle-btn"]} ${viewMode === "table" ? styles["is-active"] : ""}`}
-              onClick={() => setViewMode("table")}
-              title="Table view of all deals"
-            >
-              Table
-            </button>
+            {!isPhone && (
+              <button
+                type="button"
+                className={`${styles["view-toggle-btn"]} ${viewMode === "table" ? styles["is-active"] : ""}`}
+                onClick={() => setViewMode("table")}
+                title="Table view of all deals"
+              >
+                Table
+              </button>
+            )}
           </div>
           <button
             type="button"
@@ -1237,12 +1243,13 @@ export default function SalesBoardClient({
         </form>
       </div>
 
-      {viewMode === "table" ? (
+      {effectiveView === "table" ? (
         <DealTable deals={activeDeals} onOpen={(d) => setActiveDealId(d.id)} />
-      ) : viewMode === "tile" ? (
+      ) : effectiveView === "tile" ? (
         <DealTiles
           deals={activeDeals}
           coverUrls={propertyCoverUrls}
+          isPhone={isPhone}
           onOpen={(d) => setActiveDealId(d.id)}
           onOpenAlbum={(d) =>
             router.push(d.property_id != null ? `/photos?property=${d.property_id}` : `/photos?deal=${d.id}`)

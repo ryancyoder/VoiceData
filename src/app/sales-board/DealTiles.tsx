@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./sales-board.module.css";
 import type { Stage } from "@/lib/salesBoard";
 import { STAGES } from "@/lib/salesBoard";
@@ -45,6 +45,7 @@ export default function DealTiles({
   coverUrls,
   onOpen,
   onOpenAlbum,
+  isPhone = false,
 }: {
   deals: UiDeal[];
   // property id -> cover photo URL. Missing entries just mean no photo yet.
@@ -52,11 +53,19 @@ export default function DealTiles({
   onOpen: (deal: UiDeal) => void;
   // Long-press action — open this deal's property photo album.
   onOpenAlbum: (deal: UiDeal) => void;
+  // On a phone the flat grid becomes one stage per screen: a single column of
+  // full-width tiles that scroll vertically, with a left/right swipe paging to
+  // the next stage (mirrors the board's phone view).
+  isPhone?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("stage");
   // Empty set = every stage shown. Otherwise only the selected stages.
   const [stageFilter, setStageFilter] = useState<Set<Stage>>(new Set());
+
+  // Phone paging: which stage the horizontal swipe is snapped to.
+  const tileScrollRef = useRef<HTMLDivElement | null>(null);
+  const [tilePage, setTilePage] = useState(0);
 
   // One press at a time, so a single set of refs covers the whole grid.
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,6 +137,77 @@ export default function DealTiles({
     return s !== 0 ? s : (b.value ?? 0) - (a.value ?? 0);
   });
 
+  // Phone pages: one per stage (only the selected ones when a stage filter is
+  // active), each holding that stage's deals from the already sorted/filtered
+  // list so search and A–Z/Value sort still apply within a page.
+  const pageStages = stageFilter.size > 0 ? STAGES.filter((s) => stageFilter.has(s)) : STAGES;
+  const pageKey = pageStages.join("|");
+  useEffect(() => {
+    const el = tileScrollRef.current;
+    if (el) el.scrollLeft = 0;
+    setTilePage(0);
+  }, [pageKey]);
+
+  function handleTileScroll() {
+    const el = tileScrollRef.current;
+    if (!el || !isPhone) return;
+    const page = Math.round(el.scrollLeft / el.clientWidth);
+    setTilePage((p) => (p === page ? p : page));
+  }
+
+  function scrollToTilePage(i: number) {
+    const el = tileScrollRef.current;
+    if (!el) return;
+    const clamped = Math.max(0, Math.min(pageStages.length - 1, i));
+    el.scrollTo({ left: clamped * el.clientWidth, behavior: "smooth" });
+  }
+
+  function renderTile(d: UiDeal) {
+    const cover = d.property_id != null ? coverUrls[d.property_id] ?? null : null;
+    const color = STAGE_COLOR_VAR[d.stage];
+    const contact = contactName(d);
+    return (
+      <button
+        key={d.id}
+        type="button"
+        className={styles["tile"]}
+        style={{ ["--col-color" as string]: color }}
+        onClick={() => handleClick(d)}
+        onPointerDown={(e) => startPress(d, e)}
+        onPointerMove={movePress}
+        onPointerUp={clearPress}
+        onPointerLeave={clearPress}
+        onPointerCancel={clearPress}
+        onContextMenu={(e) => e.preventDefault()}
+        title={`${d.deal_name} — tap to open, hold for photos`}
+      >
+        <div className={styles["tile-photo"]}>
+          {cover ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={cover} alt="" loading="lazy" draggable={false} />
+          ) : (
+            <span className={styles["tile-photo-empty"]} aria-hidden="true">
+              {monogram(d.deal_name)}
+            </span>
+          )}
+          <span className={styles["tile-stage"]}>{d.stage}</span>
+          {d.flagged && (
+            <span className={styles["tile-flag"]} title="Flagged — loose end to tie up">
+              🚩
+            </span>
+          )}
+          {!!d.value && <span className={styles["tile-value"]}>{currency.format(d.value)}</span>}
+        </div>
+        <div className={styles["tile-body"]}>
+          <div className={styles["tile-name"]}>{d.deal_name}</div>
+          {contact && <div className={styles["tile-contact"]}>{contact}</div>}
+          {d.property?.address && <div className={styles["tile-address"]}>{d.property.address}</div>}
+          {d.next_action && <div className={styles["tile-next"]}>{"› " + d.next_action}</div>}
+        </div>
+      </button>
+    );
+  }
+
   return (
     <div className={styles["table-wrap"]}>
       <div className={styles["dt-toolbar"]}>
@@ -177,59 +257,74 @@ export default function DealTiles({
         })}
       </div>
 
-      <div className={styles["table-scroll"]}>
-        {sorted.length === 0 ? (
-          <div className={styles["dt-empty"]}>No deals</div>
-        ) : (
-          <div className={styles["tile-grid"]}>
-            {sorted.map((d) => {
-              const cover = d.property_id != null ? coverUrls[d.property_id] ?? null : null;
-              const color = STAGE_COLOR_VAR[d.stage];
-              const contact = contactName(d);
+      {isPhone ? (
+        <>
+          <div className={styles["phone-pager"]}>
+            <button
+              type="button"
+              className={styles["phone-pager-arrow"]}
+              onClick={() => scrollToTilePage(tilePage - 1)}
+              disabled={tilePage === 0}
+              aria-label="Previous stage"
+            >
+              ‹
+            </button>
+            <div className={styles["phone-pager-center"]}>
+              <div className={styles["phone-pager-stage"]}>
+                {pageStages[tilePage]}
+                <span className={styles["phone-pager-count"]}>
+                  {sorted.filter((d) => d.stage === pageStages[tilePage]).length}
+                </span>
+              </div>
+              <div className={styles["phone-pager-dots"]} role="tablist" aria-label="Pipeline stages">
+                {pageStages.map((stage, i) => (
+                  <button
+                    key={stage}
+                    type="button"
+                    role="tab"
+                    aria-selected={i === tilePage}
+                    aria-label={stage}
+                    className={`${styles["phone-pager-dot"]} ${i === tilePage ? styles["is-active"] : ""}`}
+                    style={i === tilePage ? { ["--dot-color" as string]: STAGE_COLOR_VAR[stage] } : undefined}
+                    onClick={() => scrollToTilePage(i)}
+                  />
+                ))}
+              </div>
+            </div>
+            <button
+              type="button"
+              className={styles["phone-pager-arrow"]}
+              onClick={() => scrollToTilePage(tilePage + 1)}
+              disabled={tilePage === pageStages.length - 1}
+              aria-label="Next stage"
+            >
+              ›
+            </button>
+          </div>
+          <div className={styles["tile-pager"]} ref={tileScrollRef} onScroll={handleTileScroll}>
+            {pageStages.map((stage) => {
+              const stageDeals = sorted.filter((d) => d.stage === stage);
               return (
-                <button
-                  key={d.id}
-                  type="button"
-                  className={styles["tile"]}
-                  style={{ ["--col-color" as string]: color }}
-                  onClick={() => handleClick(d)}
-                  onPointerDown={(e) => startPress(d, e)}
-                  onPointerMove={movePress}
-                  onPointerUp={clearPress}
-                  onPointerLeave={clearPress}
-                  onPointerCancel={clearPress}
-                  onContextMenu={(e) => e.preventDefault()}
-                  title={`${d.deal_name} — tap to open, hold for photos`}
-                >
-                  <div className={styles["tile-photo"]}>
-                    {cover ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={cover} alt="" loading="lazy" draggable={false} />
-                    ) : (
-                      <span className={styles["tile-photo-empty"]} aria-hidden="true">
-                        {monogram(d.deal_name)}
-                      </span>
-                    )}
-                    <span className={styles["tile-stage"]}>{d.stage}</span>
-                    {d.flagged && (
-                      <span className={styles["tile-flag"]} title="Flagged — loose end to tie up">
-                        🚩
-                      </span>
-                    )}
-                    {!!d.value && <span className={styles["tile-value"]}>{currency.format(d.value)}</span>}
-                  </div>
-                  <div className={styles["tile-body"]}>
-                    <div className={styles["tile-name"]}>{d.deal_name}</div>
-                    {contact && <div className={styles["tile-contact"]}>{contact}</div>}
-                    {d.property?.address && <div className={styles["tile-address"]}>{d.property.address}</div>}
-                    {d.next_action && <div className={styles["tile-next"]}>{"› " + d.next_action}</div>}
-                  </div>
-                </button>
+                <div key={stage} className={styles["tile-page"]}>
+                  {stageDeals.length === 0 ? (
+                    <div className={styles["dt-empty"]}>No deals</div>
+                  ) : (
+                    <div className={styles["tile-page-list"]}>{stageDeals.map(renderTile)}</div>
+                  )}
+                </div>
               );
             })}
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <div className={styles["table-scroll"]}>
+          {sorted.length === 0 ? (
+            <div className={styles["dt-empty"]}>No deals</div>
+          ) : (
+            <div className={styles["tile-grid"]}>{sorted.map(renderTile)}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

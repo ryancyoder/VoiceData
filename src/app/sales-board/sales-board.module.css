@@ -883,6 +883,47 @@
   white-space: nowrap;
 }
 
+/* ── iPhone paged tile view ──────────────────────────────────────────
+   Same idea as the paged board: on phones the flat tile grid becomes one
+   stage per screen — a single column of full-width tiles that scroll
+   vertically, with a left/right swipe paging between stages. */
+@media (max-width: 768px) {
+  .table-wrap { padding-left: 0; padding-right: 0; padding-bottom: 0; }
+  .dt-toolbar { padding: 12px clamp(10px, 4vw, 16px); }
+  .dt-filterbar { padding: 0 clamp(10px, 4vw, 16px) 10px; }
+
+  .tile-pager {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .tile-pager::-webkit-scrollbar { display: none; }
+
+  .tile-page {
+    width: 100vw;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px clamp(12px, 4vw, 18px) calc(20px + env(safe-area-inset-bottom));
+  }
+  .tile-page-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  /* Full-width tiles with a taller photo, since there's a whole screen to fill. */
+  .tile-page-list .tile-photo { aspect-ratio: 16 / 9; }
+}
+
 .deal-table {
   width: 100%;
   border-collapse: collapse;
