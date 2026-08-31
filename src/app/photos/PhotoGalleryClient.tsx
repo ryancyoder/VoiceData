@@ -320,7 +320,10 @@ export default function PhotoGalleryClient({
     });
   }, [propertyGroups, selectedStages, albumSort]);
 
-  const [activePropertyKey, setActivePropertyKey] = useState<string | null>(() => {
+  // The album a ?photo=/?property=/?deal= param points at, or null. Shared by
+  // the initial state and the reactive block below so navigating here and
+  // navigating between albums resolve the target the same way.
+  function resolveTargetKeyFromParams(): string | null {
     // ?photo=<id> opens the album that contains a specific photo and (via the
     // effect below) pops its lightbox — used to jump here from the estimator.
     const photoParam = searchParams.get("photo");
@@ -344,18 +347,44 @@ export default function PhotoGalleryClient({
     if (!Number.isFinite(dealId)) return null;
     const match = initialEvents.find((e) => e.dealId === dealId && e.photos.length > 0);
     return match ? propertyKey(match.propertyId) : null;
-  });
+  }
 
-  // Scrolling to the linked-from deal's section is a side effect, not part
-  // of render — done once on mount, after the initial property (if any) is
-  // already open.
-  useEffect(() => {
+  // Record the deep-link's scroll/lightbox intent for the effects that act on
+  // it once the target album is open.
+  function armDeepLinkTargets() {
     const dealParam = searchParams.get("deal");
     const dealId = dealParam ? Number(dealParam) : NaN;
     if (Number.isFinite(dealId)) scrollTargetDealId.current = dealId;
     const photoParam = searchParams.get("photo");
     const photoId = photoParam ? Number(photoParam) : NaN;
     if (Number.isFinite(photoId)) openPhotoTargetId.current = photoId;
+  }
+
+  const [activePropertyKey, setActivePropertyKey] = useState<string | null>(() => resolveTargetKeyFromParams());
+
+  // React to the URL's ?property=/?photo=/?deal= changing while this page stays
+  // mounted — the command palette (and other in-app links) navigate here with a
+  // new param even when Photos is already the active view, which a mount-only
+  // read would miss, leaving the album stuck on whatever was open. Handled as a
+  // render-time adjustment (tracked via lastSearchParams, compared by reference
+  // since useSearchParams() returns a new object per navigation), initialized to
+  // the current params so it doesn't re-fire for the mount the initializer above
+  // already handled.
+  const [lastSearchParams, setLastSearchParams] = useState<typeof searchParams | null>(searchParams);
+  if (searchParams !== lastSearchParams) {
+    setLastSearchParams(searchParams);
+    const key = resolveTargetKeyFromParams();
+    if (key != null) {
+      setActivePropertyKey(key);
+      armDeepLinkTargets();
+    }
+  }
+
+  // Scrolling to the linked-from deal's section is a side effect, not part
+  // of render — done once on mount, after the initial property (if any) is
+  // already open.
+  useEffect(() => {
+    armDeepLinkTargets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
