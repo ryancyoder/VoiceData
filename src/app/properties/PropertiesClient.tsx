@@ -66,6 +66,11 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
   const [dealForm, setDealForm] = useState(EMPTY_DEAL_FORM);
   const [dealSubmitting, setDealSubmitting] = useState(false);
   const [dealError, setDealError] = useState("");
+  // "Edit" a property row: the target property + a draft of its address/contact.
+  const [editProperty, setEditProperty] = useState<PropertyRow | null>(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState("");
 
   // Centers the manual location picker on wherever this business's other
   // properties already are, rather than defaulting to the middle of the
@@ -190,6 +195,75 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
       setError(err instanceof Error ? err.message : "Failed to add property");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function openEditForm(property: PropertyRow) {
+    setEditProperty(property);
+    setEditForm({
+      address: property.address,
+      first_name: property.contact?.first_name ?? "",
+      last_name: property.contact?.last_name ?? "",
+      email: property.contact?.email ?? "",
+      phone: property.contact?.phone ?? "",
+    });
+    setEditError("");
+  }
+  function closeEditForm() {
+    setEditProperty(null);
+    setEditForm(EMPTY_FORM);
+    setEditError("");
+  }
+
+  async function handleUpdateProperty(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editProperty) return;
+    const address = editForm.address.trim();
+    if (!address) return;
+    setEditSubmitting(true);
+    setEditError("");
+    try {
+      const res = await fetchWithTimeout(
+        `/api/properties/${editProperty.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            address,
+            first_name: editForm.first_name.trim() || null,
+            last_name: editForm.last_name.trim() || null,
+            email: editForm.email.trim() || null,
+            phone: editForm.phone.trim() || null,
+          }),
+        },
+        SUBMIT_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update property");
+      const updated = data.property as PropertyRow;
+      // Keep the row's derived counts (not returned by PATCH); swap in the
+      // edited address/contact/coords, then re-sort in case the last name moved.
+      setProperties((ps) =>
+        ps
+          .map((p) =>
+            p.id === editProperty.id
+              ? {
+                  ...p,
+                  address: updated.address,
+                  latitude: updated.latitude,
+                  longitude: updated.longitude,
+                  geocoded_at: updated.geocoded_at,
+                  contact: updated.contact ?? null,
+                }
+              : p
+          )
+          .sort(comparePropertiesByLastName)
+      );
+      closeEditForm();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to update property");
+    } finally {
+      setEditSubmitting(false);
     }
   }
 
@@ -337,7 +411,17 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
                     className={p.id === highlightedPropertyId ? styles["is-highlighted"] : ""}
                   >
                     <td className={styles["contact-name"]}>{p.contact?.last_name || <span className={styles["no-contact"]}>—</span>}</td>
-                    <td className={styles["address-cell"]}>{p.address}</td>
+                    <td className={styles["address-cell"]}>
+                      <span className={styles["address-text"]}>{p.address}</span>
+                      <button
+                        type="button"
+                        className={styles["edit-prop-btn"]}
+                        onClick={() => openEditForm(p)}
+                        title="Edit address & contact"
+                      >
+                        ✎ Edit
+                      </button>
+                    </td>
                     <td>
                       {p.contact ? (
                         <>
@@ -441,6 +525,66 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
                 </button>
                 <button type="submit" className={styles["btn-submit"]} disabled={submitting || !form.address.trim()}>
                   {submitting ? "Adding…" : "Add Property"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editProperty && (
+        <div
+          className={styles["modal-overlay"]}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !editSubmitting) closeEditForm();
+          }}
+        >
+          <div className={styles["modal-panel"]}>
+            <div className={styles["modal-head"]}>
+              <h2 className={styles["modal-title"]}>Edit property</h2>
+              <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={closeEditForm} disabled={editSubmitting}>
+                ×
+              </button>
+            </div>
+            <form className={styles.form} onSubmit={handleUpdateProperty}>
+              <div className={styles.field}>
+                <label htmlFor="edit-address">Address</label>
+                <input
+                  id="edit-address"
+                  required
+                  autoComplete="off"
+                  value={editForm.address}
+                  onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
+                />
+                <p className={styles["field-hint"]}>Changing the address re-checks the map location.</p>
+              </div>
+              <div className={styles["field-row"]}>
+                <div className={styles.field}>
+                  <label htmlFor="edit-first">Contact first name</label>
+                  <input id="edit-first" autoComplete="off" value={editForm.first_name} onChange={(e) => setEditForm((f) => ({ ...f, first_name: e.target.value }))} />
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="edit-last">Contact last name</label>
+                  <input id="edit-last" autoComplete="off" value={editForm.last_name} onChange={(e) => setEditForm((f) => ({ ...f, last_name: e.target.value }))} />
+                </div>
+              </div>
+              <div className={styles["field-row"]}>
+                <div className={styles.field}>
+                  <label htmlFor="edit-email">Contact email</label>
+                  <input id="edit-email" type="text" inputMode="email" autoComplete="off" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="edit-phone">Contact phone</label>
+                  <input id="edit-phone" type="tel" autoComplete="off" value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} />
+                </div>
+              </div>
+              {editError && <div className={styles["form-error"]}>{editError}</div>}
+              <div className={styles["form-actions"]}>
+                <button type="button" className={styles["btn-cancel"]} onClick={closeEditForm} disabled={editSubmitting}>
+                  Cancel
+                </button>
+                <button type="submit" className={styles["btn-submit"]} disabled={editSubmitting || !editForm.address.trim()}>
+                  {editSubmitting ? "Saving…" : "Save changes"}
                 </button>
               </div>
             </form>

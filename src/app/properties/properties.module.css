@@ -194,6 +194,21 @@
 .is-highlighted td { background: var(--accent-soft); transition: background 0.3s ease; }
 
 .address-cell { font-weight: 600; }
+.address-text { margin-right: 8px; }
+.edit-prop-btn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.edit-prop-btn:hover { border-color: var(--accent); background: var(--surface-2); }
+.field-hint { margin: 4px 0 0; font-size: 0.74rem; color: var(--text-muted); }
 .contact-name { font-weight: 600; }
 .contact-detail { font-size: 0.76rem; color: var(--text-muted); }
 .no-contact { color: var(--text-faint); font-style: italic; }
