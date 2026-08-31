@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import styles from "./sales-board.module.css";
-import { flattenDealPhotos, type Deal } from "@/lib/salesBoard";
+import { flattenDealPhotos, STAGES, type Deal, type Stage } from "@/lib/salesBoard";
 
 export type UiDeal = Deal & { _pending?: boolean; _error?: string };
 
@@ -68,6 +68,13 @@ const LONG_PRESS_MS = 550;
 // board's wide-screen pane to draw.
 export type HoverPhotoMode = "off" | "floating" | "pane";
 
+// iPhone email-style swipe actions (phone view only). A horizontal drag on the
+// card slides it to reveal action buttons: swipe left → trailing actions
+// (Album / Flag / Lost), swipe right → the leading action (Advance a stage).
+const SWIPE_DECIDE_PX = 8; // horizontal travel before a gesture becomes a swipe
+const SWIPE_ACTION_W = 74; // px per trailing action button
+const SWIPE_LEAD_W = 104; // px for the (wider) leading Advance button
+
 // Key-property-photo hover preview (Settings → Sales Board view). Held back
 // briefly so sweeping the pointer across a column doesn't strobe previews —
 // in pane mode this also keeps the pane from thrashing on a passing cursor.
@@ -103,6 +110,10 @@ export default function DealCard({
   onDragActivate,
   onOpen,
   onAlbums,
+  isPhone = false,
+  onToggleFlag,
+  onToggleLost,
+  onMoveStage,
 }: {
   deal: UiDeal;
   color: string;
@@ -122,6 +133,12 @@ export default function DealCard({
   onDragActivate: (card: HTMLElement, pointerId: number, clientX: number, clientY: number, deal: UiDeal) => void;
   onOpen: (deal: UiDeal) => void;
   onAlbums: (deal: UiDeal) => void;
+  // Phone view: enables the email-style swipe actions below. The handlers are
+  // only invoked in that mode, so they're optional for the desktop board.
+  isPhone?: boolean;
+  onToggleFlag?: (deal: UiDeal) => void;
+  onToggleLost?: (deal: UiDeal) => void;
+  onMoveStage?: (deal: UiDeal, stage: Stage) => void;
 }) {
   const [pressing, setPressing] = useState(false);
   const [linkArmed, setLinkArmed] = useState(false);
@@ -136,6 +153,100 @@ export default function DealCard({
   // coordinates (measured when the delay elapses, not on enter).
   const [hoverPhotoPos, setHoverPhotoPos] = useState<{ top: number; left: number } | null>(null);
   const hoverPhotoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── iPhone swipe-to-reveal state ──────────────────────────────────
+  // swipeX: current horizontal offset of the card (px). Negative = slid left
+  // (trailing actions showing), positive = slid right (leading action showing).
+  const [swipeX, setSwipeX] = useState(0);
+  const [swipeAnimating, setSwipeAnimating] = useState(false);
+  const swipeRef = useRef<{ x: number; y: number; base: number } | null>(null);
+  const swipeModeRef = useRef<"idle" | "swiping" | "scroll">("idle");
+
+  const stageIdx = STAGES.indexOf(deal.stage);
+  const nextStage: Stage | null =
+    stageIdx >= 0 && stageIdx < STAGES.length - 1 ? STAGES[stageIdx + 1] : null;
+  // Trailing actions: Album, Flag, and (unless already lost) Lost.
+  const trailWidth = SWIPE_ACTION_W * 3;
+  const leadWidth = nextStage ? SWIPE_LEAD_W : 0;
+
+  function closeSwipe() {
+    setSwipeAnimating(true);
+    setSwipeX(0);
+  }
+
+  function runSwipeAction(fn: () => void) {
+    closeSwipe();
+    fn();
+  }
+
+  function handleSwipeDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (deal._pending) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    swipeRef.current = { x: e.clientX, y: e.clientY, base: swipeX };
+    swipeModeRef.current = "idle";
+    setSwipeAnimating(false);
+  }
+
+  function handleSwipeMove(e: React.PointerEvent<HTMLDivElement>) {
+    const s = swipeRef.current;
+    if (!s) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (swipeModeRef.current === "idle") {
+      if (Math.abs(dx) > SWIPE_DECIDE_PX && Math.abs(dx) > Math.abs(dy)) {
+        swipeModeRef.current = "swiping";
+        try {
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        } catch {
+          /* pointer already gone */
+        }
+      } else if (Math.abs(dy) > SWIPE_DECIDE_PX && Math.abs(dy) > Math.abs(dx)) {
+        // Vertical intent — let the column scroll, ignore this gesture.
+        swipeModeRef.current = "scroll";
+      }
+    }
+    if (swipeModeRef.current === "swiping") {
+      e.preventDefault();
+      const next = Math.max(-trailWidth, Math.min(leadWidth, s.base + dx));
+      setSwipeX(next);
+    }
+  }
+
+  function handleSwipeUp(e: React.PointerEvent<HTMLDivElement>) {
+    const s = swipeRef.current;
+    const mode = swipeModeRef.current;
+    swipeRef.current = null;
+    swipeModeRef.current = "idle";
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    if (mode === "swiping") {
+      // Snap to whichever rest position the release is closest to.
+      setSwipeAnimating(true);
+      setSwipeX((x) => (x < -trailWidth / 2 ? -trailWidth : x > leadWidth / 2 ? leadWidth : 0));
+      return;
+    }
+    if (mode === "scroll" || !s) return;
+    // A tap: close an open card, otherwise open the deal.
+    if (swipeX !== 0) {
+      closeSwipe();
+      return;
+    }
+    onOpen(deal);
+  }
+
+  function handleSwipeCancel(e: React.PointerEvent<HTMLDivElement>) {
+    swipeRef.current = null;
+    swipeModeRef.current = "idle";
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    closeSwipe();
+  }
 
   function clearHoverPhoto() {
     if (hoverPhotoTimerRef.current) {
@@ -337,40 +448,8 @@ export default function DealCard({
     pointerRef.current = null;
   }
 
-  return (
+  const cardBody = (
     <>
-    <div
-      className={[
-        styles.card,
-        deal._pending ? styles["is-pending"] : "",
-        deal._error ? styles["is-error"] : "",
-        pressing ? styles["is-pressing"] : "",
-        linkArmed ? styles["is-link-armed"] : "",
-        deal.opportunity_link ? styles["is-linked"] : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      style={{ ["--col-color" as string]: color }}
-      data-card
-      data-id={deal.id}
-      tabIndex={0}
-      role="button"
-      aria-label={`${deal.deal_name} — tap to open, double-tap for photos, hold to move${
-        deal.opportunity_link ? ", long-press to open opportunity link" : ""
-      }`}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen(deal);
-        }
-      }}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-    >
       <div className={styles["card-top"]}>
         <div className={styles["card-name"]}>
           {deal.flagged && (
@@ -424,6 +503,141 @@ export default function DealCard({
       )}
 
       {deal._error && <div className={styles["card-error"]}>{deal._error}</div>}
+    </>
+  );
+
+  // ── Phone: email-style swipe card ─────────────────────────────────
+  // The action buttons sit behind the card; swiping the card aside reveals
+  // them. Tapping the card opens the deal (or closes it if it's open).
+  if (isPhone) {
+    return (
+      <div className={styles["swipe-card"]} data-swipe-open={swipeX !== 0 ? "1" : undefined}>
+        {nextStage && (
+          <div className={styles["swipe-lead"]} aria-hidden={swipeX <= 0}>
+            <button
+              type="button"
+              className={`${styles["swipe-action"]} ${styles["swipe-advance"]}`}
+              style={{ width: SWIPE_LEAD_W }}
+              onClick={() => onMoveStage && runSwipeAction(() => onMoveStage(deal, nextStage))}
+              title={`Move to ${nextStage}`}
+            >
+              <span className={styles["swipe-action-icon"]} aria-hidden="true">
+                →
+              </span>
+              <span className={styles["swipe-action-label"]}>{nextStage}</span>
+            </button>
+          </div>
+        )}
+        <div className={styles["swipe-trail"]} aria-hidden={swipeX >= 0}>
+          <button
+            type="button"
+            className={`${styles["swipe-action"]} ${styles["swipe-album"]}`}
+            style={{ width: SWIPE_ACTION_W }}
+            onClick={() => runSwipeAction(() => onAlbums(deal))}
+            title="Open photo album"
+          >
+            <span className={styles["swipe-action-icon"]} aria-hidden="true">
+              🖼️
+            </span>
+            <span className={styles["swipe-action-label"]}>Album</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles["swipe-action"]} ${styles["swipe-flag"]} ${deal.flagged ? styles["is-on"] : ""}`}
+            style={{ width: SWIPE_ACTION_W }}
+            onClick={() => onToggleFlag && runSwipeAction(() => onToggleFlag(deal))}
+            title={deal.flagged ? "Remove flag" : "Flag as loose end"}
+          >
+            <span className={styles["swipe-action-icon"]} aria-hidden="true">
+              🚩
+            </span>
+            <span className={styles["swipe-action-label"]}>{deal.flagged ? "Unflag" : "Flag"}</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles["swipe-action"]} ${styles["swipe-lost"]}`}
+            style={{ width: SWIPE_ACTION_W }}
+            onClick={() => onToggleLost && runSwipeAction(() => onToggleLost(deal))}
+            title="Mark deal lost"
+          >
+            <span className={styles["swipe-action-icon"]} aria-hidden="true">
+              ✕
+            </span>
+            <span className={styles["swipe-action-label"]}>Lost</span>
+          </button>
+        </div>
+        <div
+          className={[
+            styles.card,
+            deal._pending ? styles["is-pending"] : "",
+            deal._error ? styles["is-error"] : "",
+            swipeX !== 0 ? styles["is-swiped"] : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          style={{
+            ["--col-color" as string]: color,
+            transform: `translateX(${swipeX}px)`,
+            transition: swipeAnimating ? "transform 0.2s ease" : "none",
+          }}
+          data-card
+          data-id={deal.id}
+          tabIndex={0}
+          role="button"
+          aria-label={`${deal.deal_name} — tap to open, swipe for actions`}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpen(deal);
+            }
+          }}
+          onPointerDown={handleSwipeDown}
+          onPointerMove={handleSwipeMove}
+          onPointerUp={handleSwipeUp}
+          onPointerCancel={handleSwipeCancel}
+          onTransitionEnd={() => setSwipeAnimating(false)}
+        >
+          {cardBody}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+    <div
+      className={[
+        styles.card,
+        deal._pending ? styles["is-pending"] : "",
+        deal._error ? styles["is-error"] : "",
+        pressing ? styles["is-pressing"] : "",
+        linkArmed ? styles["is-link-armed"] : "",
+        deal.opportunity_link ? styles["is-linked"] : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={{ ["--col-color" as string]: color }}
+      data-card
+      data-id={deal.id}
+      tabIndex={0}
+      role="button"
+      aria-label={`${deal.deal_name} — tap to open, double-tap for photos, hold to move${
+        deal.opportunity_link ? ", long-press to open opportunity link" : ""
+      }`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(deal);
+        }
+      }}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+    >
+      {cardBody}
     </div>
 
     {/* Rendered as the card's sibling, not its child, so .is-pressing's

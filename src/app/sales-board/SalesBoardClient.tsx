@@ -1448,6 +1448,10 @@ export default function SalesBoardClient({
                         onDragActivate={beginCardDrag}
                         onOpen={(d) => setActiveDealId(d.id)}
                         onAlbums={(d) => router.push(`/photos?deal=${d.id}`)}
+                        isPhone={isPhone}
+                        onToggleFlag={(d) => void handleToggleFlag(d)}
+                        onToggleLost={(d) => void handleToggleLost(d)}
+                        onMoveStage={(d, s) => moveDeal(d.id, s)}
                       />
                     ))
                   )}

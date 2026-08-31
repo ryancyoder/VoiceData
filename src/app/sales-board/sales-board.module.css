@@ -556,6 +556,43 @@
    cues the user that releasing now opens the link in a new tab. */
 .card.is-link-armed { box-shadow: 0 0 0 2px var(--col-color); }
 
+/* ── iPhone email-style swipe card (phone board view) ────────────────
+   The action buttons sit behind the card in leading/trailing rails; the card
+   (solid background) covers them at rest and slides aside to reveal them. */
+.swipe-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.swipe-lead,
+.swipe-trail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+}
+.swipe-lead { left: 0; }
+.swipe-trail { right: 0; }
+.swipe-action {
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0;
+  color: #fff;
+  cursor: pointer;
+}
+.swipe-action-icon { font-size: 1.2rem; line-height: 1; }
+.swipe-action-label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.02em; }
+.swipe-advance { background: #16a34a; }
+.swipe-album { background: #2563eb; }
+.swipe-flag { background: #d97706; }
+.swipe-flag.is-on { background: #b45309; }
+.swipe-lost { background: #dc2626; }
+.card.is-swiped { box-shadow: 0 3px 14px rgba(0, 0, 0, 0.22); }
+
 /* The property's key photo, previewed while a pointer hovers the card (see
    Settings → Sales Board view). Fixed rather than absolute: the column body
    scrolls, and an absolutely-positioned preview would be clipped by it. The
