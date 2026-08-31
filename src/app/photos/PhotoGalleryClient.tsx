@@ -1504,15 +1504,15 @@ export default function PhotoGalleryClient({
               {activePhoto.media_type === "video" ? (
                 <video
                   key={activePhoto.id}
-                  src={dealPhotoUrl(activePhoto.storage_path)}
-                  poster={activePhoto.poster_path ? dealPhotoUrl(activePhoto.poster_path) : undefined}
+                  src={dealPhotoUrl(activePhoto.storage_path, activePhoto.bucket)}
+                  poster={activePhoto.poster_path ? dealPhotoUrl(activePhoto.poster_path, activePhoto.bucket) : undefined}
                   controls
                   autoPlay
                   className={styles["lightbox-video"]}
                 />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={dealPhotoUrl(activePhoto.storage_path)} alt={activePhoto.caption ?? activeProperty.propertyLabel} />
+                <img src={dealPhotoUrl(activePhoto.storage_path, activePhoto.bucket)} alt={activePhoto.caption ?? activeProperty.propertyLabel} />
               )}
               {activePhoto.photo_type === WALKTHROUGH_VIDEO_TYPE && <span className={styles["walkthrough-badge"]}>WALK-THRU</span>}
               {activeTakeoff.length > 0 && (

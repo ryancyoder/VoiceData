@@ -1,14 +1,14 @@
 import { supabase } from "@/lib/supabaseClient";
-import { DEAL_PHOTOS_BUCKET, PROPERTY_REFERENCE_TYPE } from "@/lib/salesBoard";
-import { safeExtension } from "@/lib/storagePaths";
+import { PROPERTY_REFERENCE_TYPE } from "@/lib/salesBoard";
 import { findNearbyProperties } from "@/lib/properties";
 import { createEventManually, type EventType } from "@/lib/events";
 
 // Upright (the site-survey app) stores its session photos in this bucket,
-// referenced by upright_photos.storage_path. VoiceData's album, by contrast,
-// serves from the deal-photos bucket via deal_photos rows — so bridging a
-// session means copying each pin into deal-photos as a property-reference
-// photo and logging the session as a calendar event.
+// referenced by upright_photos.storage_path. Both this and the deal-photos
+// bucket are public and in the same project, so bridging a session doesn't
+// copy any bytes — each deal_photos row just references the existing
+// upright-media object via its bucket column, and the album resolves the URL
+// from there.
 const UPRIGHT_MEDIA_BUCKET = "upright-media";
 
 // A site session lands on the calendar as this event type. Kept as a single
@@ -88,23 +88,6 @@ async function resolveProperty(
   return null;
 }
 
-// Copy one Upright pin into the deal-photos bucket and return its new path.
-async function copyPhotoToDealBucket(photo: UprightPhotoRow, propertyId: number): Promise<string> {
-  const { data: blob, error: downloadError } = await supabase.storage
-    .from(UPRIGHT_MEDIA_BUCKET)
-    .download(photo.storage_path);
-  if (downloadError || !blob) {
-    throw new Error(downloadError?.message || `Couldn't read Upright photo ${photo.storage_path}`);
-  }
-  const ext = safeExtension(photo.storage_path);
-  const path = `property-${propertyId}/upright-${photo.id}.${ext}`;
-  const { error: uploadError } = await supabase.storage
-    .from(DEAL_PHOTOS_BUCKET)
-    .upload(path, blob, { contentType: blob.type || undefined, upsert: true });
-  if (uploadError) throw new Error(uploadError.message);
-  return path;
-}
-
 /**
  * Bridges a single Upright session into VoiceData: matches it to a property,
  * logs it as a calendar event, and copies every photo pin into that
@@ -154,35 +137,29 @@ export async function importUprightSession(sessionId: string): Promise<ImportOut
     notes: "Imported from an Upright site session.",
   });
 
-  // Copy each pin into the property album under the new event. A single photo
-  // failing shouldn't abort the whole session — collect what lands.
-  let imported = 0;
-  for (const photo of photos) {
-    try {
-      const path = await copyPhotoToDealBucket(photo, propertyId);
-      const { error: insertError } = await supabase.from("deal_photos").insert({
-        property_id: propertyId,
-        deal_id: null,
-        event_id: event.id,
-        photo_type: PROPERTY_REFERENCE_TYPE,
-        // deal_photos.media_type is constrained to 'photo' | 'video'.
-        media_type: "photo",
-        storage_path: path,
-        caption: photo.note?.trim() || null,
-        latitude: photo.lat,
-        longitude: photo.lng,
-        taken_at: photo.taken_at,
-      });
-      if (insertError) {
-        // Roll back the just-uploaded object so a failed row doesn't strand a file.
-        await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove([path]);
-        throw new Error(insertError.message);
-      }
-      imported += 1;
-    } catch (err) {
-      console.error(`Upright import: photo ${photo.id} failed`, err);
-    }
-  }
+  // Reference each pin into the property album under the new event — no byte
+  // copy, the row points at the existing upright-media object via `bucket`. A
+  // single photo failing shouldn't abort the whole session.
+  const rows = photos.map((photo) => ({
+    property_id: propertyId,
+    deal_id: null,
+    event_id: event.id,
+    photo_type: PROPERTY_REFERENCE_TYPE,
+    // deal_photos.media_type is constrained to 'photo' | 'video'.
+    media_type: "photo",
+    bucket: UPRIGHT_MEDIA_BUCKET,
+    storage_path: photo.storage_path,
+    caption: photo.note?.trim() || null,
+    latitude: photo.lat,
+    longitude: photo.lng,
+    taken_at: photo.taken_at,
+  }));
+  const { data: inserted, error: insertError } = await supabase
+    .from("deal_photos")
+    .insert(rows)
+    .select("id");
+  if (insertError) throw new Error(insertError.message);
+  const imported = inserted?.length ?? 0;
 
   // Link the session back so it's not re-imported, and record the property it
   // resolved to (leaving an app-set property_id untouched).

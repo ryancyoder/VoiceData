@@ -54,6 +54,11 @@ export interface DealPhoto {
   poster_path: string | null;
   is_outlier: boolean;
   photo_type: PhotoType;
+  // Storage bucket the paths live in. Null = the default deal-photos bucket
+  // (every ordinary photo). Set (e.g. "upright-media") when a row references a
+  // file that already lives in another bucket — an Upright site-session pin
+  // shown in the album without copying its bytes.
+  bucket?: string | null;
   // When set, storage_path points at an annotated composite and this holds the
   // un-annotated original (so the annotation can be reverted). Null = never
   // annotated. Added by the photo-annotation feature; older rows are null.
@@ -259,9 +264,9 @@ export function flattenDealPhotos(deal: Pick<Deal, "events">): DealPhoto[] {
 
 export const DEAL_PHOTOS_BUCKET = "deal-photos";
 
-export function dealPhotoUrl(storagePath: string): string {
+export function dealPhotoUrl(storagePath: string, bucket?: string | null): string {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  return `${base}/storage/v1/object/public/${DEAL_PHOTOS_BUCKET}/${storagePath}`;
+  return `${base}/storage/v1/object/public/${bucket || DEAL_PHOTOS_BUCKET}/${storagePath}`;
 }
 
 /**
@@ -270,11 +275,13 @@ export function dealPhotoUrl(storagePath: string): string {
  * instead — null when no poster exists (capture failed at upload time),
  * in which case callers should render a placeholder rather than an <img>.
  */
-export function dealThumbUrl(photo: Pick<DealPhoto, "media_type" | "storage_path" | "poster_path">): string | null {
+export function dealThumbUrl(
+  photo: Pick<DealPhoto, "media_type" | "storage_path" | "poster_path" | "bucket">
+): string | null {
   if (photo.media_type === "video") {
-    return photo.poster_path ? dealPhotoUrl(photo.poster_path) : null;
+    return photo.poster_path ? dealPhotoUrl(photo.poster_path, photo.bucket) : null;
   }
-  return dealPhotoUrl(photo.storage_path);
+  return dealPhotoUrl(photo.storage_path, photo.bucket);
 }
 
 export const DEAL_DOCUMENTS_BUCKET = "deal-documents";
