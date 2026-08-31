@@ -209,6 +209,30 @@
 }
 .edit-prop-btn:hover { border-color: var(--accent); background: var(--surface-2); }
 .field-hint { margin: 4px 0 0; font-size: 0.74rem; color: var(--text-muted); }
+
+.import-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 16px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.import-toast-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.import-toast-close:hover { color: var(--text); }
 .contact-name { font-weight: 600; }
 .contact-detail { font-size: 0.76rem; color: var(--text-muted); }
 .no-contact { color: var(--text-faint); font-style: italic; }

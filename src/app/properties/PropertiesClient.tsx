@@ -71,6 +71,10 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState("");
+  // "Import Upright sessions": copies pending site-session photos into their
+  // property albums and logs each as a calendar event.
+  const [importingUpright, setImportingUpright] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
 
   // Centers the manual location picker on wherever this business's other
   // properties already are, rather than defaulting to the middle of the
@@ -195,6 +199,36 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
       setError(err instanceof Error ? err.message : "Failed to add property");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleImportUpright() {
+    if (importingUpright) return;
+    setImportingUpright(true);
+    setImportMsg(null);
+    try {
+      const res = await fetchWithTimeout(
+        "/api/upright/import",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+        // Copying photo files can take a while for several sessions.
+        120000
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to import Upright sessions");
+      const s = data.summary as { imported: number; photos: number; skipped: number; unmatched: number };
+      if (s.imported === 0 && s.unmatched === 0) {
+        setImportMsg("No new Upright sessions to import.");
+      } else {
+        const parts = [`Imported ${s.imported} session${s.imported === 1 ? "" : "s"} (${s.photos} photo${s.photos === 1 ? "" : "s"})`];
+        if (s.unmatched > 0) parts.push(`${s.unmatched} couldn't be matched to a property`);
+        setImportMsg(parts.join(" · "));
+      }
+      // Pull in the freshly-attached photos / events.
+      router.refresh();
+    } catch (err) {
+      setImportMsg(err instanceof Error ? err.message : "Failed to import Upright sessions");
+    } finally {
+      setImportingUpright(false);
     }
   }
 
@@ -340,11 +374,29 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
               Map
             </button>
           </div>
+          <button
+            type="button"
+            className={styles["nav-btn"]}
+            onClick={handleImportUpright}
+            disabled={importingUpright}
+            title="Import pending Upright site sessions into property albums and the calendar"
+          >
+            {importingUpright ? "Importing…" : "⬆ Import Upright"}
+          </button>
           <button type="button" className={styles["nav-btn"]} onClick={() => setFormOpen(true)}>
             + Add Property
           </button>
         </div>
       </div>
+
+      {importMsg && (
+        <div className={styles["import-toast"]} role="status">
+          <span>{importMsg}</span>
+          <button type="button" className={styles["import-toast-close"]} aria-label="Dismiss" onClick={() => setImportMsg(null)}>
+            ×
+          </button>
+        </div>
+      )}
 
       <div className={styles["stage-filter-bar"]}>
         <button

@@ -1,0 +1,234 @@
+import { supabase } from "@/lib/supabaseClient";
+import { DEAL_PHOTOS_BUCKET, PROPERTY_REFERENCE_TYPE } from "@/lib/salesBoard";
+import { safeExtension } from "@/lib/storagePaths";
+import { findNearbyProperties } from "@/lib/properties";
+import { createEventManually, type EventType } from "@/lib/events";
+
+// Upright (the site-survey app) stores its session photos in this bucket,
+// referenced by upright_photos.storage_path. VoiceData's album, by contrast,
+// serves from the deal-photos bucket via deal_photos rows — so bridging a
+// session means copying each pin into deal-photos as a property-reference
+// photo and logging the session as a calendar event.
+const UPRIGHT_MEDIA_BUCKET = "upright-media";
+
+// A site session lands on the calendar as this event type. Kept as a single
+// constant so it's trivial to retype the category later.
+const UPRIGHT_EVENT_TYPE: EventType = "Consultation";
+
+// Only auto-attach a session to a property when its GPS lands this close. The
+// neighborhood-radius candidates from findNearbyProperties go out to 3 km,
+// which is fine for "suggest a property" but far too loose to silently file
+// photos under — a mismatch would bury a session in the wrong album. Beyond
+// this, the session is reported as unmatched rather than guessed.
+const UPRIGHT_GPS_MATCH_METERS = 150;
+
+// A 30-minute floor for a session that has no end time (or a zero-length one),
+// so the calendar block is never degenerate.
+const MIN_EVENT_MS = 30 * 60 * 1000;
+
+export interface UprightSessionRow {
+  id: string;
+  name: string | null;
+  started_at: string;
+  ended_at: string | null;
+  property_id: number | null;
+  event_id: number | null;
+  deal_id: number | null;
+  plan_center_lat: number | null;
+  plan_center_lng: number | null;
+}
+
+export interface UprightPhotoRow {
+  id: string;
+  seq: number;
+  storage_path: string;
+  lat: number | null;
+  lng: number | null;
+  note: string | null;
+  taken_at: string | null;
+}
+
+export type ImportOutcome =
+  | { status: "imported"; sessionId: string; propertyId: number; eventId: number; photoCount: number }
+  | { status: "skipped"; sessionId: string; reason: "already-imported" }
+  | { status: "unmatched"; sessionId: string; reason: "no-property" | "no-location" | "no-photos" };
+
+// The GPS point a session is matched from: the mean of its photo pins, or the
+// map plan center as a fallback when no pin carried a fix.
+function sessionCentroid(
+  photos: UprightPhotoRow[],
+  session: UprightSessionRow
+): { latitude: number; longitude: number } | null {
+  const located = photos.filter((p) => p.lat != null && p.lng != null);
+  if (located.length > 0) {
+    return {
+      latitude: located.reduce((s, p) => s + (p.lat as number), 0) / located.length,
+      longitude: located.reduce((s, p) => s + (p.lng as number), 0) / located.length,
+    };
+  }
+  if (session.plan_center_lat != null && session.plan_center_lng != null) {
+    return { latitude: session.plan_center_lat, longitude: session.plan_center_lng };
+  }
+  return null;
+}
+
+// Resolve the property a session belongs to: the id the Upright app already
+// stamped, else the nearest existing property to the session's GPS (within the
+// tight auto-attach radius). Returns null when neither applies.
+async function resolveProperty(
+  session: UprightSessionRow,
+  photos: UprightPhotoRow[]
+): Promise<number | null> {
+  if (session.property_id != null) return session.property_id;
+  const centroid = sessionCentroid(photos, session);
+  if (!centroid) return null;
+  const candidates = await findNearbyProperties(centroid.latitude, centroid.longitude);
+  const nearest = candidates[0];
+  if (nearest && nearest.distanceMeters <= UPRIGHT_GPS_MATCH_METERS) return nearest.id;
+  return null;
+}
+
+// Copy one Upright pin into the deal-photos bucket and return its new path.
+async function copyPhotoToDealBucket(photo: UprightPhotoRow, propertyId: number): Promise<string> {
+  const { data: blob, error: downloadError } = await supabase.storage
+    .from(UPRIGHT_MEDIA_BUCKET)
+    .download(photo.storage_path);
+  if (downloadError || !blob) {
+    throw new Error(downloadError?.message || `Couldn't read Upright photo ${photo.storage_path}`);
+  }
+  const ext = safeExtension(photo.storage_path);
+  const path = `property-${propertyId}/upright-${photo.id}.${ext}`;
+  const { error: uploadError } = await supabase.storage
+    .from(DEAL_PHOTOS_BUCKET)
+    .upload(path, blob, { contentType: blob.type || undefined, upsert: true });
+  if (uploadError) throw new Error(uploadError.message);
+  return path;
+}
+
+/**
+ * Bridges a single Upright session into VoiceData: matches it to a property,
+ * logs it as a calendar event, and copies every photo pin into that
+ * property's album (grouped under the new event). Idempotent by design — a
+ * session that already carries an event_id is treated as done and skipped, so
+ * re-running the import never double-imports.
+ */
+export async function importUprightSession(sessionId: string): Promise<ImportOutcome> {
+  const { data: session, error: sessionError } = await supabase
+    .from("upright_sessions")
+    .select("id, name, started_at, ended_at, property_id, event_id, deal_id, plan_center_lat, plan_center_lng")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  if (!session) throw new Error("Upright session not found");
+  const s = session as UprightSessionRow;
+
+  if (s.event_id != null) return { status: "skipped", sessionId, reason: "already-imported" };
+
+  const { data: photoRows, error: photosError } = await supabase
+    .from("upright_photos")
+    .select("id, seq, storage_path, lat, lng, note, taken_at")
+    .eq("session_id", sessionId)
+    .order("seq", { ascending: true });
+  if (photosError) throw new Error(photosError.message);
+  const photos = (photoRows ?? []) as UprightPhotoRow[];
+  if (photos.length === 0) return { status: "unmatched", sessionId, reason: "no-photos" };
+
+  const propertyId = await resolveProperty(s, photos);
+  if (propertyId == null) {
+    const reason = sessionCentroid(photos, s) == null ? "no-location" : "no-property";
+    return { status: "unmatched", sessionId, reason };
+  }
+
+  // Log the session on the calendar first so the photos can be grouped under
+  // it. A missing/zero end time gets a 30-minute block.
+  const startMs = new Date(s.started_at).getTime();
+  const endRaw = s.ended_at ? new Date(s.ended_at).getTime() : startMs;
+  const endMs = endRaw > startMs ? endRaw : startMs + MIN_EVENT_MS;
+  const event = await createEventManually({
+    name: s.name?.trim() || "Upright site session",
+    start_time: new Date(startMs).toISOString(),
+    end_time: new Date(endMs).toISOString(),
+    property_id: propertyId,
+    deal_id: s.deal_id,
+    event_type: UPRIGHT_EVENT_TYPE,
+    notes: "Imported from an Upright site session.",
+  });
+
+  // Copy each pin into the property album under the new event. A single photo
+  // failing shouldn't abort the whole session — collect what lands.
+  let imported = 0;
+  for (const photo of photos) {
+    try {
+      const path = await copyPhotoToDealBucket(photo, propertyId);
+      const { error: insertError } = await supabase.from("deal_photos").insert({
+        property_id: propertyId,
+        deal_id: null,
+        event_id: event.id,
+        photo_type: PROPERTY_REFERENCE_TYPE,
+        media_type: "image",
+        storage_path: path,
+        caption: photo.note?.trim() || null,
+        latitude: photo.lat,
+        longitude: photo.lng,
+        taken_at: photo.taken_at,
+      });
+      if (insertError) {
+        // Roll back the just-uploaded object so a failed row doesn't strand a file.
+        await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove([path]);
+        throw new Error(insertError.message);
+      }
+      imported += 1;
+    } catch (err) {
+      console.error(`Upright import: photo ${photo.id} failed`, err);
+    }
+  }
+
+  // Link the session back so it's not re-imported, and record the property it
+  // resolved to (leaving an app-set property_id untouched).
+  const sessionPatch: Record<string, unknown> = { event_id: event.id };
+  if (s.property_id == null) sessionPatch.property_id = propertyId;
+  const { error: linkError } = await supabase
+    .from("upright_sessions")
+    .update(sessionPatch)
+    .eq("id", sessionId);
+  if (linkError) throw new Error(linkError.message);
+
+  return { status: "imported", sessionId, propertyId, eventId: event.id, photoCount: imported };
+}
+
+export interface ImportSummary {
+  imported: number;
+  photos: number;
+  skipped: number;
+  unmatched: number;
+  outcomes: ImportOutcome[];
+}
+
+/**
+ * Imports every not-yet-imported Upright session (event_id still null),
+ * newest first. Used both by the manual "Import Upright sessions" button and
+ * as the schedulable entry point.
+ */
+export async function importPendingUprightSessions(): Promise<ImportSummary> {
+  const { data: pending, error } = await supabase
+    .from("upright_sessions")
+    .select("id")
+    .is("event_id", null)
+    .order("started_at", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const summary: ImportSummary = { imported: 0, photos: 0, skipped: 0, unmatched: 0, outcomes: [] };
+  for (const row of (pending ?? []) as { id: string }[]) {
+    const outcome = await importUprightSession(row.id);
+    summary.outcomes.push(outcome);
+    if (outcome.status === "imported") {
+      summary.imported += 1;
+      summary.photos += outcome.photoCount;
+    } else if (outcome.status === "skipped") {
+      summary.skipped += 1;
+    } else {
+      summary.unmatched += 1;
+    }
+  }
+  return summary;
+}
