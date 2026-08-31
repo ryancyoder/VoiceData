@@ -215,12 +215,15 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to import Upright sessions");
-      const s = data.summary as { imported: number; photos: number; skipped: number; unmatched: number };
+      const s = data.summary as { imported: number; photos: number; skipped: number; unmatched: number; cleaned?: number };
       if (s.imported === 0 && s.unmatched === 0) {
-        setImportMsg("No new Upright sessions to import.");
+        setImportMsg(
+          s.cleaned ? `No new Upright sessions. Cleaned up ${s.cleaned} leftover copied file${s.cleaned === 1 ? "" : "s"}.` : "No new Upright sessions to import."
+        );
       } else {
         const parts = [`Imported ${s.imported} session${s.imported === 1 ? "" : "s"} (${s.photos} photo${s.photos === 1 ? "" : "s"})`];
         if (s.unmatched > 0) parts.push(`${s.unmatched} couldn't be matched to a property`);
+        if (s.cleaned) parts.push(`cleaned ${s.cleaned} leftover file${s.cleaned === 1 ? "" : "s"}`);
         setImportMsg(parts.join(" · "));
       }
       // Pull in the freshly-attached photos / events.

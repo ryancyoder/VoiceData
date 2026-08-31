@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
-import { PROPERTY_REFERENCE_TYPE } from "@/lib/salesBoard";
+import { DEAL_PHOTOS_BUCKET, PROPERTY_REFERENCE_TYPE } from "@/lib/salesBoard";
 import { findNearbyProperties } from "@/lib/properties";
 import { createEventManually, type EventType } from "@/lib/events";
 
@@ -179,6 +179,9 @@ export interface ImportSummary {
   photos: number;
   skipped: number;
   unmatched: number;
+  // Leftover copied files removed by the post-sweep cleanup (see
+  // cleanupOrphanUprightCopies) — normally 0.
+  cleaned: number;
   outcomes: ImportOutcome[];
 }
 
@@ -195,7 +198,7 @@ export async function importPendingUprightSessions(): Promise<ImportSummary> {
     .order("started_at", { ascending: false });
   if (error) throw new Error(error.message);
 
-  const summary: ImportSummary = { imported: 0, photos: 0, skipped: 0, unmatched: 0, outcomes: [] };
+  const summary: ImportSummary = { imported: 0, photos: 0, skipped: 0, unmatched: 0, cleaned: 0, outcomes: [] };
   for (const row of (pending ?? []) as { id: string }[]) {
     const outcome = await importUprightSession(row.id);
     summary.outcomes.push(outcome);
@@ -208,5 +211,65 @@ export async function importPendingUprightSessions(): Promise<ImportSummary> {
       summary.unmatched += 1;
     }
   }
+  // Now that imports reference upright-media in place, any leftover copied
+  // files from the old copy-based import are dead weight — sweep them.
+  summary.cleaned = (await cleanupOrphanUprightCopies()).deleted;
   return summary;
+}
+
+/**
+ * Removes files the old copy-based import left in the deal-photos bucket
+ * (`property-<id>/upright-<uuid>.<ext>`) that no deal_photos row references any
+ * more. Safe to run any time and idempotent — it only deletes objects carrying
+ * the `upright-` marker that nothing points at, never a live photo. Direct SQL
+ * deletion of storage rows is blocked, so this goes through the Storage API.
+ */
+export async function cleanupOrphanUprightCopies(): Promise<{ deleted: number; orphans: string[] }> {
+  // Every path still referenced by a deal-photos-bucket row — never touch these.
+  const { data: rows, error } = await supabase
+    .from("deal_photos")
+    .select("storage_path, poster_path, original_storage_path, bucket");
+  if (error) throw new Error(error.message);
+  const referenced = new Set<string>();
+  for (const r of (rows ?? []) as {
+    storage_path: string | null;
+    poster_path: string | null;
+    original_storage_path: string | null;
+    bucket: string | null;
+  }[]) {
+    // Only rows served from the deal-photos bucket can reference these files.
+    if (r.bucket && r.bucket !== DEAL_PHOTOS_BUCKET) continue;
+    for (const p of [r.storage_path, r.poster_path, r.original_storage_path]) {
+      if (p) referenced.add(p);
+    }
+  }
+
+  // Walk each property-<id> folder for upright-* files.
+  const orphans: string[] = [];
+  const { data: top, error: topError } = await supabase.storage
+    .from(DEAL_PHOTOS_BUCKET)
+    .list("", { limit: 1000 });
+  if (topError) throw new Error(topError.message);
+  for (const entry of top ?? []) {
+    // Folders come back with a null id; real files have one.
+    if (entry.id !== null || !entry.name.startsWith("property-")) continue;
+    const { data: files, error: filesError } = await supabase.storage
+      .from(DEAL_PHOTOS_BUCKET)
+      .list(entry.name, { limit: 1000 });
+    if (filesError) throw new Error(filesError.message);
+    for (const f of files ?? []) {
+      if (!f.name.startsWith("upright-")) continue;
+      const full = `${entry.name}/${f.name}`;
+      if (!referenced.has(full)) orphans.push(full);
+    }
+  }
+
+  let deleted = 0;
+  for (let i = 0; i < orphans.length; i += 100) {
+    const batch = orphans.slice(i, i + 100);
+    const { error: removeError } = await supabase.storage.from(DEAL_PHOTOS_BUCKET).remove(batch);
+    if (removeError) throw new Error(removeError.message);
+    deleted += batch.length;
+  }
+  return { deleted, orphans };
 }
