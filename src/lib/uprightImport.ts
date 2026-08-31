@@ -165,7 +165,8 @@ export async function importUprightSession(sessionId: string): Promise<ImportOut
         deal_id: null,
         event_id: event.id,
         photo_type: PROPERTY_REFERENCE_TYPE,
-        media_type: "image",
+        // deal_photos.media_type is constrained to 'photo' | 'video'.
+        media_type: "photo",
         storage_path: path,
         caption: photo.note?.trim() || null,
         latitude: photo.lat,
