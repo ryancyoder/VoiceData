@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./properties.module.css";
 import { fetchWithTimeout } from "@/lib/withTimeout";
-import { STAGES, type Stage } from "@/lib/salesBoard";
+import { formatPropertyLabel, STAGES, type Stage } from "@/lib/salesBoard";
 import type { PropertyRow } from "./page";
 
 const STAGE_COLORS: Record<Stage, string> = {
@@ -43,8 +43,11 @@ function comparePropertiesByLastName(a: PropertyRow, b: PropertyRow): number {
   return cmp !== 0 ? cmp : a.address.localeCompare(b.address);
 }
 
+const EMPTY_DEAL_FORM = { deal_name: "", value: "", stage: "Lead" as Stage };
+
 export default function PropertiesClient({ properties: initialProperties }: { properties: PropertyRow[] }) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   // Sorted here rather than trusted from the server response — keeps the
   // table correctly ordered even if the initial fetch's own ordering
   // doesn't come back exactly right.
@@ -58,6 +61,20 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
   const [error, setError] = useState("");
   const [highlightedPropertyId, setHighlightedPropertyId] = useState<number | null>(null);
   const [locationModalPropertyId, setLocationModalPropertyId] = useState<number | null>(null);
+  // "New deal" from a property row: the target property + a small draft.
+  const [dealFormProperty, setDealFormProperty] = useState<PropertyRow | null>(null);
+  const [dealForm, setDealForm] = useState(EMPTY_DEAL_FORM);
+  const [dealSubmitting, setDealSubmitting] = useState(false);
+  const [dealError, setDealError] = useState("");
+  // "Edit" a property row: the target property + a draft of its address/contact.
+  const [editProperty, setEditProperty] = useState<PropertyRow | null>(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState("");
+  // "Import Upright sessions": copies pending site-session photos into their
+  // property albums and logs each as a calendar event.
+  const [importingUpright, setImportingUpright] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
 
   // Centers the manual location picker on wherever this business's other
   // properties already are, rather than defaulting to the middle of the
@@ -185,6 +202,153 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
     }
   }
 
+  async function handleImportUpright() {
+    if (importingUpright) return;
+    setImportingUpright(true);
+    setImportMsg(null);
+    try {
+      const res = await fetchWithTimeout(
+        "/api/upright/import",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+        // Copying photo files can take a while for several sessions.
+        120000
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to import Upright sessions");
+      const s = data.summary as { imported: number; photos: number; skipped: number; unmatched: number; cleaned?: number };
+      if (s.imported === 0 && s.unmatched === 0) {
+        setImportMsg(
+          s.cleaned ? `No new Upright sessions. Cleaned up ${s.cleaned} leftover copied file${s.cleaned === 1 ? "" : "s"}.` : "No new Upright sessions to import."
+        );
+      } else {
+        const parts = [`Imported ${s.imported} session${s.imported === 1 ? "" : "s"} (${s.photos} photo${s.photos === 1 ? "" : "s"})`];
+        if (s.unmatched > 0) parts.push(`${s.unmatched} couldn't be matched to a property`);
+        if (s.cleaned) parts.push(`cleaned ${s.cleaned} leftover file${s.cleaned === 1 ? "" : "s"}`);
+        setImportMsg(parts.join(" · "));
+      }
+      // Pull in the freshly-attached photos / events.
+      router.refresh();
+    } catch (err) {
+      setImportMsg(err instanceof Error ? err.message : "Failed to import Upright sessions");
+    } finally {
+      setImportingUpright(false);
+    }
+  }
+
+  function openEditForm(property: PropertyRow) {
+    setEditProperty(property);
+    setEditForm({
+      address: property.address,
+      first_name: property.contact?.first_name ?? "",
+      last_name: property.contact?.last_name ?? "",
+      email: property.contact?.email ?? "",
+      phone: property.contact?.phone ?? "",
+    });
+    setEditError("");
+  }
+  function closeEditForm() {
+    setEditProperty(null);
+    setEditForm(EMPTY_FORM);
+    setEditError("");
+  }
+
+  async function handleUpdateProperty(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editProperty) return;
+    const address = editForm.address.trim();
+    if (!address) return;
+    setEditSubmitting(true);
+    setEditError("");
+    try {
+      const res = await fetchWithTimeout(
+        `/api/properties/${editProperty.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            address,
+            first_name: editForm.first_name.trim() || null,
+            last_name: editForm.last_name.trim() || null,
+            email: editForm.email.trim() || null,
+            phone: editForm.phone.trim() || null,
+          }),
+        },
+        SUBMIT_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update property");
+      const updated = data.property as PropertyRow;
+      // Keep the row's derived counts (not returned by PATCH); swap in the
+      // edited address/contact/coords, then re-sort in case the last name moved.
+      setProperties((ps) =>
+        ps
+          .map((p) =>
+            p.id === editProperty.id
+              ? {
+                  ...p,
+                  address: updated.address,
+                  latitude: updated.latitude,
+                  longitude: updated.longitude,
+                  geocoded_at: updated.geocoded_at,
+                  contact: updated.contact ?? null,
+                }
+              : p
+          )
+          .sort(comparePropertiesByLastName)
+      );
+      closeEditForm();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to update property");
+    } finally {
+      setEditSubmitting(false);
+    }
+  }
+
+  function openDealForm(property: PropertyRow) {
+    setDealFormProperty(property);
+    setDealForm({ ...EMPTY_DEAL_FORM, deal_name: property.contact?.last_name?.trim() || "" });
+    setDealError("");
+  }
+  function closeDealForm() {
+    setDealFormProperty(null);
+    setDealForm(EMPTY_DEAL_FORM);
+    setDealError("");
+  }
+
+  async function handleCreateDeal(e: React.FormEvent) {
+    e.preventDefault();
+    if (!dealFormProperty) return;
+    const name = dealForm.deal_name.trim();
+    if (!name) return;
+    setDealSubmitting(true);
+    setDealError("");
+    try {
+      const res = await fetchWithTimeout(
+        "/api/sales-board",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deal_name: name,
+            property_id: dealFormProperty.id,
+            value: dealForm.value.trim() ? Number(dealForm.value) : undefined,
+            stage: dealForm.stage,
+          }),
+        },
+        SUBMIT_TIMEOUT_MS
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create deal");
+      const dealId = data.deal?.id as number | undefined;
+      // Land on the new deal so it can be filled in.
+      if (dealId != null) router.push(`/sales-board?deal=${dealId}`);
+      else closeDealForm();
+    } catch (err) {
+      setDealError(err instanceof Error ? err.message : "Failed to create deal");
+      setDealSubmitting(false);
+    }
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.topbar}>
@@ -213,11 +377,29 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
               Map
             </button>
           </div>
+          <button
+            type="button"
+            className={styles["nav-btn"]}
+            onClick={handleImportUpright}
+            disabled={importingUpright}
+            title="Import pending Upright site sessions into property albums and the calendar"
+          >
+            {importingUpright ? "Importing…" : "⬆ Import Upright"}
+          </button>
           <button type="button" className={styles["nav-btn"]} onClick={() => setFormOpen(true)}>
             + Add Property
           </button>
         </div>
       </div>
+
+      {importMsg && (
+        <div className={styles["import-toast"]} role="status">
+          <span>{importMsg}</span>
+          <button type="button" className={styles["import-toast-close"]} aria-label="Dismiss" onClick={() => setImportMsg(null)}>
+            ×
+          </button>
+        </div>
+      )}
 
       <div className={styles["stage-filter-bar"]}>
         <button
@@ -284,7 +466,17 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
                     className={p.id === highlightedPropertyId ? styles["is-highlighted"] : ""}
                   >
                     <td className={styles["contact-name"]}>{p.contact?.last_name || <span className={styles["no-contact"]}>—</span>}</td>
-                    <td className={styles["address-cell"]}>{p.address}</td>
+                    <td className={styles["address-cell"]}>
+                      <span className={styles["address-text"]}>{p.address}</span>
+                      <button
+                        type="button"
+                        className={styles["edit-prop-btn"]}
+                        onClick={() => openEditForm(p)}
+                        title="Edit address & contact"
+                      >
+                        ✎ Edit
+                      </button>
+                    </td>
                     <td>
                       {p.contact ? (
                         <>
@@ -297,7 +489,17 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
                       )}
                     </td>
                     <td>
-                      <span className={styles["count-pill"]}>{p.dealCount}</span>
+                      <span className={styles["deals-cell"]}>
+                        <span className={styles["count-pill"]}>{p.dealCount}</span>
+                        <button
+                          type="button"
+                          className={styles["new-deal-btn"]}
+                          onClick={() => openDealForm(p)}
+                          title="Create a new deal for this property"
+                        >
+                          + Deal
+                        </button>
+                      </span>
                     </td>
                     <td>
                       <span className={styles["count-pill"]}>{p.eventCount}</span>
@@ -378,6 +580,136 @@ export default function PropertiesClient({ properties: initialProperties }: { pr
                 </button>
                 <button type="submit" className={styles["btn-submit"]} disabled={submitting || !form.address.trim()}>
                   {submitting ? "Adding…" : "Add Property"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editProperty && (
+        <div
+          className={styles["modal-overlay"]}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !editSubmitting) closeEditForm();
+          }}
+        >
+          <div className={styles["modal-panel"]}>
+            <div className={styles["modal-head"]}>
+              <h2 className={styles["modal-title"]}>Edit property</h2>
+              <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={closeEditForm} disabled={editSubmitting}>
+                ×
+              </button>
+            </div>
+            <form className={styles.form} onSubmit={handleUpdateProperty}>
+              <div className={styles.field}>
+                <label htmlFor="edit-address">Address</label>
+                <input
+                  id="edit-address"
+                  required
+                  autoComplete="off"
+                  value={editForm.address}
+                  onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
+                />
+                <p className={styles["field-hint"]}>Changing the address re-checks the map location.</p>
+              </div>
+              <div className={styles["field-row"]}>
+                <div className={styles.field}>
+                  <label htmlFor="edit-first">Contact first name</label>
+                  <input id="edit-first" autoComplete="off" value={editForm.first_name} onChange={(e) => setEditForm((f) => ({ ...f, first_name: e.target.value }))} />
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="edit-last">Contact last name</label>
+                  <input id="edit-last" autoComplete="off" value={editForm.last_name} onChange={(e) => setEditForm((f) => ({ ...f, last_name: e.target.value }))} />
+                </div>
+              </div>
+              <div className={styles["field-row"]}>
+                <div className={styles.field}>
+                  <label htmlFor="edit-email">Contact email</label>
+                  <input id="edit-email" type="text" inputMode="email" autoComplete="off" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="edit-phone">Contact phone</label>
+                  <input id="edit-phone" type="tel" autoComplete="off" value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} />
+                </div>
+              </div>
+              {editError && <div className={styles["form-error"]}>{editError}</div>}
+              <div className={styles["form-actions"]}>
+                <button type="button" className={styles["btn-cancel"]} onClick={closeEditForm} disabled={editSubmitting}>
+                  Cancel
+                </button>
+                <button type="submit" className={styles["btn-submit"]} disabled={editSubmitting || !editForm.address.trim()}>
+                  {editSubmitting ? "Saving…" : "Save changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {dealFormProperty && (
+        <div
+          className={styles["modal-overlay"]}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !dealSubmitting) closeDealForm();
+          }}
+        >
+          <div className={styles["modal-panel"]}>
+            <div className={styles["modal-head"]}>
+              <h2 className={styles["modal-title"]}>New deal</h2>
+              <button type="button" className={styles["modal-close"]} aria-label="Close" onClick={closeDealForm} disabled={dealSubmitting}>
+                ×
+              </button>
+            </div>
+            <form className={styles.form} onSubmit={handleCreateDeal}>
+              <p className={styles["deal-form-property"]}>
+                {formatPropertyLabel({ address: dealFormProperty.address, contactLastName: dealFormProperty.contact?.last_name ?? null })}
+              </p>
+              <div className={styles.field}>
+                <label htmlFor="new-deal-name">Deal name</label>
+                <input
+                  id="new-deal-name"
+                  required
+                  autoFocus
+                  autoComplete="off"
+                  value={dealForm.deal_name}
+                  onChange={(e) => setDealForm((f) => ({ ...f, deal_name: e.target.value }))}
+                />
+              </div>
+              <div className={styles["field-row"]}>
+                <div className={styles.field}>
+                  <label htmlFor="new-deal-stage">Stage</label>
+                  <select
+                    id="new-deal-stage"
+                    value={dealForm.stage}
+                    onChange={(e) => setDealForm((f) => ({ ...f, stage: e.target.value as Stage }))}
+                  >
+                    {STAGES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="new-deal-value">Value ($)</label>
+                  <input
+                    id="new-deal-value"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={dealForm.value}
+                    onChange={(e) => setDealForm((f) => ({ ...f, value: e.target.value }))}
+                  />
+                </div>
+              </div>
+              {dealError && <div className={styles["form-error"]}>{dealError}</div>}
+              <div className={styles["form-actions"]}>
+                <button type="button" className={styles["btn-cancel"]} onClick={closeDealForm} disabled={dealSubmitting}>
+                  Cancel
+                </button>
+                <button type="submit" className={styles["btn-submit"]} disabled={dealSubmitting || !dealForm.deal_name.trim()}>
+                  {dealSubmitting ? "Creating…" : "Create deal"}
                 </button>
               </div>
             </form>

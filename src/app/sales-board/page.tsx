@@ -17,7 +17,7 @@ type RawProperty = {
   contacts: { last_name: string | null } | null;
 };
 
-type FallbackPhotoRow = Pick<DealPhoto, "media_type" | "storage_path" | "poster_path"> & {
+type FallbackPhotoRow = Pick<DealPhoto, "media_type" | "storage_path" | "poster_path" | "bucket"> & {
   property_id: number;
 };
 
@@ -48,7 +48,7 @@ async function loadPropertyCoverUrls(properties: RawProperty[]): Promise<Record<
 
   const [coversRes, fallbackRes] = await Promise.all([
     coverIds.length > 0
-      ? supabase.from("deal_photos").select("id, storage_path, poster_path, media_type").in("id", coverIds)
+      ? supabase.from("deal_photos").select("id, storage_path, poster_path, media_type, bucket").in("id", coverIds)
       : Promise.resolve({ data: [], error: null }),
     supabase.rpc("property_fallback_photos"),
   ]);
@@ -65,7 +65,7 @@ async function loadPropertyCoverUrls(properties: RawProperty[]): Promise<Record<
   }
 
   if (!coversRes.error) {
-    const photosById = new Map<number, Pick<DealPhoto, "media_type" | "storage_path" | "poster_path">>();
+    const photosById = new Map<number, Pick<DealPhoto, "media_type" | "storage_path" | "poster_path" | "bucket">>();
     for (const photo of coversRes.data ?? []) photosById.set(photo.id, photo);
 
     for (const property of properties) {

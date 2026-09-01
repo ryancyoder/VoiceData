@@ -421,6 +421,119 @@
 
 .column-empty { font-size: 0.75rem; color: var(--text-faint); text-align: center; padding: 14px 6px; border: 1px dashed var(--border); border-radius: 8px; }
 
+/* ── iPhone paged board ──────────────────────────────────────────────
+   On phones the board is no longer a free horizontal scroll. Each stage
+   column fills the whole screen; scroll-snap turns a left/right swipe into
+   paging from one stage to the next, and the column body scrolls vertically.
+   The pager bar (hidden on desktop) shows which stage you're on and lets you
+   tap a dot to jump. */
+.phone-pager { display: none; }
+
+@media (max-width: 768px) {
+  .board-wrap {
+    padding: 0;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .board-wrap::-webkit-scrollbar { display: none; }
+
+  .board { gap: 0; width: max-content; }
+
+  .column {
+    width: 100vw;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    border-radius: 0;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  /* Collapse is suppressed in phone mode (columns are always full-width), so
+     the collapsed-width rule must not win here. */
+  .column.is-collapsed { width: 100vw; }
+
+  .column-body {
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .phone-pager {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px clamp(10px, 4vw, 16px);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 6;
+  }
+  .phone-pager-arrow {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    line-height: 1;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .phone-pager-arrow:disabled { opacity: 0.35; cursor: default; }
+  .phone-pager-center {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .phone-pager-stage {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .phone-pager-count {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 1px 7px;
+    font-variant-numeric: tabular-nums;
+  }
+  .phone-pager-dots {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .phone-pager-dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--border);
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .phone-pager-dot.is-active {
+    background: var(--dot-color, var(--accent));
+    transform: scale(1.55);
+  }
+}
+
 .card {
   position: relative;
   background: var(--surface);
@@ -442,6 +555,43 @@
 /* Pen/mouse long-press has armed opening the deal's opportunity link — a ring
    cues the user that releasing now opens the link in a new tab. */
 .card.is-link-armed { box-shadow: 0 0 0 2px var(--col-color); }
+
+/* ── iPhone email-style swipe card (phone board view) ────────────────
+   The action buttons sit behind the card in leading/trailing rails; the card
+   (solid background) covers them at rest and slides aside to reveal them. */
+.swipe-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.swipe-lead,
+.swipe-trail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+}
+.swipe-lead { left: 0; }
+.swipe-trail { right: 0; }
+.swipe-action {
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0;
+  color: #fff;
+  cursor: pointer;
+}
+.swipe-action-icon { font-size: 1.2rem; line-height: 1; }
+.swipe-action-label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.02em; }
+.swipe-advance { background: #16a34a; }
+.swipe-album { background: #2563eb; }
+.swipe-flag { background: #d97706; }
+.swipe-flag.is-on { background: #b45309; }
+.swipe-lost { background: #dc2626; }
+.card.is-swiped { box-shadow: 0 3px 14px rgba(0, 0, 0, 0.22); }
 
 /* The property's key photo, previewed while a pointer hovers the card (see
    Settings → Sales Board view). Fixed rather than absolute: the column body
@@ -768,6 +918,47 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── iPhone paged tile view ──────────────────────────────────────────
+   Same idea as the paged board: on phones the flat tile grid becomes one
+   stage per screen — a single column of full-width tiles that scroll
+   vertically, with a left/right swipe paging between stages. */
+@media (max-width: 768px) {
+  .table-wrap { padding-left: 0; padding-right: 0; padding-bottom: 0; }
+  .dt-toolbar { padding: 12px clamp(10px, 4vw, 16px); }
+  .dt-filterbar { padding: 0 clamp(10px, 4vw, 16px) 10px; }
+
+  .tile-pager {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .tile-pager::-webkit-scrollbar { display: none; }
+
+  .tile-page {
+    width: 100vw;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px clamp(12px, 4vw, 18px) calc(20px + env(safe-area-inset-bottom));
+  }
+  .tile-page-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  /* Full-width tiles with a taller photo, since there's a whole screen to fill. */
+  .tile-page-list .tile-photo { aspect-ratio: 16 / 9; }
 }
 
 .deal-table {
@@ -1444,6 +1635,8 @@
    column width. */
 .deal-cover-photo {
   break-inside: avoid;
+  position: relative;
+  display: block;
   margin: 0 0 14px;
   width: 100%;
   border: 1px solid var(--border);
@@ -1456,6 +1649,18 @@
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
+}
+.deal-cover-photo-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 9px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.62);
+  border-radius: 999px;
+  backdrop-filter: blur(2px);
 }
 
 .deal-section {
@@ -1478,6 +1683,26 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
+}
+
+.deal-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.deal-album-link {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.deal-album-link:hover {
+  text-decoration: underline;
 }
 
 .deal-form-footer {

@@ -93,10 +93,14 @@ async function loadGallery(): Promise<{ gallery: GalleryEvent[]; emptyProperties
   const sitePlanPhotos = (sitePlanData ?? []) as DealPhoto[];
 
   // 3) General-reference photos (event-less, deal-less property photos), plain.
+  //    The event_id filter is what keeps this "general" — a property-reference
+  //    photo that's also tied to an event (e.g. an imported Upright site-session
+  //    pin) belongs under that event's section, not duplicated here too.
   const { data: refData, error: refError } = await supabase
     .from("deal_photos")
     .select("*")
     .eq("photo_type", PROPERTY_REFERENCE_TYPE)
+    .is("event_id", null)
     .order("created_at", { ascending: false });
   if (refError) throw new Error(`load reference photos: ${refError.message}`);
   const refPhotos = (refData ?? []) as DealPhoto[];

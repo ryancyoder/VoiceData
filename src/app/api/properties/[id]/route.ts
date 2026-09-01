@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
+import { upsertPropertyContact } from "@/lib/contacts";
+import { geocodeAddress } from "@/lib/geocode";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -49,16 +51,53 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     next_action_photo_id?: unknown;
     latitude?: unknown;
     longitude?: unknown;
+    address?: unknown;
+    first_name?: unknown;
+    last_name?: unknown;
+    email?: unknown;
+    phone?: unknown;
   };
 
   const hasCoverPhoto = "cover_photo_id" in body;
   const hasNextActionPhoto = "next_action_photo_id" in body;
   const hasLocation = "latitude" in body || "longitude" in body;
-  if (!hasCoverPhoto && !hasNextActionPhoto && !hasLocation) {
+  const hasAddress = "address" in body;
+  // The property page's edit form always sends the full contact, so any one of
+  // these keys means "apply the contact fields".
+  const hasContact =
+    "first_name" in body || "last_name" in body || "email" in body || "phone" in body;
+  if (!hasCoverPhoto && !hasNextActionPhoto && !hasLocation && !hasAddress && !hasContact) {
     return NextResponse.json({ error: "No fields provided to update" }, { status: 400 });
   }
 
   const updates: Record<string, unknown> = {};
+
+  // Editing the address: re-geocode so the map pin follows it. A blank address
+  // is rejected — a property must always have one.
+  if (hasAddress) {
+    const address = typeof body.address === "string" ? body.address.trim() : "";
+    if (!address) {
+      return NextResponse.json({ error: "address cannot be empty" }, { status: 400 });
+    }
+    const { data: current, error: currentError } = await supabase
+      .from("properties")
+      .select("address")
+      .eq("id", id)
+      .maybeSingle();
+    if (currentError) {
+      return NextResponse.json({ error: currentError.message }, { status: 500 });
+    }
+    if (!current) {
+      return NextResponse.json({ error: "Property not found" }, { status: 404 });
+    }
+    updates.address = address;
+    if (address !== current.address) {
+      const geocoded = await geocodeAddress(address);
+      updates.latitude = geocoded?.latitude ?? null;
+      updates.longitude = geocoded?.longitude ?? null;
+      updates.geocoded_at = geocoded ? new Date().toISOString() : null;
+    }
+  }
 
   if (hasCoverPhoto) {
     const coverPhotoId = body.cover_photo_id == null ? null : Number(body.cover_photo_id);
@@ -96,11 +135,45 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     updates.geocoded_at = new Date().toISOString();
   }
 
-  const { data, error } = await supabase.from("properties").update(updates).eq("id", id).select().single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Only touch the properties row when there's actually a column to write —
+  // a contact-only edit leaves it alone.
+  if (Object.keys(updates).length > 0) {
+    const { error } = await supabase.from("properties").update(updates).eq("id", id);
+    if (error) {
+      // Duplicate address (unique index on address).
+      if ((error as { code?: string }).code === "23505") {
+        return NextResponse.json({ error: "A property with that address already exists" }, { status: 409 });
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
   }
 
-  return NextResponse.json({ property: data });
+  if (hasContact) {
+    try {
+      await upsertPropertyContact(Number(id), {
+        first_name: typeof body.first_name === "string" ? body.first_name.trim() || null : null,
+        last_name: typeof body.last_name === "string" ? body.last_name.trim() || null : null,
+        email: typeof body.email === "string" ? body.email.trim() || null : null,
+        phone: typeof body.phone === "string" ? body.phone.trim() || null : null,
+      });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Failed to update contact" },
+        { status: 500 }
+      );
+    }
+  }
+
+  // Return the full property with its contact, in the same shape the page's
+  // list rows use (contact, singular).
+  const { data: withContact, error: fetchError } = await supabase
+    .from("properties")
+    .select("*, contacts(*)")
+    .eq("id", id)
+    .single();
+  if (fetchError) {
+    return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  }
+  const { contacts, ...propertyFields } = withContact as typeof withContact & { contacts: unknown };
+  return NextResponse.json({ property: { ...propertyFields, contact: contacts ?? null } });
 }

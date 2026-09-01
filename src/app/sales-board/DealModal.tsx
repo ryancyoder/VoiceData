@@ -1671,10 +1671,11 @@ export default function DealModal({
           <div className={styles["deal-form-body"]}>
           <div className={`${styles["deal-form-fields"]} ${locked ? styles["is-locked"] : ""}`} ref={fieldsRef}>
           {deal.property_id != null && coverPhoto && dealThumbUrl(coverPhoto) && (
-            <div className={styles["deal-cover-photo"]}>
+            <Link href={`/photos?deal=${deal.id}`} className={styles["deal-cover-photo"]} title="Open this deal's photo album">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={dealThumbUrl(coverPhoto) ?? undefined} alt="Property album cover" title="Property album cover" />
-            </div>
+              <span className={styles["deal-cover-photo-hint"]}>🖼️ View full album →</span>
+            </Link>
           )}
           <section className={styles["deal-section"]}>
             <h3 className={styles["deal-section-title"]}>Deal</h3>
@@ -2356,7 +2357,12 @@ export default function DealModal({
           </div>
           </section>
           <section className={styles["deal-section"]}>
-            <h3 className={styles["deal-section-title"]}>Photos</h3>
+            <div className={styles["deal-section-title-row"]}>
+              <h3 className={styles["deal-section-title"]}>Photos</h3>
+              <Link href={`/photos?deal=${deal.id}`} className={styles["deal-album-link"]} title="Open this deal's photo album">
+                🖼️ View full album →
+              </Link>
+            </div>
           {(deal.site_plan_photos ?? []).length > 0 && (
             <div className={styles["photo-events"]}>
               <div className={styles["photo-event-group"]}>

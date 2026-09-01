@@ -194,6 +194,45 @@
 .is-highlighted td { background: var(--accent-soft); transition: background 0.3s ease; }
 
 .address-cell { font-weight: 600; }
+.address-text { margin-right: 8px; }
+.edit-prop-btn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.edit-prop-btn:hover { border-color: var(--accent); background: var(--surface-2); }
+.field-hint { margin: 4px 0 0; font-size: 0.74rem; color: var(--text-muted); }
+
+.import-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 16px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.import-toast-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.import-toast-close:hover { color: var(--text); }
 .contact-name { font-weight: 600; }
 .contact-detail { font-size: 0.76rem; color: var(--text-muted); }
 .no-contact { color: var(--text-faint); font-style: italic; }
@@ -351,16 +390,42 @@
 .form { display: flex; flex-direction: column; gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 0.76rem; font-weight: 600; color: var(--text-muted); }
-.field input {
+.field input,
+.field select {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 0.85rem;
+  color: var(--text);
 }
-.field input:focus { border-color: var(--accent); outline: none; }
+.field input:focus,
+.field select:focus { border-color: var(--accent); outline: none; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .form-error { font-size: 0.78rem; color: var(--danger); }
+
+/* Deals column: count pill + a quick "new deal" action. */
+.deals-cell { display: inline-flex; align-items: center; gap: 8px; }
+.new-deal-btn {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.new-deal-btn:hover { border-color: var(--accent); background: var(--surface-2); }
+
+/* The property a new deal is being created for, shown atop the deal form. */
+.deal-form-property {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
 
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .btn-cancel {
