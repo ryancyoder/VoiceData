@@ -55,6 +55,9 @@ export interface Plant {
   design_style: string[] | null;
   features: string[] | null;
   image: string | null;
+  // One cultivar per species can be starred as the "choice" — its photo becomes
+  // the species album cover and it represents the group.
+  is_choice: boolean | null;
   source_url: string | null;
   last_updated: string | null;
   source_file: string | null;

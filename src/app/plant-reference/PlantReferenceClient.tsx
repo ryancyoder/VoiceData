@@ -18,6 +18,7 @@ import {
   Plus,
   Images,
   Shapes,
+  Star,
 } from "lucide-react";
 import {
   PLANT_CATEGORIES,
@@ -254,6 +255,33 @@ export function PlantReferenceClient() {
   }, [combos, q]);
 
   const afterComboChange = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // Star (or unstar) a cultivar as its species' choice — its photo becomes the
+  // album cover and it represents the group. Optimistic: reflect the single
+  // choice locally (starring one clears its siblings), then persist + reload so
+  // the album cover (computed server-side) catches up.
+  const setChoice = useCallback(async (plant: Plant, next: boolean) => {
+    setPlantResult((r) => ({
+      ...r,
+      plants: r.plants.map((p) =>
+        p.id === plant.id
+          ? { ...p, is_choice: next }
+          : next && p.genus === plant.genus && p.species === plant.species
+            ? { ...p, is_choice: false }
+            : p
+      ),
+    }));
+    try {
+      await fetch(`/api/plants/${plant.id}/choice`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_choice: next }),
+      });
+    } catch {
+      /* optimistic; the reload below reflects server truth */
+    }
+    setReloadKey((k) => k + 1);
+  }, []);
 
   // From a combination's linked-plant list, navigate to the album that contains
   // that cultivar (its genus+species). Clears search/filters so the album isn't
@@ -607,6 +635,27 @@ export function PlantReferenceClient() {
             >
               <div className="relative aspect-square">
                 <PlantImg image={p.image} alt={p.botanical ?? ""} className="h-full w-full object-cover" />
+                {drill && (!locked || p.is_choice) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!locked) setChoice(p, !p.is_choice);
+                    }}
+                    disabled={locked}
+                    aria-pressed={!!p.is_choice}
+                    title={
+                      p.is_choice
+                        ? "Choice cultivar — the species cover & representative"
+                        : "Star as this species' choice cultivar"
+                    }
+                    className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full shadow-sm transition-colors ${
+                      p.is_choice ? "bg-amber-400 text-white" : "bg-black/50 text-white/90 hover:bg-black/70"
+                    } ${locked ? "cursor-default" : "cursor-pointer"}`}
+                  >
+                    <Star size={14} fill={p.is_choice ? "currentColor" : "none"} />
+                  </button>
+                )}
                 {sort.startsWith("height") && p.height_in != null && (
                   <span className="absolute right-2 top-2 inline-flex items-center rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
                     {formatInches(p.height_in)}
@@ -644,7 +693,30 @@ export function PlantReferenceClient() {
                   className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
                 >
                   <td className="px-3 py-1.5">
-                    <PlantImg image={p.image} alt="" className="h-10 w-10 rounded object-cover" small />
+                    <div className="relative h-10 w-10">
+                      <PlantImg image={p.image} alt="" className="h-10 w-10 rounded object-cover" small />
+                      {drill && (!locked || p.is_choice) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!locked) setChoice(p, !p.is_choice);
+                          }}
+                          disabled={locked}
+                          aria-pressed={!!p.is_choice}
+                          title={
+                            p.is_choice
+                              ? "Choice cultivar — the species cover & representative"
+                              : "Star as this species' choice cultivar"
+                          }
+                          className={`absolute -left-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full shadow-sm transition-colors ${
+                            p.is_choice ? "bg-amber-400 text-white" : "bg-zinc-700/80 text-white hover:bg-zinc-900"
+                          } ${locked ? "cursor-default" : "cursor-pointer"}`}
+                        >
+                          <Star size={11} fill={p.is_choice ? "currentColor" : "none"} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2 font-medium italic text-zinc-800 dark:text-zinc-200">{p.botanical || "—"}</td>
                   <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{p.common || "—"}</td>
