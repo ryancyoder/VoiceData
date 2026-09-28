@@ -583,15 +583,15 @@ export function PlantReferenceClient() {
                 className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
               >
                 <div className="relative aspect-square">
-                  <PlantImg image={a.image} alt={a.album_key} className="h-full w-full object-cover" />
-                  {a.image_scope === "genus" && (
-                    <span
-                      title="The cover is a genus photo — no cultivar in this album has its own."
-                      className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-xs font-medium text-white shadow-sm"
-                    >
-                      <AlertTriangle size={11} /> genus photo
-                    </span>
-                  )}
+                  <PlantImg
+                    image={a.image}
+                    alt={a.album_key}
+                    className="h-full w-full object-cover"
+                    // An album cover is one member's photo speaking for the group, so
+                    // "genus" here means the cover is not even of a plant in this album.
+                    scope={a.image_scope === "genus" ? "genus" : null}
+                    cultivar={a.image_scope === "genus" ? "album" : null}
+                  />
                   {a.cultivars > 1 && (
                     <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
                       <Layers size={12} /> {a.cultivars}
@@ -648,8 +648,13 @@ export function PlantReferenceClient() {
               className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
             >
               <div className="relative aspect-square">
-                <PlantImg image={p.image} alt={p.botanical ?? ""} className="h-full w-full object-cover" />
-                <StandInBadge scope={p.image_scope} cultivar={p.cultivar} />
+                <PlantImg
+                  image={p.image}
+                  alt={p.botanical ?? ""}
+                  className="h-full w-full object-cover"
+                  scope={p.image_scope}
+                  cultivar={p.cultivar}
+                />
                 {drill && (!locked || p.is_choice) && (
                   <button
                     type="button"
@@ -941,11 +946,18 @@ function PlantImg({
   alt,
   className,
   small,
+  scope,
+  cultivar,
 }: {
   image: string | null;
   alt: string;
   className: string;
   small?: boolean;
+  // Passing these in rather than badging from outside is the whole point: only this
+  // component knows whether a photo actually rendered, and a caveat about a photo
+  // that is not on screen is worse than no caveat - it describes an empty tile.
+  scope?: ImageScope | null;
+  cultivar?: string | null;
 }) {
   const url = plantImageUrl(image);
   const [failed, setFailed] = useState(false);
@@ -960,8 +972,11 @@ function PlantImg({
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt={alt} loading="lazy" className={className} onError={() => setFailed(true)} />
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt={alt} loading="lazy" className={className} onError={() => setFailed(true)} />
+      <StandInBadge scope={scope} cultivar={cultivar} />
+    </>
   );
 }
 
@@ -1016,7 +1031,7 @@ function PlantDetail({ plant, onClose }: { plant: Plant; onClose: () => void }) 
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {standInLabel(plant.image_scope, plant.cultivar) && (
+          {plant.image && standInLabel(plant.image_scope, plant.cultivar) && (
             <p className="mb-2 flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
               <AlertTriangle size={13} />
               {standInLabel(plant.image_scope, plant.cultivar)!.full}
