@@ -39,6 +39,9 @@ export async function GET(req: NextRequest) {
     category: r.category,
     cultivars: Number(r.cultivars),
     image: r.image,
+    // What the cover photo actually depicts, so a stand-in can be badged rather
+    // than presented as the album's own plant.
+    image_scope: r.image_scope ?? null,
   }));
 
   return NextResponse.json({ albums, total, page, pageSize });

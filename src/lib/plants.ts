@@ -21,6 +21,29 @@ export function plantImageUrl(image: string | null | undefined): string | null {
   return `${base}/storage/v1/object/public/${PLANT_IMAGES_BUCKET}/${encodeURIComponent(filename)}`;
 }
 
+export type ImageScope = "cultivar" | "species" | "genus" | "unknown";
+
+// A stand-in photo must say so. The catalog spent a long time with one photo per
+// genus quietly standing in for every cultivar under it — `Rosa.jpeg` on
+// twenty-three different roses — and the damage was not the substitution but the
+// silence: nothing on the card distinguished a portrait from a placeholder.
+// Returns null when the photo really is of this plant, or when there is no claim
+// to check.
+export function standInLabel(
+  scope: ImageScope | null | undefined,
+  cultivar: string | null | undefined,
+): { short: string; full: string } | null {
+  if (!cultivar || !cultivar.trim()) return null;   // a species row may use a species photo
+  if (!scope || scope === "cultivar") return null;
+  if (scope === "species") {
+    return { short: "species photo", full: "This is a photo of the species, not of this cultivar." };
+  }
+  if (scope === "genus") {
+    return { short: "genus photo", full: "This is a photo of the genus, not of this cultivar." };
+  }
+  return { short: "unverified", full: "Nobody has checked whether this photo is this cultivar." };
+}
+
 export interface Plant {
   id: number;
   type: string | null;
@@ -55,6 +78,14 @@ export interface Plant {
   design_style: string[] | null;
   features: string[] | null;
   image: string | null;
+  // What the photo on this row actually depicts. A named cultivar whose scope is
+  // "species" or "genus" is wearing a stand-in: the right plant could not be found,
+  // so a relative is shown instead. Null means the row has never been audited.
+  image_scope: ImageScope | null;
+  // Which supplier the photo came from ("provenwinners", "openverse", …), and when
+  // it was last checked. Null for the original vault import.
+  image_source: string | null;
+  image_verified_at: string | null;
   // One cultivar per species can be starred as the "choice" — its photo becomes
   // the species album cover and it represents the group.
   is_choice: boolean | null;
@@ -79,6 +110,9 @@ export interface PlantAlbum {
   category: string | null;
   cultivars: number;
   image: string | null;
+  // The scope of the cover photo. An album cover is one member's photo standing for
+  // the group, so "genus" here means the cover is not even of a plant in this album.
+  image_scope: ImageScope | null;
 }
 
 export interface PlantAlbumsResult {
