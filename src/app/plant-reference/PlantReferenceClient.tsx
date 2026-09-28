@@ -17,6 +17,7 @@ import {
   Loader2,
   Plus,
   Images,
+  AlertTriangle,
   Shapes,
   Star,
 } from "lucide-react";
@@ -26,6 +27,8 @@ import {
   MOISTURE_OPTIONS,
   formatInches,
   plantImageUrl,
+  standInLabel,
+  type ImageScope,
   type Plant,
   type PlantQueryResult,
   type PlantAlbum,
@@ -295,6 +298,9 @@ export function PlantReferenceClient() {
         common: p.common,
         category: null,
         cultivars: 0,
+        // Navigating to an album, not rendering a cover: the real scope arrives with
+        // the album when it loads.
+        image_scope: null,
         image: p.image,
       };
       clearAll();
@@ -577,7 +583,15 @@ export function PlantReferenceClient() {
                 className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
               >
                 <div className="relative aspect-square">
-                  <PlantImg image={a.image} alt={a.album_key} className="h-full w-full object-cover" />
+                  <PlantImg
+                    image={a.image}
+                    alt={a.album_key}
+                    className="h-full w-full object-cover"
+                    // An album cover is one member's photo speaking for the group, so
+                    // "genus" here means the cover is not even of a plant in this album.
+                    scope={a.image_scope === "genus" ? "genus" : null}
+                    cultivar={a.image_scope === "genus" ? "album" : null}
+                  />
                   {a.cultivars > 1 && (
                     <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
                       <Layers size={12} /> {a.cultivars}
@@ -634,7 +648,13 @@ export function PlantReferenceClient() {
               className="group relative cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
             >
               <div className="relative aspect-square">
-                <PlantImg image={p.image} alt={p.botanical ?? ""} className="h-full w-full object-cover" />
+                <PlantImg
+                  image={p.image}
+                  alt={p.botanical ?? ""}
+                  className="h-full w-full object-cover"
+                  scope={p.image_scope}
+                  cultivar={p.cultivar}
+                />
                 {drill && (!locked || p.is_choice) && (
                   <button
                     type="button"
@@ -895,6 +915,30 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Marks a photo that is not of the plant it sits on. Deliberately visible rather
+// than subtle: the point is that a reader can tell a portrait from a placeholder
+// at a glance, which is exactly what the catalog could not do before.
+function StandInBadge({
+  scope,
+  cultivar,
+  className = "absolute left-2 top-2",
+}: {
+  scope: ImageScope | null | undefined;
+  cultivar: string | null | undefined;
+  className?: string;
+}) {
+  const label = standInLabel(scope, cultivar);
+  if (!label) return null;
+  return (
+    <span
+      title={label.full}
+      className={`${className} inline-flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-xs font-medium text-white shadow-sm`}
+    >
+      <AlertTriangle size={11} /> {label.short}
+    </span>
+  );
+}
+
 // Renders a plant's album-cover image, falling back to a leaf placeholder when
 // there's no image path or the file isn't in the bucket yet (404).
 function PlantImg({
@@ -902,11 +946,18 @@ function PlantImg({
   alt,
   className,
   small,
+  scope,
+  cultivar,
 }: {
   image: string | null;
   alt: string;
   className: string;
   small?: boolean;
+  // Passing these in rather than badging from outside is the whole point: only this
+  // component knows whether a photo actually rendered, and a caveat about a photo
+  // that is not on screen is worse than no caveat - it describes an empty tile.
+  scope?: ImageScope | null;
+  cultivar?: string | null;
 }) {
   const url = plantImageUrl(image);
   const [failed, setFailed] = useState(false);
@@ -921,8 +972,11 @@ function PlantImg({
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt={alt} loading="lazy" className={className} onError={() => setFailed(true)} />
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt={alt} loading="lazy" className={className} onError={() => setFailed(true)} />
+      <StandInBadge scope={scope} cultivar={cultivar} />
+    </>
   );
 }
 
@@ -977,6 +1031,12 @@ function PlantDetail({ plant, onClose }: { plant: Plant; onClose: () => void }) 
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {plant.image && standInLabel(plant.image_scope, plant.cultivar) && (
+            <p className="mb-2 flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              <AlertTriangle size={13} />
+              {standInLabel(plant.image_scope, plant.cultivar)!.full}
+            </p>
+          )}
           {plant.image && (
             <div className="mb-4 overflow-hidden rounded-xl border border-zinc-100 dark:border-zinc-800">
               <PlantImg image={plant.image} alt={plant.botanical ?? ""} className="max-h-72 w-full object-cover" />
