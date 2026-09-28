@@ -94,6 +94,21 @@ export interface Plant {
   source_file: string | null;
 }
 
+// A photograph kept beside a cultivar's cover rather than instead of it. `caption` says what
+// it is for - fall colour, leaf detail, bark - and is free text, because the useful
+// distinctions differ by plant and a fixed list would be wrong within a season.
+export interface PlantExtra {
+  id: number;
+  caption: string | null;
+  source: string | null;
+  credit: string | null;
+  storage_path: string | null;
+  width: number | null;
+  height: number | null;
+  source_url: string | null;
+  created_at: string | null;
+}
+
 export interface PlantQueryResult {
   plants: Plant[];
   total: number;
