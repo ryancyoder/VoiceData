@@ -29,6 +29,7 @@ import {
   plantImageUrl,
   standInLabel,
   type ImageScope,
+  type PlantExtra,
   type Plant,
   type PlantQueryResult,
   type PlantAlbum,
@@ -980,6 +981,80 @@ function PlantImg({
   );
 }
 
+// The photographs kept beside the cover. A cultivar is not one picture — the same shrub in
+// October carries different information from the same shrub in June — and the caption is what
+// makes the strip worth reading rather than a row of near-identical thumbnails.
+//
+// Fetched rather than passed in: nothing else on the page needs them, and a plant with no
+// extras (most of them) renders nothing and costs one request that returns an empty list.
+function ExtraPhotos({ plantId, botanical }: { plantId: number; botanical: string | null }) {
+  const [extras, setExtras] = useState<PlantExtra[] | null>(null);
+  const [open, setOpen] = useState<PlantExtra | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/plants/${plantId}/extras`)
+      .then((r) => (r.ok ? r.json() : { extras: [] }))
+      .then((d: { extras?: PlantExtra[] }) => live && setExtras(d.extras ?? []))
+      .catch(() => live && setExtras([]));
+    return () => {
+      live = false;
+    };
+  }, [plantId]);
+
+  if (!extras || extras.length === 0) return null;
+
+  return (
+    <div className="mb-4">
+      <p className="mb-1.5 text-xs font-medium text-zinc-400">
+        Also photographed ({extras.length})
+      </p>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {extras.map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            onClick={() => setOpen(e)}
+            title={e.caption || "extra photo"}
+            className="group relative shrink-0 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700"
+          >
+            <PlantImg
+              image={e.storage_path}
+              alt={e.caption || ""}
+              className="h-20 w-20 object-cover"
+              small
+            />
+            {e.caption && (
+              <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[10px] text-white">
+                {e.caption}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setOpen(null)}
+        >
+          <div className="max-h-full max-w-3xl" onClick={(ev) => ev.stopPropagation()}>
+            <PlantImg
+              image={open.storage_path}
+              alt={open.caption || botanical || ""}
+              className="max-h-[80vh] w-auto rounded-xl object-contain"
+            />
+            <p className="mt-2 text-center text-sm text-white/90">
+              {open.caption || "extra photo"}
+              {open.credit ? <span className="text-white/60"> · {open.credit}</span> : null}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlantDetail({ plant, onClose }: { plant: Plant; onClose: () => void }) {
   const rows: { label: string; value: string }[] = useMemo(() => {
     const arr = (a: string[] | null | undefined) => (a && a.length ? a.join(", ") : "—");
@@ -1042,6 +1117,7 @@ function PlantDetail({ plant, onClose }: { plant: Plant; onClose: () => void }) 
               <PlantImg image={plant.image} alt={plant.botanical ?? ""} className="max-h-72 w-full object-cover" />
             </div>
           )}
+          <ExtraPhotos plantId={plant.id} botanical={plant.botanical} />
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
             {rows.map((r) => (
               <div key={r.label} className="flex justify-between gap-4 border-b border-zinc-50 py-1 dark:border-zinc-800/60">
