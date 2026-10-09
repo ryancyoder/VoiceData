@@ -40,6 +40,23 @@ import type { LibraryItem } from "@/lib/design/library";
 import { ReferencePlantPicker } from "@/app/plants/ReferencePlantPicker";
 import { compressImage } from "@/lib/compressImage";
 
+// A cultivar added from inside an album inherits what that album already knows:
+// its genus and species, plus the type/category its siblings carry. Without the
+// seed the new row would group nowhere near the album it was created in, which
+// is the one place its name is obvious.
+function seedFromAlbum(album: PlantAlbum, siblings: Plant[]): Partial<Plant> {
+  const sibling = siblings.find((p) => p.type || p.category);
+  return {
+    id: 0,
+    is_choice: false,
+    image: null,
+    genus: album.genus ?? null,
+    species: album.species ?? null,
+    type: sibling?.type ?? null,
+    category: sibling?.category ?? null,
+  };
+}
+
 export function PlantReferenceClient() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
@@ -64,6 +81,9 @@ export function PlantReferenceClient() {
   // the read-only detail card. reloadKey forces a refetch after a save.
   const [locked, setLocked] = useState(true);
   const [editing, setEditing] = useState<Plant | null>(null);
+  // A cultivar being added. Holds the seed columns it inherits from wherever it
+  // was started, so the new row lands in that album instead of floating loose.
+  const [creatingPlant, setCreatingPlant] = useState<Partial<Plant> | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // Combinations: multi-plant photos that surface inside each linked species'
   // album. `combos` holds either the whole-library list (Combinations tab) or
@@ -350,6 +370,7 @@ export function PlantReferenceClient() {
             onClick={() => {
               setLocked((v) => !v);
               setEditing(null);
+              setCreatingPlant(null);
               setSelected(null);
             }}
             title={locked ? "Unlock to edit plants and photos" : "Lock (read-only)"}
@@ -413,7 +434,16 @@ export function PlantReferenceClient() {
             <span className="italic">{drill.album_key}</span>
             {drill.common ? <span className="text-zinc-400">· {drill.common}</span> : null}
           </button>
-        ) : (
+        ) : null}
+        {drill && !locked && (
+          <button
+            onClick={() => setCreatingPlant(seedFromAlbum(drill, plantResult.plants))}
+            className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+          >
+            <Plus size={16} /> Add cultivar
+          </button>
+        )}
+        {!drill && (
           <div className="inline-flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
             <GroupBtn label="Albums" active={groupMode === "albums"} onClick={() => switchGroup("albums")} />
             <GroupBtn label="All plants" active={groupMode === "all"} onClick={() => switchGroup("all")} />
@@ -788,6 +818,18 @@ export function PlantReferenceClient() {
         </div>
       )}
 
+      {creatingPlant && (
+        <PlantEditor
+          creating
+          plant={creatingPlant as Plant}
+          onClose={() => setCreatingPlant(null)}
+          onSaved={() => {
+            setCreatingPlant(null);
+            setReloadKey((k) => k + 1);
+          }}
+          onChanged={() => setReloadKey((k) => k + 1)}
+        />
+      )}
       {editing && (
         <PlantEditor
           plant={editing}
@@ -1222,16 +1264,178 @@ function initialForm(plant: Plant): Record<string, string> {
   return form;
 }
 
+// The same seven captions `plantpix review` offers, so a photograph described at
+// the workstation and one described on a phone end up labelled the same way.
+const EXTRA_CAPTIONS = ["fall colour", "flower", "leaf detail", "bark", "habit", "winter", "in situ"];
+
+// Add and remove the photographs kept beside the cover.
+//
+// Lives in the editor rather than the read-only card because it writes, and the
+// library's rule is that nothing is written while the page is locked. The cover
+// is untouched by everything here: that is the entire point of an extra.
+function ExtrasEditor({ plantId }: { plantId: number }) {
+  const [extras, setExtras] = useState<PlantExtra[] | null>(null);
+  const [caption, setCaption] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/plants/${plantId}/extras`)
+      .then((r) => (r.ok ? r.json() : { extras: [] }))
+      .then((d: { extras?: PlantExtra[] }) => live && setExtras(d.extras ?? []))
+      .catch(() => live && setExtras([]));
+    return () => {
+      live = false;
+    };
+  }, [plantId]);
+
+  const add = async (file: File) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const compressed = await compressImage(file);
+      const fd = new FormData();
+      fd.append("file", compressed);
+      fd.append("caption", caption.trim());
+      try {
+        const bmp = await createImageBitmap(compressed);
+        fd.append("width", String(bmp.width));
+        fd.append("height", String(bmp.height));
+        bmp.close();
+      } catch {
+        // Dimensions are a nicety - the row is worth having without them.
+      }
+      const res = await fetch(`/api/plants/${plantId}/extras`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Upload failed (${res.status})`);
+      }
+      const d: { extra: PlantExtra } = await res.json();
+      setExtras((xs) => [...(xs ?? []), d.extra]);
+      setCaption("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const remove = async (imageId: number) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/plants/${plantId}/extras?imageId=${imageId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Remove failed (${res.status})`);
+      }
+      setExtras((xs) => (xs ?? []).filter((x) => x.id !== imageId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Remove failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <fieldset className="mb-5">
+      <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        Also photographed{extras && extras.length ? ` (${extras.length})` : ""}
+      </legend>
+      <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+        Kept beside the cover, not instead of it. A caption is what makes one worth looking at.
+      </p>
+
+      {extras && extras.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {extras.map((e) => (
+            <div
+              key={e.id}
+              className="group relative overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700"
+            >
+              <PlantImg image={e.storage_path} alt={e.caption || ""} className="h-20 w-20 object-cover" small />
+              {e.caption && (
+                <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[10px] text-white">
+                  {e.caption}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => remove(e.id)}
+                disabled={busy}
+                title="Remove this photo"
+                aria-label="Remove this photo"
+                className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={caption}
+          onChange={(ev) => setCaption(ev.target.value)}
+          placeholder="Caption (fall colour, bark, habit…)"
+          className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+        />
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(ev) => {
+            const f = ev.target.files?.[0];
+            if (f) add(f);
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        >
+          {busy ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+          Add photo
+        </button>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {EXTRA_CAPTIONS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setCaption(c)}
+            className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+
+      {error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
+    </fieldset>
+  );
+}
+
 function PlantEditor({
   plant,
   onClose,
   onSaved,
   onChanged,
+  creating = false,
 }: {
   plant: Plant;
   onClose: () => void;
   onSaved: () => void;
   onChanged: () => void;
+  creating?: boolean;
 }) {
   const [form, setForm] = useState<Record<string, string>>(() => initialForm(plant));
   const [bools, setBools] = useState<Record<string, boolean>>(() => ({
@@ -1241,10 +1445,27 @@ function PlantEditor({
     rabbit_resistant: !!plant.rabbit_resistant,
   }));
   const [image, setImage] = useState<string | null>(plant.image);
+  // A new row does not exist yet, so its photograph cannot be filed against an
+  // id. Hold the chosen file and post it the moment the insert returns one.
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  // Set once the insert succeeds. From then on this editor edits that row -
+  // without it, a failure after the insert (an upload that times out, say)
+  // would turn the next Save into a second cultivar.
+  const [createdId, setCreatedId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const targetId = createdId ?? plant.id;
+  const isCreate = creating && createdId === null;
+
+  useEffect(() => {
+    return () => {
+      if (pendingPreview) URL.revokeObjectURL(pendingPreview);
+    };
+  }, [pendingPreview]);
 
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -1253,8 +1474,8 @@ function PlantEditor({
     setError(null);
     const payload: Record<string, unknown> = { ...form, ...bools };
     try {
-      const res = await fetch(`/api/plants/${plant.id}`, {
-        method: "PATCH",
+      const res = await fetch(isCreate ? "/api/plants" : `/api/plants/${targetId}`, {
+        method: isCreate ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -1262,6 +1483,26 @@ function PlantEditor({
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || `Save failed (${res.status})`);
       }
+
+      let id = targetId;
+      if (isCreate) {
+        const d: { plant: Plant } = await res.json();
+        id = d.plant.id;
+        setCreatedId(id);
+      }
+
+      if (pendingFile) {
+        const fd = new FormData();
+        fd.append("file", await compressImage(pendingFile));
+        const up = await fetch(`/api/plants/${id}/image`, { method: "POST", body: fd });
+        if (!up.ok) {
+          // The cultivar is saved either way; say so, so this is not retried
+          // as a fresh one.
+          throw new Error("Cultivar saved, but its photo did not upload — use Upload photo to try again.");
+        }
+        setPendingFile(null);
+      }
+
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -1275,7 +1516,7 @@ function PlantEditor({
     try {
       const fd = new FormData();
       fd.append("file", await compressImage(file));
-      const res = await fetch(`/api/plants/${plant.id}/image`, { method: "POST", body: fd });
+      const res = await fetch(`/api/plants/${targetId}/image`, { method: "POST", body: fd });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || `Upload failed (${res.status})`);
@@ -1295,7 +1536,7 @@ function PlantEditor({
     setUploading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/plants/${plant.id}/image`, { method: "DELETE" });
+      const res = await fetch(`/api/plants/${targetId}/image`, { method: "DELETE" });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || `Remove failed (${res.status})`);
@@ -1319,8 +1560,16 @@ function PlantEditor({
           <div className="flex items-center gap-2">
             <Unlock size={16} className="text-amber-500" />
             <div>
-              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">Edit plant</h2>
-              <p className="text-xs italic text-zinc-500 dark:text-zinc-400">{plant.botanical || plant.common || `#${plant.id}`}</p>
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+                {creating ? (createdId ? "Finish cultivar" : "Add cultivar") : "Edit plant"}
+              </h2>
+              <p className="text-xs italic text-zinc-500 dark:text-zinc-400">
+                {form.botanical?.trim() ||
+                  [form.genus, form.species, form.cultivar ? `'${form.cultivar}'` : ""].filter(Boolean).join(" ").trim() ||
+                  plant.botanical ||
+                  plant.common ||
+                  (plant.id ? `#${plant.id}` : "new")}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
@@ -1332,7 +1581,12 @@ function PlantEditor({
           {/* Photo */}
           <div className="mb-5 flex items-center gap-4">
             <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-              <PlantImg image={image} alt={plant.botanical ?? ""} className="h-full w-full object-cover" />
+              {pendingPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={pendingPreview} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <PlantImg image={image} alt={plant.botanical ?? ""} className="h-full w-full object-cover" />
+              )}
             </div>
             <div className="flex flex-col gap-2">
               <input
@@ -1342,7 +1596,16 @@ function PlantEditor({
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) uploadPhoto(f);
+                  if (!f) return;
+                  if (isCreate) {
+                    // Nothing to attach it to yet - save() posts it once the
+                    // insert hands back an id.
+                    if (pendingPreview) URL.revokeObjectURL(pendingPreview);
+                    setPendingFile(f);
+                    setPendingPreview(URL.createObjectURL(f));
+                  } else {
+                    uploadPhoto(f);
+                  }
                 }}
               />
               <button
@@ -1351,9 +1614,9 @@ function PlantEditor({
                 className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
               >
                 {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-                {image ? "Replace photo" : "Upload photo"}
+                {pendingFile ? "Change chosen photo" : image ? "Replace photo" : "Upload photo"}
               </button>
-              {image && (
+              {image && !pendingFile && (
                 <button
                   onClick={removePhoto}
                   disabled={uploading}
@@ -1364,6 +1627,15 @@ function PlantEditor({
               )}
             </div>
           </div>
+
+          {/* Photographs kept beside the cover */}
+          {isCreate ? (
+            <p className="mb-5 rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-xs text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+              Save the cultivar first, then photographs can be kept beside its cover.
+            </p>
+          ) : (
+            <ExtrasEditor plantId={targetId} />
+          )}
 
           {/* Fields */}
           {TEXT_GROUPS.map((g) => (
@@ -1421,7 +1693,7 @@ function PlantEditor({
               className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {saving && <Loader2 size={15} className="animate-spin" />}
-              Save changes
+              {isCreate ? "Create cultivar" : "Save changes"}
             </button>
           </div>
         </div>
